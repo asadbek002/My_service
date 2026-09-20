@@ -1,0 +1,5 @@
+'use client';
+import {useState,type FormEvent}from'react';import{useRouter}from'next/navigation';import{platformLogin}from'../lib';
+export default function Page(){const router=useRouter();const[error,setError]=useState('');const[busy,setBusy]=useState(false);
+async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();setBusy(true);setError('');const d=new FormData(e.currentTarget);try{await platformLogin(String(d.get('login')),String(d.get('password')));router.replace('/platform')}catch(e){setError(e instanceof Error?e.message:'Xato')}finally{setBusy(false)}}
+return <main className="auth-page"><section className="auth-card"><p className="eyebrow">MYSERVICE PLATFORM</p><h2>Platform boshqaruvi</h2><form onSubmit={submit}><label>Login<input name="login" required/></label><label>Parol<input name="password" type="password" required/></label>{error&&<p className="error">{error}</p>}<button disabled={busy}>Kirish</button></form></section></main>}
