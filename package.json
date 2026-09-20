@@ -9,10 +9,14 @@
     "lint": "turbo lint",
     "test": "turbo test",
     "typecheck": "turbo typecheck",
+    "db:format": "prisma format --schema prisma/schema.prisma",
+    "db:generate": "prisma generate --schema prisma/schema.prisma",
+    "db:validate": "prisma validate --schema prisma/schema.prisma",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\""
   },
   "devDependencies": {
     "prettier": "^3.0.0",
+    "prisma": "^6.0.0",
     "turbo": "^2.0.0",
     "typescript": "^5.0.0"
   }

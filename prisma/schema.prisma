@@ -42,6 +42,7 @@ model Branch {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   memberships UserBranch[]
 
+  @@unique([organizationId, id])
   @@unique([organizationId, name])
   @@index([organizationId])
 }
@@ -65,18 +66,20 @@ model User {
   roles        UserRole[]
   sessions     Session[]
 
+  @@unique([organizationId, id])
   @@index([organizationId, status])
 }
 
 model UserBranch {
-  userId   String
-  branchId String
+  organizationId String
+  userId         String
+  branchId       String
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [organizationId, userId], references: [organizationId, id], onDelete: Cascade)
+  branch Branch @relation(fields: [organizationId, branchId], references: [organizationId, id], onDelete: Cascade)
 
-  @@id([userId, branchId])
-  @@index([branchId])
+  @@id([organizationId, userId, branchId])
+  @@index([organizationId, branchId])
 }
 
 model Role {
@@ -90,6 +93,7 @@ model Role {
   users        UserRole[]
   permissions RolePermission[]
 
+  @@unique([organizationId, id])
   @@unique([organizationId, name])
   @@unique([organizationId, systemKey])
 }
@@ -103,14 +107,15 @@ model Permission {
 }
 
 model UserRole {
-  userId String
-  roleId String
+  organizationId String
+  userId         String
+  roleId         String
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [organizationId, userId], references: [organizationId, id], onDelete: Cascade)
+  role Role @relation(fields: [organizationId, roleId], references: [organizationId, id], onDelete: Cascade)
 
-  @@id([userId, roleId])
-  @@index([roleId])
+  @@id([organizationId, userId, roleId])
+  @@index([organizationId, roleId])
 }
 
 model RolePermission {
