@@ -35,12 +35,12 @@ async function tenant() {
 }
 before(async () => {
   const s3 = new S3Client({ endpoint: process.env.S3_ENDPOINT, region: process.env.S3_REGION, forcePathStyle: true, credentials: { accessKeyId: process.env.S3_ACCESS_KEY, secretAccessKey: process.env.S3_SECRET_KEY } });
-  let storageReady = false;
-  for (let i = 0; i < 40; i++) {
+  let storageReady = false, storageError;
+  for (let i = 0; i < 60; i++) {
     try { await s3.send(new CreateBucketCommand({ Bucket: process.env.S3_BUCKET })); storageReady = true; break; }
-    catch (e) { if (e.name === 'BucketAlreadyOwnedByYou') { storageReady = true; break; } await new Promise(r => setTimeout(r, 500)); }
+    catch (e) { storageError = e; if (['BucketAlreadyOwnedByYou','BucketAlreadyExists'].includes(e.name)) { storageReady = true; break; } await new Promise(r => setTimeout(r, 500)); }
   }
-  if (!storageReady) throw new Error('MinIO did not start');
+  if (!storageReady) throw new Error('MinIO bucket setup failed: ' + String(storageError?.name) + ': ' + String(storageError?.message));
   a = await tenant(); b = await tenant();
   server = spawn(process.execPath, ['dist/main.js'], { env: process.env });
   server.stdout.on('data', d => { output += d; });
