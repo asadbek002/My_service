@@ -1,0 +1,6 @@
+'use client';
+import{useState,type FormEvent}from'react';import Link from'next/link';import{useRouter}from'next/navigation';import{api}from'../lib/api';
+type Result={id:string;number:string;status:string;device:{model:string}};
+export default function Search(){const router=useRouter();const[items,setItems]=useState<Result[]>([]);const[error,setError]=useState('');
+async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const q=String(new FormData(e.currentTarget).get('q'));try{setItems(await api('/search?q='+encodeURIComponent(q)))}catch(e){if(e instanceof Error&&e.message==='SESSION_EXPIRED')router.replace('/login');else setError(e instanceof Error?e.message:'Xato')}}
+return <main className="page"><header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/orders">Buyurtmalar</Link></header><h1>Global qidiruv</h1><form className="search-form" onSubmit={submit}><input name="q" minLength={2} placeholder="Telefon, ism, buyurtma, IMEI, serial yoki model" required/><button>Qidirish</button></form>{error&&<p className="error">{error}</p>}<section>{items.map(x=><p key={x.id}><Link href={'/orders/'+x.id}><strong>{x.number}</strong> · {x.device.model} · {x.status}</Link></p>)}{!items.length&&<p className="muted">Kamida 2 ta belgi kiriting.</p>}</section></main>}

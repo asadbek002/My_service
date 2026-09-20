@@ -71,7 +71,7 @@ export default function Dashboard() {
   </section></main>;
   return <div className="workspace">
     <aside><a href="/dashboard" className="brand">MY SERVICE</a><p className="eyebrow">PREMIUM REPAIR</p>
-      <nav aria-label="Asosiy menyu"><a className="nav-link" href="/orders">Buyurtmalar</a><a className="nav-link" href="/inventory">Ombor</a><a className="nav-link" href="/reports">Hisobotlar</a><a className="nav-link" href="/expenses">Xarajatlar</a><button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>Bosh sahifa</button>
+      <nav aria-label="Asosiy menyu">{me.permissions.includes('orders.view') && <><a className="nav-link" href="/orders">Buyurtmalar</a><a className="nav-link" href="/search">Qidiruv</a></>}{me.permissions.includes('inventory.view') && <a className="nav-link" href="/inventory">Ombor</a>}{me.permissions.includes('reports.view') && <a className="nav-link" href="/reports">Hisobotlar</a>}{me.permissions.includes('reports.finance') && <a className="nav-link" href="/expenses">Xarajatlar</a>}{me.permissions.includes('settings.manage') && <a className="nav-link" href="/settings">Sozlamalar</a>}<button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>Bosh sahifa</button>
       {me.permissions.includes('staff.view') && <button className={tab === 'staff' ? 'active' : ''} onClick={() => setTab('staff')}>Xodimlar</button>}</nav>
       <button className="secondary" onClick={() => { logout().then(() => router.replace('/login')).catch(fail); }}>Chiqish</button>
     </aside>

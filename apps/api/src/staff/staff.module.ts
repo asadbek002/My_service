@@ -21,6 +21,9 @@ class CompensationDto {
   @ApiProperty() @IsString() @Matches(/^\d{1,3}(\.\d{1,2})?$/) percentage!: string;
   @ApiProperty() @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) fixedPerJob!: string;
 }
+class BranchDto {
+  @IsString() @Length(1,100) name!: string;
+}
 class StatusDto {
   @ApiProperty() @IsIn(['ACTIVE', 'SUSPENDED', 'ARCHIVED']) status!: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
 }
@@ -109,6 +112,21 @@ class StaffController {
 @Controller('branches')
 class BranchController {
   constructor(private readonly db: Database) {}
+  @Post() @Permissions('settings.manage')
+  async create(@CurrentActor() actor: Actor, @Body() dto: BranchDto) {
+    if (!actor.owner) throw new ForbiddenException();
+    return this.db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${actor.organizationId} FOR UPDATE`;
+      const sub = await tx.subscription.findUnique({ where: { organizationId: actor.organizationId }, include: { plan: true } });
+      const flags = sub?.plan.features as Record<string, unknown> | undefined;
+      const count = await tx.branch.count({ where: { organizationId: actor.organizationId } });
+      if (!sub || (count > 0 && !flags?.multi_branch) || (sub.plan.maxBranches !== null && count >= sub.plan.maxBranches)) throw new ForbiddenException('BRANCH_LIMIT');
+      const branch = await tx.branch.create({ data: { organizationId: actor.organizationId, name: dto.name } });
+      await tx.userBranch.create({ data: { organizationId: actor.organizationId, userId: actor.userId, branchId: branch.id } });
+      await tx.auditLog.create({ data: { organizationId: actor.organizationId, actorId: actor.userId, action: 'BRANCH_CREATED', entityId: branch.id } });
+      return branch;
+    });
+  }
   @Get()
   list(@CurrentActor() actor: Actor) {
     return this.db.branch.findMany({ where: { organizationId: actor.organizationId, ...(actor.owner ? {} : { id: { in: actor.branchIds } }) }, select: { id: true, name: true } });
