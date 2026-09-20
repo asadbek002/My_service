@@ -136,6 +136,16 @@ class OrdersController {
       const order = await lockedOrder(tx, actor, id);
       if (!allowed[order.status]?.includes(dto.status)) throw new ConflictException('Invalid status transition');
       if (['IN_REPAIR','WAITING_PART'].includes(dto.status) && (order.approvalStatus !== 'APPROVED' || order.approvedVersion !== order.quoteVersion)) throw new ConflictException('Current quote requires approval');
+      if (['CANCELLED','UNREPAIRABLE'].includes(dto.status)) {
+        const parts = await tx.orderPart.findMany({ where: { organizationId: actor.organizationId, orderId: id }, orderBy: { partId: 'asc' } });
+        if (parts.some(p => p.status === 'USED')) throw new ConflictException('Used parts must be reconciled before cancellation');
+        for (const part of parts.filter(p => p.status === 'RESERVED')) {
+          await tx.stock.update({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: order.branchId, partId: part.partId } }, data: { reserved: { decrement: part.quantity } } });
+          await tx.orderPart.update({ where: { id: part.id }, data: { status: 'RELEASED' } });
+          await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: order.branchId, partId: part.partId, orderId: id, type: 'RELEASE', quantity: part.quantity, reason: dto.comment, actorId: actor.userId } });
+        }
+        await tx.repairSession.updateMany({ where: { organizationId: actor.organizationId, orderId: id, endedAt: null }, data: { endedAt: new Date() } });
+      }
       await transition(tx, actor, order, dto.status, dto.comment); return { ok: true };
     });
   }

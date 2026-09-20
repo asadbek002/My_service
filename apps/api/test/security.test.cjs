@@ -19,10 +19,10 @@ async function tenant() {
   const id = randomUUID();
   const org = await db.organization.create({ data: { name: id, slug: id } });
   const branch = await db.branch.create({ data: { name: 'Main', organizationId: org.id } });
-  const plan = await db.plan.create({ data: { name: id, maxStaff: 5, features: {} } });
+  const plan = await db.plan.create({ data: { name: id, maxStaff: 5, features: { inventory: true } } });
   await db.subscription.create({ data: { organizationId: org.id, planId: plan.id, status: 'ACTIVE', expiresAt: new Date(Date.now() + 86400000) } });
   const role = await db.role.create({ data: { organizationId: org.id, name: 'OWNER', systemKey: 'OWNER' } });
-  for (const key of ['staff.view', 'staff.manage', 'customers.view', 'customers.edit', 'orders.view', 'orders.create', 'orders.assign', 'orders.change_status', 'orders.edit', 'diagnostics.create']) {
+  for (const key of ['staff.view', 'staff.manage', 'customers.view', 'customers.edit', 'orders.view', 'orders.create', 'orders.assign', 'orders.change_status', 'orders.edit', 'diagnostics.create', 'inventory.view', 'inventory.manage', 'inventory.use', 'inventory.view_cost', 'payments.view', 'payments.create', 'payments.refund']) {
     const p = await db.permission.upsert({ where: { key }, create: { key }, update: {} });
     await db.rolePermission.create({ data: { roleId: role.id, permissionId: p.id } });
   }
@@ -133,4 +133,48 @@ test('intake, concurrent numbering, tenant isolation and versioned approval', as
   assert.equal(result.status, 'IN_REPAIR');
   assert.equal(result.history.length, 6);
   assert.ok(await db.outboxEvent.count({ where: { entityId: order.id } }) >= 6);
+});
+
+test('reservation race, cancellation release, repair, split payment/refund and delivery warranty', async () => {
+  const auth = await login(a.user);
+  const customer = await (await request('/customers', { ...auth, method: 'POST', body: { firstName: 'Vali', phone: '+998900000002' } })).json();
+  const device = await (await request('/devices', { ...auth, method: 'POST', body: { customerId: customer.id, category: 'Phone', brand: 'Apple', model: 'iPhone' } })).json();
+  const partR = await request('/inventory/parts', { ...auth, method: 'POST', body: { name: 'OLED', sku: 'oled-test', purchasePrice: '550000', salePrice: '700000' } });
+  assert.equal(partR.status, 201); const part = await partR.json();
+  assert.equal((await request('/inventory/receive', { ...auth, method: 'POST', body: { partId: part.id, branchId: a.branch.id, quantity: 1, reason: 'Supplier delivery' } })).status, 201);
+  const ids = [];
+  for (let i = 0; i < 2; i++) {
+    const order = await (await request('/orders', { ...auth, method: 'POST', body: { customerId: customer.id, deviceId: device.id, branchId: a.branch.id, complaint: 'OLED', accessories: [], condition: [] } })).json();
+    ids.push(order.id);
+    assert.equal((await request('/orders/' + order.id + '/status', { ...auth, method: 'PATCH', body: { status: 'DIAGNOSING', comment: 'Start diagnosis' } })).status, 200);
+    assert.equal((await request('/orders/' + order.id + '/diagnosis', { ...auth, method: 'POST', body: { diagnosis: 'OLED damaged', requiredWork: 'Replace', labor: '150000', partsTotal: '700000' } })).status, 201);
+    assert.equal((await request('/orders/' + order.id + '/approve', { ...auth, method: 'POST', body: { quoteVersion: 1, approved: true, evidence: 'Phone confirmation' } })).status, 201);
+  }
+  const reservations = await Promise.all(ids.map(id => request('/orders/' + id + '/parts', { ...auth, method: 'POST', body: { partId: part.id, quantity: 1 } })));
+  assert.deepEqual(reservations.map(r => r.status).sort(), [201, 409]);
+  const winner = ids[reservations.findIndex(r => r.status === 201)];
+  const loser = ids.find(id => id !== winner);
+  assert.equal((await request('/orders/' + winner + '/status', { ...auth, method: 'PATCH', body: { status: 'CANCELLED', comment: 'Customer cancelled' } })).status, 200);
+  assert.equal((await request('/orders/' + loser + '/parts', { ...auth, method: 'POST', body: { partId: part.id, quantity: 1 } })).status, 201);
+  assert.equal((await request('/orders/' + loser + '/repair/start', { ...auth, method: 'POST' })).status, 201);
+  for (let i = 0; i < 2; i++) assert.equal((await request('/orders/' + loser + '/parts/' + part.id + '/use', { ...auth, method: 'POST' })).status, 201);
+  const stock = await db.stock.findUnique({ where: { organizationId_branchId_partId: { organizationId: a.org.id, branchId: a.branch.id, partId: part.id } } });
+  assert.equal(stock.onHand, 0); assert.equal(stock.reserved, 0);
+  assert.equal(await db.inventoryMovement.count({ where: { orderId: loser, type: 'USED' } }), 1);
+  assert.equal((await request('/orders/' + loser + '/repair/finish', { ...auth, method: 'POST', body: { passedChecks: ['Display'] } })).status, 409);
+  assert.equal((await request('/orders/' + loser + '/repair/finish', { ...auth, method: 'POST', body: { passedChecks: ['Display','Touch','Camera','Microphone','Speaker','Charging','Wi-Fi','Bluetooth'] } })).status, 201);
+  const delivery = { warrantyDays: 90, warrantyTerms: 'Display replacement warranty' };
+  assert.equal((await request('/orders/' + loser + '/deliver', { ...auth, method: 'POST', body: delivery })).status, 409);
+  const paymentBody = { amount: '300000', method: 'CASH', idempotencyKey: randomUUID() };
+  const paid = await Promise.all([1,2].map(() => request('/orders/' + loser + '/payments', { ...auth, method: 'POST', body: paymentBody })));
+  const entries = await Promise.all(paid.map(r => r.json()));
+  assert.equal(entries[0].id, entries[1].id);
+  const refund = await request('/payments/' + entries[0].id + '/refund', { ...auth, method: 'POST', body: { amount: '100000', reason: 'Customer requested', idempotencyKey: randomUUID() } });
+  assert.equal(refund.status, 201);
+  assert.equal((await request('/payments/' + entries[0].id + '/refund', { ...auth, method: 'POST', body: { amount: '300000', reason: 'Excess refund', idempotencyKey: randomUUID() } })).status, 409);
+  assert.equal((await request('/orders/' + loser + '/payments', { ...auth, method: 'POST', body: { amount: '650000', method: 'CARD', idempotencyKey: randomUUID() } })).status, 201);
+  const warranty = await request('/orders/' + loser + '/deliver', { ...auth, method: 'POST', body: delivery });
+  assert.equal(warranty.status, 201);
+  assert.equal((await db.order.findUnique({ where: { id: loser } })).status, 'DELIVERED');
+  assert.ok(await db.warranty.findUnique({ where: { orderId: loser } }));
 });

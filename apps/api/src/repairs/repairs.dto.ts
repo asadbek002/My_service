@@ -1,0 +1,35 @@
+import { ApiProperty } from '@nestjs/swagger';
+import { IsString, Length, Matches, IsInt, Min, Max, IsIn, IsArray, ArrayMinSize, ArrayMaxSize, ArrayUnique } from 'class-validator';
+export class PartDto {
+  @ApiProperty() @IsString() @Length(1, 200) name!: string;
+  @ApiProperty() @IsString() @Length(1, 64) sku!: string;
+  @ApiProperty() @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) purchasePrice!: string;
+  @ApiProperty() @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) salePrice!: string;
+}
+export class ReceiveDto {
+  @ApiProperty() @IsString() @Length(1, 100) branchId!: string;
+  @ApiProperty() @IsString() @Length(1, 100) partId!: string;
+  @ApiProperty() @IsInt() @Min(1) @Max(1000000) quantity!: number;
+  @ApiProperty() @IsString() @Length(3, 1000) reason!: string;
+}
+export class ReserveDto {
+  @ApiProperty() @IsString() @Length(1, 100) partId!: string;
+  @ApiProperty() @IsInt() @Min(1) @Max(1000000) quantity!: number;
+}
+export class PaymentDto {
+  @ApiProperty() @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) amount!: string;
+  @ApiProperty() @IsIn(['CASH','CARD','CLICK','PAYME','TRANSFER','OTHER']) method!: string;
+  @ApiProperty() @IsString() @Length(16, 128) idempotencyKey!: string;
+}
+export class RefundDto {
+  @ApiProperty() @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) amount!: string;
+  @ApiProperty() @IsString() @Length(3, 1000) reason!: string;
+  @ApiProperty() @IsString() @Length(16, 128) idempotencyKey!: string;
+}
+export class FinishDto {
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(30) @ArrayUnique() @IsString({ each: true }) passedChecks!: string[];
+}
+export class DeliverDto {
+  @ApiProperty() @IsInt() @Min(1) @Max(1095) warrantyDays!: number;
+  @ApiProperty() @IsString() @Length(5, 4000) warrantyTerms!: string;
+}

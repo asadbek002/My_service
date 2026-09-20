@@ -29,6 +29,7 @@ model Organization {
 
   customers Customer[]
   orders Order[]
+  parts Part[]
   subscription Subscription?
   branches Branch[]
   users    User[]
@@ -44,6 +45,7 @@ model Branch {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   memberships UserBranch[]
+  stocks Stock[]
   orders Order[]
 
   @@unique([organizationId, id])
@@ -248,6 +250,10 @@ model Order {
   device Device @relation(fields: [organizationId, customerId, deviceId], references: [organizationId, customerId, id], onDelete: Restrict)
   assignments OrderAssignment[]
   history OrderHistory[]
+  parts OrderPart[]
+  payments Payment[]
+  repairSessions RepairSession[]
+  warranty Warranty?
   @@unique([organizationId, id])
   @@unique([organizationId, number])
   @@index([organizationId, branchId, status])
@@ -282,4 +288,91 @@ model OutboxEvent {
   createdAt DateTime @default(now())
   publishedAt DateTime?
   @@index([publishedAt, createdAt])
+}
+
+model Part {
+  id String @id @default(cuid())
+  organizationId String
+  name String
+  sku String
+  purchasePrice Decimal @db.Decimal(18,2)
+  salePrice Decimal @db.Decimal(18,2)
+  minimumQuantity Int @default(0)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  stocks Stock[]
+  orderParts OrderPart[]
+  @@unique([organizationId,id])
+  @@unique([organizationId,sku])
+}
+model Stock {
+  organizationId String
+  branchId String
+  partId String
+  onHand Int @default(0)
+  reserved Int @default(0)
+  branch Branch @relation(fields: [organizationId,branchId], references: [organizationId,id], onDelete: Restrict)
+  part Part @relation(fields: [organizationId,partId], references: [organizationId,id], onDelete: Restrict)
+  @@id([organizationId,branchId,partId])
+}
+model InventoryMovement {
+  id String @id @default(cuid())
+  organizationId String
+  branchId String
+  partId String
+  orderId String?
+  type String
+  quantity Int
+  reason String
+  actorId String
+  createdAt DateTime @default(now())
+  @@index([organizationId,branchId,partId,createdAt])
+}
+model OrderPart {
+  id String @id @default(cuid())
+  organizationId String
+  orderId String
+  partId String
+  quantity Int
+  status String @default("RESERVED")
+  unitCost Decimal @db.Decimal(18,2)
+  unitPrice Decimal @db.Decimal(18,2)
+  order Order @relation(fields: [organizationId,orderId], references: [organizationId,id], onDelete: Restrict)
+  part Part @relation(fields: [organizationId,partId], references: [organizationId,id], onDelete: Restrict)
+  @@unique([organizationId,orderId,partId])
+}
+model Payment {
+  id String @id @default(cuid())
+  organizationId String
+  orderId String
+  kind String
+  amount Decimal @db.Decimal(18,2)
+  method String
+  originalPaymentId String?
+  reason String?
+  idempotencyKey String
+  actorId String
+  createdAt DateTime @default(now())
+  order Order @relation(fields: [organizationId,orderId], references: [organizationId,id], onDelete: Restrict)
+  @@unique([organizationId,idempotencyKey])
+  @@index([organizationId,orderId])
+}
+model RepairSession {
+  id String @id @default(cuid())
+  organizationId String
+  orderId String
+  userId String
+  startedAt DateTime @default(now())
+  endedAt DateTime?
+  order Order @relation(fields: [organizationId,orderId], references: [organizationId,id], onDelete: Restrict)
+  @@index([organizationId,orderId,userId])
+}
+model Warranty {
+  id String @id @default(cuid())
+  organizationId String
+  orderId String @unique
+  startDate DateTime
+  endDate DateTime
+  terms String
+  order Order @relation(fields: [organizationId,orderId], references: [organizationId,id], onDelete: Restrict)
+  @@index([organizationId,endDate])
 }
