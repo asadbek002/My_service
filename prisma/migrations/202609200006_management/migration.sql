@@ -1,0 +1,13 @@
+ALTER TABLE "Order" ADD COLUMN "parentOrderId" TEXT;
+CREATE TABLE "Expense" ("id" TEXT PRIMARY KEY,"organizationId" TEXT NOT NULL,"branchId" TEXT NOT NULL,"category" TEXT NOT NULL,"amount" DECIMAL(18,2) NOT NULL CHECK ("amount" > 0),"note" TEXT NOT NULL,"actorId" TEXT NOT NULL,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX "Expense_organizationId_branchId_createdAt_idx" ON "Expense"("organizationId","branchId","createdAt");
+CREATE TABLE "Supplier" ("id" TEXT PRIMARY KEY,"organizationId" TEXT NOT NULL,"name" TEXT NOT NULL,"phone" TEXT NOT NULL,"company" TEXT,"notes" TEXT);
+CREATE INDEX "Supplier_organizationId_idx" ON "Supplier"("organizationId");
+CREATE TABLE "WarrantyClaim" ("id" TEXT PRIMARY KEY,"organizationId" TEXT NOT NULL,"parentOrderId" TEXT NOT NULL,"newOrderId" TEXT NOT NULL UNIQUE,"reason" TEXT NOT NULL,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY ("organizationId","parentOrderId") REFERENCES "Order"("organizationId","id") ON DELETE RESTRICT ON UPDATE CASCADE);
+CREATE INDEX "WarrantyClaim_organizationId_parentOrderId_idx" ON "WarrantyClaim"("organizationId","parentOrderId");
+CREATE TABLE "OrganizationSetting" ("organizationId" TEXT NOT NULL,"key" TEXT NOT NULL,"value" JSONB NOT NULL,PRIMARY KEY ("organizationId","key"));
+CREATE TABLE "UsageRecord" ("id" TEXT PRIMARY KEY,"organizationId" TEXT NOT NULL,"metric" TEXT NOT NULL,"period" TEXT NOT NULL,"quantity" INTEGER NOT NULL,UNIQUE ("organizationId","metric","period"));
+CREATE TABLE "SubscriptionInvoice" ("id" TEXT PRIMARY KEY,"organizationId" TEXT NOT NULL,"amount" DECIMAL(18,2) NOT NULL,"status" TEXT NOT NULL,"issuedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"dueAt" TIMESTAMP(3) NOT NULL);
+CREATE INDEX "SubscriptionInvoice_organizationId_issuedAt_idx" ON "SubscriptionInvoice"("organizationId","issuedAt");
+CREATE TABLE "PlatformAdmin" ("id" TEXT PRIMARY KEY,"login" TEXT NOT NULL UNIQUE,"passwordHash" TEXT NOT NULL,"active" BOOLEAN NOT NULL DEFAULT true);
+CREATE TABLE "PlatformSession" ("id" TEXT PRIMARY KEY,"adminId" TEXT NOT NULL REFERENCES "PlatformAdmin"("id") ON DELETE CASCADE ON UPDATE CASCADE,"tokenHash" TEXT NOT NULL UNIQUE,"expiresAt" TIMESTAMP(3) NOT NULL);

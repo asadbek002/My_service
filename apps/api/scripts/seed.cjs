@@ -6,7 +6,7 @@ const permissionKeys = [
   'orders.view','orders.create','orders.edit','orders.assign','orders.change_status',
   'customers.view','customers.edit','diagnostics.create','inventory.view','inventory.use',
   'inventory.manage','inventory.view_cost','payments.view','payments.create','payments.refund',
-  'reports.view','reports.finance','staff.view','staff.manage','settings.manage',
+  'reports.view','reports.finance','expenses.manage','staff.view','staff.manage','settings.manage',
 ];
 async function main() {
   const password = process.env.INITIAL_OWNER_PASSWORD;

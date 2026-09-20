@@ -8,7 +8,8 @@
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.cjs",
-    "seed": "node scripts/seed.cjs"
+    "seed": "node scripts/seed.cjs",
+    "seed:platform": "node scripts/platform-seed.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from './database';
 import { AuthModule } from './auth/auth.module';
+import { PlatformModule } from './platform/platform.module';
+import { ManagementModule } from './management/management.module';
 import { LinksModule } from './notifications/links.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { RepairsModule } from './repairs/repairs.module';
@@ -23,7 +25,7 @@ import { HealthController } from './health.controller';
         return config;
       },
     }),
-    DatabaseModule, AuthModule, StaffModule, OrdersModule, RepairsModule, LinksModule, NotificationsModule,
+    DatabaseModule, AuthModule, StaffModule, OrdersModule, RepairsModule, LinksModule, NotificationsModule, ManagementModule, PlatformModule,
   ],
   controllers: [HealthController],
 })

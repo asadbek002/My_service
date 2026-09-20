@@ -255,6 +255,8 @@ model Order {
   payments Payment[]
   repairSessions RepairSession[]
   warranty Warranty?
+  parentOrderId String?
+  warrantyClaims WarrantyClaim[]
   @@unique([organizationId, id])
   @@unique([organizationId, number])
   @@index([organizationId, branchId, status])
@@ -403,4 +405,72 @@ model Notification {
   createdAt DateTime @default(now())
   sentAt DateTime?
   @@index([organizationId,orderId,createdAt])
+}
+
+model Expense {
+  id String @id @default(cuid())
+  organizationId String
+  branchId String
+  category String
+  amount Decimal @db.Decimal(18,2)
+  note String
+  actorId String
+  createdAt DateTime @default(now())
+  @@index([organizationId,branchId,createdAt])
+}
+model Supplier {
+  id String @id @default(cuid())
+  organizationId String
+  name String
+  phone String
+  company String?
+  notes String?
+  @@index([organizationId])
+}
+model WarrantyClaim {
+  id String @id @default(cuid())
+  organizationId String
+  parentOrderId String
+  newOrderId String @unique
+  reason String
+  createdAt DateTime @default(now())
+  parentOrder Order @relation(fields: [organizationId,parentOrderId], references: [organizationId,id], onDelete: Restrict)
+  @@index([organizationId,parentOrderId])
+}
+model OrganizationSetting {
+  organizationId String
+  key String
+  value Json
+  @@id([organizationId,key])
+}
+model UsageRecord {
+  id String @id @default(cuid())
+  organizationId String
+  metric String
+  period String
+  quantity Int
+  @@unique([organizationId,metric,period])
+}
+model SubscriptionInvoice {
+  id String @id @default(cuid())
+  organizationId String
+  amount Decimal @db.Decimal(18,2)
+  status String
+  issuedAt DateTime @default(now())
+  dueAt DateTime
+  @@index([organizationId,issuedAt])
+}
+model PlatformAdmin {
+  id String @id @default(cuid())
+  login String @unique
+  passwordHash String
+  active Boolean @default(true)
+  sessions PlatformSession[]
+}
+model PlatformSession {
+  id String @id @default(cuid())
+  adminId String
+  tokenHash String @unique
+  expiresAt DateTime
+  admin PlatformAdmin @relation(fields: [adminId], references: [id], onDelete: Cascade)
 }
