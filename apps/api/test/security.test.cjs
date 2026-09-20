@@ -198,6 +198,7 @@ test('stock adjustment and branch transfer preserve reserved availability', asyn
   const source = await db.stock.findUnique({ where: { organizationId_branchId_partId: { organizationId: a.org.id, branchId: a.branch.id, partId: part.id } } });
   const target = await db.stock.findUnique({ where: { organizationId_branchId_partId: { organizationId: a.org.id, branchId: destination.id, partId: part.id } } });
   assert.equal(source.onHand, 1); assert.equal(target.onHand, 1);
+  assert.equal(await db.inventoryMovement.count({ where: { organizationId: a.org.id, partId: part.id, type: 'TRANSFER', quantity: 1 } }), 2);
   assert.equal((await request('/inventory/transfer', { ...auth, method: 'POST', body: { fromBranchId: a.branch.id, toBranchId: destination.id, partId: part.id, quantity: 2, reason: 'Too much stock' } })).status, 409);
 });
 

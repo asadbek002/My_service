@@ -57,8 +57,24 @@ class ReportsController {
   constructor(private readonly db: Database) {}
   @Get('dashboard') @Permissions('reports.view')
   async dashboard(@CurrentActor() a: Actor) {
-    const groups = await this.db.order.groupBy({ by: ['status'], where: orderScope(a), _count: true });
-    return { statuses: groups.map(g => ({ status: g.status, count: g._count })) };
+    const scope = orderScope(a);
+    const now = new Date(); const today = new Date(now); today.setHours(0,0,0,0); const week = new Date(now.getTime() - 6 * 86400000); week.setHours(0,0,0,0);
+    const [groups,recent,orders,stocks,assignments] = await Promise.all([
+      this.db.order.groupBy({ by: ['status'], where: scope, _count: true }),
+      this.db.order.findMany({ where: scope, include: { customer: { select: { firstName: true } }, device: { select: { brand: true, model: true } } }, orderBy: { createdAt: 'desc' }, take: 8 }),
+      this.db.order.findMany({ where: scope, select: { id: true, total: true, createdAt: true, status: true, payments: { select: { kind: true, amount: true, createdAt: true } }, history: { where: { toStatus: 'DELIVERED', createdAt: { gte: week } }, select: { createdAt: true } } } }),
+      this.db.stock.findMany({ where: { organizationId: a.organizationId, ...(!a.owner ? { branchId: { in: a.branchIds } } : {}) }, include: { part: { select: { name: true, sku: true, minimumQuantity: true } }, branch: { select: { name: true } } } }),
+      this.db.orderAssignment.findMany({ where: { organizationId: a.organizationId, order: { ...scope, status: { in: ['RECEIVED','DIAGNOSING','WAITING_CUSTOMER_APPROVAL','WAITING_PART','IN_REPAIR','READY'] } } }, include: { user: { select: { id: true, firstName: true } }, order: { select: { status: true } } } }),
+    ]);
+    const workload = [...assignments.reduce((map,row) => { const item=map.get(row.userId)??{id:row.user.id,name:row.user.firstName,active:0};item.active++;map.set(row.userId,item);return map; }, new Map<string,{id:string;name:string;active:number}>()).values()].sort((x,y)=>y.active-x.active);
+    const lowStock = stocks.filter(stock => stock.onHand - stock.reserved <= stock.part.minimumQuantity).map(stock => ({ partId: stock.partId, name: stock.part.name, sku: stock.part.sku, branch: stock.branch.name, free: stock.onHand-stock.reserved, minimum: stock.part.minimumQuantity }));
+    const base = { statuses: groups.map(g => ({ status: g.status, count: g._count })), todayReceived: orders.filter(o=>o.createdAt>=today).length, recent, workload, lowStock };
+    if (!a.permissions.includes('reports.finance')) return base;
+    const paid = (order: typeof orders[number]) => order.payments.reduce((sum,p)=>p.kind==='REFUND'?sum.minus(p.amount):sum.plus(p.amount),new Prisma.Decimal(0));
+    const debt = orders.reduce((sum,o)=>sum.plus((o.total.minus(paid(o)).greaterThan(0)?o.total.minus(paid(o)):new Prisma.Decimal(0))),new Prisma.Decimal(0));
+    const todayCash = orders.flatMap(o=>o.payments).filter(p=>p.createdAt>=today).reduce((sum,p)=>p.kind==='REFUND'?sum.minus(p.amount):sum.plus(p.amount),new Prisma.Decimal(0));
+    const revenueByDay = Array.from({length:7},(_,offset)=>{const day=new Date(week.getTime()+offset*86400000);const next=new Date(day.getTime()+86400000);const revenue=orders.filter(o=>o.history.some(h=>h.createdAt>=day&&h.createdAt<next)).reduce((sum,o)=>sum.plus(o.total),new Prisma.Decimal(0));return{day:day.toISOString().slice(0,10),revenue};});
+    return { ...base, todayCash, debt, revenueByDay };
   }
   @Get('finance') @Permissions('reports.finance')
   async finance(@CurrentActor() a: Actor, @Query('from') from?: string, @Query('to') to?: string) {

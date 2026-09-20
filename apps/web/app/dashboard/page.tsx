@@ -7,12 +7,14 @@ type Me = { id: string; firstName: string; login: string; mustChangePassword: bo
 type Staff = { id: string; firstName: string; login: string; phone: string; status: string };
 type Branch = { id: string; name: string };
 type OrderSummary = { id:string; status:string; number:string };
+type DashReport={todayReceived:number;todayCash?:string;debt?:string;lowStock:{partId:string;name:string;branch:string;free:number;minimum:number}[];workload:{id:string;name:string;active:number}[];revenueByDay?:{day:string;revenue:string}[]};
 export default function Dashboard() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
+  const [report, setReport] = useState<DashReport | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(true);
@@ -29,6 +31,7 @@ export default function Dashboard() {
       setMe(user);
       if (!user.mustChangePassword) {
         setBranches(await api<Branch[]>('/branches')); setOrders(await api<OrderSummary[]>('/orders'));
+        if (user.permissions.includes('reports.view')) setReport(await api<DashReport>('/reports/dashboard'));
         if (user.permissions.includes('staff.view')) await loadStaff();
       }
     }).catch(fail);
@@ -82,7 +85,8 @@ export default function Dashboard() {
       {error && <p role="alert" className="error">{error}</p>}
       {tab === 'overview' ? <><p className="eyebrow">ISH JOYINGIZ</p><h1>Xush kelibsiz, {me.firstName}.</h1>
         <div className="cards"><section><span className="muted">Sizga ochiq filiallar</span><strong>{branches.length}</strong></section><section><span className="muted">Yangi</span><strong>{orders.filter(o=>o.status==='RECEIVED').length}</strong></section><section><span className="muted">Diagnostikada</span><strong>{orders.filter(o=>o.status==='DIAGNOSING').length}</strong></section><section><span className="muted">Ta’mirda</span><strong>{orders.filter(o=>o.status==='IN_REPAIR').length}</strong></section><section><span className="muted">Tayyor</span><strong>{orders.filter(o=>o.status==='READY').length}</strong></section>
-        {me.permissions.includes('staff.view') && <section><span className="muted">Faol xodimlar</span><strong>{staff.filter(s => s.status === 'ACTIVE').length}</strong></section>}</div>
+        {me.permissions.includes('staff.view') && <section><span className="muted">Faol xodimlar</span><strong>{staff.filter(s => s.status === 'ACTIVE').length}</strong></section>}{report?.todayCash!==undefined&&<section><span className="muted">Bugungi tushum</span><strong>{Number(report.todayCash).toLocaleString('uz-UZ')}</strong></section>}{report?.debt!==undefined&&<section><span className="muted">Qarzdorlik</span><strong>{Number(report.debt).toLocaleString('uz-UZ')}</strong></section>}{report&&<section><span className="muted">Kam qolgan detal</span><strong>{report.lowStock.length}</strong></section>}</div>
+        {report&&<div className="detail-grid"><section><h2>Ustalar yuklamasi</h2>{report.workload.map(x=><p key={x.id}>{x.name}<strong className="row-value">{x.active}</strong></p>)}{!report.workload.length&&<p className="muted">Faol biriktirish yo‘q.</p>}</section><section><h2>7 kunlik revenue</h2>{report.revenueByDay?.map(x=>{const max=Math.max(...(report.revenueByDay??[]).map(v=>Number(v.revenue)),1);return <div className="chart-row" key={x.day}><span>{x.day.slice(5)}</span><i style={{width:(Number(x.revenue)/max*100)+'%'}}/><b>{Number(x.revenue).toLocaleString('uz-UZ')}</b></div>})??<p className="muted">Moliyaviy ruxsat yo‘q.</p>}</section><section><h2>Kam qolgan detallar</h2>{report.lowStock.slice(0,8).map(x=><p key={x.partId+x.branch}>{x.name} · {x.branch}<strong className="row-value">{x.free}/{x.minimum}</strong></p>)}{!report.lowStock.length&&<p className="muted">Qoldiq yetarli.</p>}</section></div>}
         <section><h2>Oxirgi buyurtmalar</h2>{orders.slice(0,8).map(o=><p key={o.id}><a href={'/orders/'+o.id}>{o.number}</a> · {o.status}</p>)}</section><section><h2>Filiallar</h2>{branches.map(b => <p key={b.id}>{b.name}</p>)}</section></>
       : <><h1>Jamoa boshqaruvi</h1><div className="staff-layout"><section>
         <h2>Xodimlar</h2><div className="table-scroll"><table><thead><tr><th>Ism</th><th>Login</th><th>Holat</th><th>Amal</th></tr></thead>

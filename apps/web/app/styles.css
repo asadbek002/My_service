@@ -14,3 +14,5 @@ section{background:#fff;padding:28px;border:1px solid #e2e2df;border-radius:14px
 .search-form{display:flex;gap:10px;margin:24px 0}.search-form input{flex:1}.audit-list{max-height:520px;overflow:auto}@media(max-width:640px){.search-form{display:grid}}
 
 .metric-text{font-size:18px!important;letter-spacing:0}.amount-negative{color:#a32b2b;font-weight:700}
+
+.row-value{float:right;font-size:16px!important;margin:0!important}.chart-row{display:grid;grid-template-columns:44px 1fr 110px;align-items:center;gap:10px;margin:12px 0;font-size:12px}.chart-row i{display:block;height:10px;background:#151515;border-radius:8px;min-width:2px}.chart-row b{text-align:right}

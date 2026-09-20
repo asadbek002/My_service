@@ -89,7 +89,7 @@ class InventoryController {
       if (!source || source.onHand - source.reserved < dto.quantity) throw new ConflictException('Insufficient free stock');
       await tx.stock.update({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: dto.fromBranchId, partId: dto.partId } }, data: { onHand: { decrement: dto.quantity } } });
       await tx.stock.upsert({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: dto.toBranchId, partId: dto.partId } }, create: { organizationId: actor.organizationId, branchId: dto.toBranchId, partId: dto.partId, onHand: dto.quantity }, update: { onHand: { increment: dto.quantity } } });
-      await tx.inventoryMovement.createMany({ data: [{ organizationId: actor.organizationId, branchId: dto.fromBranchId, partId: dto.partId, quantity: -dto.quantity, type: 'TRANSFER', reason: dto.reason + ' → ' + dto.toBranchId, actorId: actor.userId }, { organizationId: actor.organizationId, branchId: dto.toBranchId, partId: dto.partId, quantity: dto.quantity, type: 'TRANSFER', reason: dto.reason + ' ← ' + dto.fromBranchId, actorId: actor.userId }] });
+      await tx.inventoryMovement.createMany({ data: [{ organizationId: actor.organizationId, branchId: dto.fromBranchId, partId: dto.partId, quantity: dto.quantity, type: 'TRANSFER', reason: dto.reason + ' → ' + dto.toBranchId, actorId: actor.userId }, { organizationId: actor.organizationId, branchId: dto.toBranchId, partId: dto.partId, quantity: dto.quantity, type: 'TRANSFER', reason: dto.reason + ' ← ' + dto.fromBranchId, actorId: actor.userId }] });
       await record(tx, actor, dto.partId, 'STOCK_TRANSFERRED'); return { ok: true };
     });
   }
