@@ -4,6 +4,7 @@ import { DatabaseModule } from './database';
 import { AuthModule } from './auth/auth.module';
 import { DocumentsModule } from './documents/documents.module';
 import { PlatformModule } from './platform/platform.module';
+import { SettingsModule } from './management/settings.module';
 import { ManagementModule } from './management/management.module';
 import { LinksModule } from './notifications/links.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -31,7 +32,7 @@ import { HealthController } from './health.controller';
         return config;
       },
     }),
-    DatabaseModule, AuthModule, StaffModule, OrdersModule, RepairsModule, LinksModule, NotificationsModule, ManagementModule, PlatformModule,
+    DatabaseModule, AuthModule, StaffModule, OrdersModule, RepairsModule, LinksModule, NotificationsModule, ManagementModule, SettingsModule, PlatformModule,
   ],
   controllers: [HealthController],
 })

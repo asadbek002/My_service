@@ -3,6 +3,7 @@ import { Queue, Worker } from 'bullmq';
 import { Database } from '../database';
 import { createLink } from './links.module';
 
+function render(template:string,values:Record<string,string>){return template.replace(/{{([a-z_]+)}}/g,(_,key:string)=>values[key]??'');}
 const labels: Record<string,string> = {
   ORDER_RECEIVED: 'Qurilmangiz qabul qilindi.',
   ORDER_WAITING_CUSTOMER_APPROVAL: 'Diagnostika yakunlandi. Narxni tasdiqlashingiz kerak.',
@@ -59,13 +60,17 @@ class Notifications implements OnModuleInit, OnModuleDestroy {
     const tracking = await createLink(this.db, order.organizationId, order.id, 'TRACK');
     const approval = order.status === 'WAITING_CUSTOMER_APPROVAL' ? await createLink(this.db, order.organizationId, order.id, 'APPROVAL', order.quoteVersion) : null;
     const link = process.env.WEB_URL + (approval ? '/approve/' + approval : '/track/' + tracking);
-    const text = 'MyService · ' + order.number + '\n' + labels[event.type] + '\n' + order.device.brand + ' ' + order.device.model + '\nJami: ' + order.total.toString() + ' so‘m\n' + link;
+    const defaultText = 'MyService · ' + order.number + '\n' + labels[event.type] + '\n' + order.device.brand + ' ' + order.device.model + '\nJami: ' + order.total.toString() + ' so‘m\n' + link;
+    const paid = await this.db.payment.aggregate({ where: { organizationId: order.organizationId, orderId: order.id, kind: 'PAYMENT' }, _sum: { amount: true } });
+    const variables = { customer_name: order.customer.firstName, order_number: order.number, device: order.device.brand+' '+order.device.model, repair: order.requiredWork??'', price: order.total.toString(), paid: (paid._sum.amount??0).toString(), balance: order.total.minus(paid._sum.amount??0).toString(), status: order.status, warranty_end: '', link };
+    const templates = await this.db.notificationTemplate.findMany({ where: { organizationId: order.organizationId, type: event.type, active: true } });
+    const message = (channel:string) => { const template=templates.find(t=>t.channel===channel); return template?render(template.body,variables):defaultText; };
     let channel = 'SMS';
     try {
       if (order.customer.telegramChatId && process.env.TELEGRAM_BOT_TOKEN && flags?.telegram) {
         const response = await fetch('https://api.telegram.org/bot' + process.env.TELEGRAM_BOT_TOKEN + '/sendMessage', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(10000),
-          body: JSON.stringify({ chat_id: order.customer.telegramChatId, text, ...(approval ? { reply_markup: { inline_keyboard: [[{ text: 'Narxni ko‘rish va tasdiqlash', url: link }]] } } : {}) }),
+          body: JSON.stringify({ chat_id: order.customer.telegramChatId, text: message('TELEGRAM'), ...(approval ? { reply_markup: { inline_keyboard: [[{ text: 'Narxni ko‘rish va tasdiqlash', url: link }]] } } : {}) }),
         });
         const result = await response.json() as { ok?: boolean; error_code?: number; result?: { message_id?: number } };
         if (response.ok && result.ok) {
@@ -78,7 +83,7 @@ class Notifications implements OnModuleInit, OnModuleDestroy {
       if (!flags?.sms || process.env.SMS_PROVIDER !== 'webhook' || !process.env.SMS_API_URL || !process.env.SMS_API_KEY) throw new Error('SMS_NOT_CONFIGURED');
       const endpoint = new URL(process.env.SMS_API_URL);
       if (endpoint.protocol !== 'https:') throw new Error('SMS_HTTPS_REQUIRED');
-      const sms = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.SMS_API_KEY, 'Idempotency-Key': event.id }, signal: AbortSignal.timeout(10000), body: JSON.stringify({ to: order.customer.phone, message: text, reference: event.id }) });
+      const sms = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.SMS_API_KEY, 'Idempotency-Key': event.id }, signal: AbortSignal.timeout(10000), body: JSON.stringify({ to: order.customer.phone, message: message('SMS'), reference: event.id }) });
       if (!sms.ok) throw new Error('SMS_PROVIDER_REJECTED');
       const result = await sms.json() as { id?: string };
       await this.db.notification.update({ where: { id: notification.id }, data: { status: 'SENT', channel, providerId: String(result.id ?? ''), sentAt: new Date(), errorCode: null } });

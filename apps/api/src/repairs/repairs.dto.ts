@@ -18,7 +18,7 @@ export class ReserveDto {
 }
 export class PaymentDto {
   @ApiProperty() @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) amount!: string;
-  @ApiProperty() @IsIn(['CASH','CARD','CLICK','PAYME','TRANSFER','OTHER']) method!: string;
+  @ApiProperty() @IsString() @Length(1,64) @Matches(/^[A-Z0-9_]+$/) method!: string;
   @ApiProperty() @IsString() @Length(16, 128) idempotencyKey!: string;
 }
 export class RefundDto {

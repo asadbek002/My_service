@@ -163,6 +163,9 @@ class RepairsController {
     return this.db.$transaction(async tx => {
       const order = await lockedOrder(tx, actor, id);
       const amount = new Prisma.Decimal(dto.amount);
+      const builtIn = ['CASH','CARD','CLICK','PAYME','TRANSFER','OTHER'];
+      const custom = builtIn.includes(dto.method) ? true : !!await tx.paymentMethod.findFirst({ where: { organizationId: actor.organizationId, key: dto.method, active: true } });
+      if (!custom) throw new ConflictException('Payment method unavailable');
       if (!amount.greaterThan(0)) throw new ConflictException('Positive amount required');
       const existing = await tx.payment.findUnique({ where: { organizationId_idempotencyKey: { organizationId: actor.organizationId, idempotencyKey: dto.idempotencyKey } } });
       if (existing) {
