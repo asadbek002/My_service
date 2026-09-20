@@ -22,7 +22,7 @@ async function tenant() {
   const plan = await db.plan.create({ data: { name: id, maxStaff: 5, features: {} } });
   await db.subscription.create({ data: { organizationId: org.id, planId: plan.id, status: 'ACTIVE', expiresAt: new Date(Date.now() + 86400000) } });
   const role = await db.role.create({ data: { organizationId: org.id, name: 'OWNER', systemKey: 'OWNER' } });
-  for (const key of ['staff.view', 'staff.manage']) {
+  for (const key of ['staff.view', 'staff.manage', 'customers.view', 'customers.edit', 'orders.view', 'orders.create', 'orders.assign', 'orders.change_status', 'orders.edit', 'diagnostics.create']) {
     const p = await db.permission.upsert({ where: { key }, create: { key }, update: {} });
     await db.rolePermission.create({ data: { roleId: role.id, permissionId: p.id } });
   }
@@ -101,4 +101,36 @@ test('logout revokes server session', async () => {
   const auth = await login(a.user);
   assert.equal((await request('/auth/logout', { ...auth, method: 'POST' })).status, 204);
   assert.equal((await request('/auth/me', auth)).status, 401);
+});
+
+test('intake, concurrent numbering, tenant isolation and versioned approval', async () => {
+  const auth = await login(a.user);
+  const customerResponse = await request('/customers', { ...auth, method: 'POST', body: { firstName: 'Ali', phone: '+998900000001' } });
+  assert.equal(customerResponse.status, 201);
+  const customer = await customerResponse.json();
+  const deviceResponse = await request('/devices', { ...auth, method: 'POST', body: { customerId: customer.id, category: 'Phone', brand: 'Apple', model: 'iPhone 15' } });
+  assert.equal(deviceResponse.status, 201);
+  const device = await deviceResponse.json();
+  const intake = { customerId: customer.id, deviceId: device.id, branchId: a.branch.id, complaint: 'Display broken', accessories: ['Phone'], condition: ['Cracked display'] };
+  const responses = await Promise.all(Array.from({ length: 5 }, () => request('/orders', { ...auth, method: 'POST', body: intake })));
+  assert.ok(responses.every(r => r.status === 201));
+  const orders = await Promise.all(responses.map(r => r.json()));
+  assert.equal(new Set(orders.map(o => o.number)).size, 5);
+  const order = orders[0];
+  const other = await login(b.user);
+  assert.equal((await request('/orders/' + order.id, other)).status, 404);
+  assert.equal((await request('/orders', { ...auth, method: 'POST', body: { ...intake, branchId: b.branch.id } })).status, 404);
+  assert.equal((await request('/orders/' + order.id + '/status', { ...auth, method: 'PATCH', body: { status: 'IN_REPAIR', comment: 'skip diagnosis' } })).status, 409);
+  assert.equal((await request('/orders/' + order.id + '/status', { ...auth, method: 'PATCH', body: { status: 'DIAGNOSING', comment: 'Start' } })).status, 200);
+  for (const labor of ['150000', '160000']) {
+    assert.equal((await request('/orders/' + order.id + '/diagnosis', { ...auth, method: 'POST', body: { diagnosis: 'OLED damaged', requiredWork: 'Replace display', labor, partsTotal: '700000' } })).status, 201);
+  }
+  assert.equal((await request('/orders/' + order.id + '/approve', { ...auth, method: 'POST', body: { quoteVersion: 1, approved: true, evidence: 'Customer phone confirmation' } })).status, 409);
+  assert.equal((await request('/orders/' + order.id + '/approve', { ...auth, method: 'POST', body: { quoteVersion: 2, approved: true, evidence: 'Customer phone confirmation' } })).status, 201);
+  assert.equal((await request('/orders/' + order.id + '/status', { ...auth, method: 'PATCH', body: { status: 'IN_REPAIR', comment: 'Part available' } })).status, 200);
+  const result = await (await request('/orders/' + order.id, auth)).json();
+  assert.equal(result.total, '860000');
+  assert.equal(result.status, 'IN_REPAIR');
+  assert.equal(result.history.length, 6);
+  assert.ok(await db.outboxEvent.count({ where: { entityId: order.id } }) >= 6);
 });

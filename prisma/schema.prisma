@@ -27,6 +27,8 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  customers Customer[]
+  orders Order[]
   subscription Subscription?
   branches Branch[]
   users    User[]
@@ -42,6 +44,7 @@ model Branch {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   memberships UserBranch[]
+  orders Order[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, name])
@@ -66,6 +69,7 @@ model User {
   branches     UserBranch[]
   roles        UserRole[]
   sessions     Session[]
+  assignments OrderAssignment[]
 
   @@unique([organizationId, id])
   @@index([organizationId, status])
@@ -178,4 +182,104 @@ model Subscription {
   graceUntil     DateTime?
   plan           Plan     @relation(fields: [planId], references: [id], onDelete: Restrict)
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+}
+
+model Customer {
+  id String @id @default(cuid())
+  organizationId String
+  firstName String
+  phone String
+  notes String?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  devices Device[]
+  orders Order[]
+  @@unique([organizationId, id])
+  @@unique([organizationId, phone])
+}
+model Device {
+  id String @id @default(cuid())
+  organizationId String
+  customerId String
+  category String
+  brand String
+  model String
+  imei String?
+  serialNumber String?
+  color String?
+  customer Customer @relation(fields: [organizationId, customerId], references: [organizationId, id], onDelete: Restrict)
+  orders Order[]
+  @@unique([organizationId, customerId, id])
+  @@index([organizationId, imei])
+}
+model OrderCounter {
+  organizationId String
+  day String
+  value Int @default(0)
+  @@id([organizationId, day])
+}
+model Order {
+  id String @id @default(cuid())
+  organizationId String
+  branchId String
+  customerId String
+  deviceId String
+  number String
+  status String @default("RECEIVED")
+  complaint String
+  accessories String[]
+  condition String[]
+  diagnosis String?
+  requiredWork String?
+  quoteVersion Int @default(0)
+  approvedVersion Int?
+  approvalStatus String @default("PENDING")
+  approvalChannel String?
+  approvedAt DateTime?
+  labor Decimal @default(0) @db.Decimal(18, 2)
+  partsTotal Decimal @default(0) @db.Decimal(18, 2)
+  total Decimal @default(0) @db.Decimal(18, 2)
+  finalTest Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch Branch @relation(fields: [organizationId, branchId], references: [organizationId, id], onDelete: Restrict)
+  customer Customer @relation(fields: [organizationId, customerId], references: [organizationId, id], onDelete: Restrict)
+  device Device @relation(fields: [organizationId, customerId, deviceId], references: [organizationId, customerId, id], onDelete: Restrict)
+  assignments OrderAssignment[]
+  history OrderHistory[]
+  @@unique([organizationId, id])
+  @@unique([organizationId, number])
+  @@index([organizationId, branchId, status])
+}
+model OrderAssignment {
+  organizationId String
+  orderId String
+  userId String
+  task String
+  order Order @relation(fields: [organizationId, orderId], references: [organizationId, id], onDelete: Restrict)
+  user User @relation(fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  @@id([organizationId, orderId, userId])
+}
+model OrderHistory {
+  id String @id @default(cuid())
+  organizationId String
+  orderId String
+  fromStatus String?
+  toStatus String
+  actorId String
+  comment String?
+  createdAt DateTime @default(now())
+  order Order @relation(fields: [organizationId, orderId], references: [organizationId, id], onDelete: Restrict)
+  @@index([organizationId, orderId, createdAt])
+}
+model OutboxEvent {
+  id String @id @default(cuid())
+  organizationId String
+  type String
+  entityId String
+  payload Json
+  createdAt DateTime @default(now())
+  publishedAt DateTime?
+  @@index([publishedAt, createdAt])
 }
