@@ -192,6 +192,7 @@ model Customer {
   firstName String
   phone String
   notes String?
+  telegramChatId String?
   createdAt DateTime @default(now())
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   devices Device[]
@@ -376,4 +377,30 @@ model Warranty {
   order Order @relation(fields: [organizationId,orderId], references: [organizationId,id], onDelete: Restrict)
   @@unique([organizationId,orderId])
   @@index([organizationId,endDate])
+}
+
+model CustomerLink {
+  id String @id @default(cuid())
+  organizationId String
+  orderId String
+  tokenHash String @unique
+  purpose String
+  quoteVersion Int?
+  expiresAt DateTime
+  consumedAt DateTime?
+  @@index([organizationId,orderId,purpose])
+}
+model Notification {
+  id String @id @default(cuid())
+  organizationId String
+  orderId String
+  eventId String @unique
+  type String
+  channel String?
+  status String @default("PENDING")
+  providerId String?
+  errorCode String?
+  createdAt DateTime @default(now())
+  sentAt DateTime?
+  @@index([organizationId,orderId,createdAt])
 }

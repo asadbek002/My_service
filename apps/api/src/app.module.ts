@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from './database';
 import { AuthModule } from './auth/auth.module';
+import { LinksModule } from './notifications/links.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { RepairsModule } from './repairs/repairs.module';
 import { OrdersModule } from './orders/orders.module';
 import { StaffModule } from './staff/staff.module';
@@ -21,7 +23,7 @@ import { HealthController } from './health.controller';
         return config;
       },
     }),
-    DatabaseModule, AuthModule, StaffModule, OrdersModule, RepairsModule,
+    DatabaseModule, AuthModule, StaffModule, OrdersModule, RepairsModule, LinksModule, NotificationsModule,
   ],
   controllers: [HealthController],
 })

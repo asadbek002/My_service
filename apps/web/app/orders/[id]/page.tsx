@@ -12,6 +12,7 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
   const [parts, setParts] = useState<{ id: string; name: string; salePrice: string }[]>([]);
   const [staff, setStaff] = useState<{ id: string; firstName: string }[]>([]);
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  const [links, setLinks] = useState<{ tracking: string; telegram: string | null } | null>(null);
   const [paymentKey, setPaymentKey] = useState('');
   const [payments, setPayments] = useState<{ id: string; kind: string; amount: string; method: string }[]>([]);
   const path = '/orders/' + id;
@@ -36,6 +37,7 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
   return <main className="page"><header><Link href="/orders">← Buyurtmalar</Link><span className="brand">MY SERVICE</span></header>
     <div className="title-row"><div><p className="eyebrow">{order.status}</p><h1>{order.number}</h1></div><strong>{Number(order.total).toLocaleString('uz-UZ')} so‘m</strong></div>
     {error && <p role="alert" className="error">{error}</p>}
+    {can('orders.edit') && <section style={{ marginBottom: 24 }}><button disabled={busy} onClick={async () => { setBusy(true); try { setLinks(await api(path + '/links', { method: 'POST' })); } catch(e) { fail(e); } finally { setBusy(false); } }}>Mijoz uchun havolalar</button>{links && <><p><a href={links.tracking} target="_blank" rel="noreferrer">Buyurtmani kuzatish</a></p>{links.telegram && <p><a href={links.telegram} target="_blank" rel="noreferrer">Telegramni ulash</a></p>}</>}</section>}
     <div className="detail-grid"><section><h2>{order.device.brand} {order.device.model}</h2><p>{order.customer.firstName} · {order.customer.phone}</p><p className="muted">{order.complaint}</p>
       {order.diagnosis && <><h3>Diagnostika</h3><p>{order.diagnosis}</p><p>{order.requiredWork}</p></>}
       <div className="actions">{order.status === 'RECEIVED' && can('orders.change_status') && <button disabled={busy} onClick={() => action('/status', { status: 'DIAGNOSING', comment: 'Diagnostika boshlandi' }, 'PATCH')}>Diagnostikani boshlash</button>}

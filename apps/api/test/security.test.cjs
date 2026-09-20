@@ -178,3 +178,24 @@ test('reservation race, cancellation release, repair, split payment/refund and d
   assert.equal((await db.order.findUnique({ where: { id: loser } })).status, 'DELIVERED');
   assert.ok(await db.warranty.findUnique({ where: { orderId: loser } }));
 });
+
+test('public links mask personal data and approval tokens are version-bound and single-use', async () => {
+  const auth = await login(a.user);
+  const { createHash, randomBytes } = require('node:crypto');
+  const source = await db.order.findFirst({ where: { organizationId: a.org.id, status: 'IN_REPAIR' } });
+  const linksResponse = await request('/orders/' + source.id + '/links', { ...auth, method: 'POST' });
+  assert.equal(linksResponse.status, 201);
+  const tracking = (await linksResponse.json()).tracking.split('/').pop();
+  const tracked = await request('/public/track/' + tracking);
+  assert.equal(tracked.status, 200);
+  const text = JSON.stringify(await tracked.json());
+  assert.ok(!text.includes('phone') && !text.includes('customer') && !text.includes('imei'));
+  assert.equal((await request('/public/track/' + 'x'.repeat(43))).status, 404);
+  const order = await db.order.create({ data: { organizationId: a.org.id, branchId: source.branchId, customerId: source.customerId, deviceId: source.deviceId, number: 'APPROVAL-TEST', complaint: 'Test', accessories: [], condition: [], status: 'WAITING_CUSTOMER_APPROVAL', quoteVersion: 3 } });
+  const raw = randomBytes(32).toString('base64url');
+  await db.customerLink.create({ data: { organizationId: a.org.id, orderId: order.id, purpose: 'APPROVAL', quoteVersion: 3, tokenHash: createHash('sha256').update(raw).digest('hex'), expiresAt: new Date(Date.now() + 60000) } });
+  assert.equal((await request('/public/approval/' + raw, { method: 'POST', body: { quoteVersion: 2, approved: true } })).status, 409);
+  assert.equal((await request('/public/approval/' + raw, { method: 'POST', body: { quoteVersion: 3, approved: true } })).status, 200);
+  assert.equal((await request('/public/approval/' + raw, { method: 'POST', body: { quoteVersion: 3, approved: false } })).status, 409);
+  assert.equal((await db.order.findUnique({ where: { id: order.id } })).status, 'WAITING_PART');
+});
