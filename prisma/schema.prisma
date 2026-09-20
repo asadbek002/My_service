@@ -374,5 +374,6 @@ model Warranty {
   endDate DateTime
   terms String
   order Order @relation(fields: [organizationId,orderId], references: [organizationId,id], onDelete: Restrict)
+  @@unique([organizationId,orderId])
   @@index([organizationId,endDate])
 }

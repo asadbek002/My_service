@@ -84,6 +84,10 @@ class OrdersController {
   list(@CurrentActor() actor: Actor) {
     return this.db.order.findMany({ where: orderScope(actor), include: { customer: true, device: true }, orderBy: { createdAt: 'desc' }, take: 100 });
   }
+  @Get('technicians') @Permissions('orders.assign')
+  technicians(@CurrentActor() actor: Actor) {
+    return this.db.user.findMany({ where: { organizationId: actor.organizationId, status: 'ACTIVE', roles: { some: { role: { systemKey: 'TECHNICIAN' } } }, ...(!actor.owner ? { branches: { some: { branchId: { in: actor.branchIds } } } } : {}) }, select: { id: true, firstName: true }, take: 100 });
+  }
   @Get(':id') @Permissions('orders.view')
   async get(@CurrentActor() actor: Actor, @Param('id') id: string) {
     const order = await this.db.order.findFirst({ where: { id, ...orderScope(actor) }, include: { customer: true, device: true, assignments: { select: { userId: true, task: true } }, history: { orderBy: { createdAt: 'asc' } } } });

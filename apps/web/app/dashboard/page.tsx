@@ -71,7 +71,7 @@ export default function Dashboard() {
   </section></main>;
   return <div className="workspace">
     <aside><a href="/dashboard" className="brand">MY SERVICE</a><p className="eyebrow">PREMIUM REPAIR</p>
-      <nav aria-label="Asosiy menyu"><button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>Bosh sahifa</button>
+      <nav aria-label="Asosiy menyu"><a className="nav-link" href="/orders">Buyurtmalar</a><a className="nav-link" href="/inventory">Ombor</a><button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>Bosh sahifa</button>
       {me.permissions.includes('staff.view') && <button className={tab === 'staff' ? 'active' : ''} onClick={() => setTab('staff')}>Xodimlar</button>}</nav>
       <button className="secondary" onClick={() => { logout().then(() => router.replace('/login')).catch(fail); }}>Chiqish</button>
     </aside>
