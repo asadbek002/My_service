@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const { PrismaClient } = require('@prisma/client');
+const { S3Client, CreateBucketCommand } = require('@aws-sdk/client-s3');
 const argon2 = require('argon2');
 const db = new PrismaClient();
 const base = 'http://localhost:3001/api';
@@ -33,6 +34,13 @@ async function tenant() {
   return { org, branch, role, user, plan };
 }
 before(async () => {
+  const s3 = new S3Client({ endpoint: process.env.S3_ENDPOINT, region: process.env.S3_REGION, forcePathStyle: true, credentials: { accessKeyId: process.env.S3_ACCESS_KEY, secretAccessKey: process.env.S3_SECRET_KEY } });
+  let storageReady = false;
+  for (let i = 0; i < 40; i++) {
+    try { await s3.send(new CreateBucketCommand({ Bucket: process.env.S3_BUCKET })); storageReady = true; break; }
+    catch (e) { if (e.name === 'BucketAlreadyOwnedByYou') { storageReady = true; break; } await new Promise(r => setTimeout(r, 500)); }
+  }
+  if (!storageReady) throw new Error('MinIO did not start');
   a = await tenant(); b = await tenant();
   server = spawn(process.execPath, ['dist/main.js'], { env: process.env });
   server.stdout.on('data', d => { output += d; });
@@ -198,4 +206,24 @@ test('public links mask personal data and approval tokens are version-bound and 
   assert.equal((await request('/public/approval/' + raw, { method: 'POST', body: { quoteVersion: 3, approved: true } })).status, 200);
   assert.equal((await request('/public/approval/' + raw, { method: 'POST', body: { quoteVersion: 3, approved: false } })).status, 409);
   assert.equal((await db.order.findUnique({ where: { id: order.id } })).status, 'WAITING_PART');
+});
+
+test('signed upload verifies metadata and receipt is a PDF', async () => {
+  const auth = await login(a.user);
+  const order = await db.order.findFirst({ where: { organizationId: a.org.id } });
+  const bytes = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000000020001e221bc330000000049454e44ae426082','hex');
+  const sha256 = require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+  const signedResponse = await request('/orders/' + order.id + '/attachments/presign', { ...auth, method: 'POST', body: { kind: 'DAMAGE', contentType: 'image/png', size: bytes.length, sha256 } });
+  assert.equal(signedResponse.status, 201);
+  const signed = await signedResponse.json();
+  const uploaded = await fetch(signed.url, { method: 'PUT', headers: signed.headers, body: bytes });
+  assert.equal(uploaded.status, 200);
+  assert.equal((await request('/orders/' + order.id + '/attachments/confirm', { ...auth, method: 'POST', body: { uploadId: signed.uploadId } })).status, 201);
+  const attachments = await (await request('/orders/' + order.id + '/attachments', auth)).json();
+  assert.ok(attachments.some(x => x.sha256 === undefined && x.kind === 'DAMAGE'));
+  const pdf = await request('/orders/' + order.id + '/documents/receipt', auth);
+  assert.equal(pdf.status, 200);
+  assert.equal(pdf.headers.get('content-type'), 'application/pdf');
+  const pdfBytes = Buffer.from(await pdf.arrayBuffer());
+  assert.equal(pdfBytes.subarray(0,4).toString(), '%PDF');
 });
