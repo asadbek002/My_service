@@ -27,6 +27,7 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  subscription Subscription?
   branches Branch[]
   users    User[]
   roles    Role[]
@@ -145,4 +146,36 @@ model Session {
 
   @@index([userId, status])
   @@index([tokenFamilyId])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  actorId        String?
+  action         String
+  entityId       String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+model Plan {
+  id            String @id @default(cuid())
+  name          String @unique
+  maxBranches   Int?
+  maxStaff      Int?
+  monthlyOrders Int?
+  features      Json
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  planId         String
+  status         String   @default("TRIAL")
+  expiresAt      DateTime
+  graceUntil     DateTime?
+  plan           Plan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 }

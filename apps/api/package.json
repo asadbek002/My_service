@@ -6,7 +6,9 @@
     "build": "nest build",
     "dev": "nest start --watch",
     "start": "node dist/main.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.cjs",
+    "seed": "node scripts/seed.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
@@ -14,18 +16,23 @@
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/swagger": "^11.0.0",
-    "@prisma/client": "^6.0.0",
+    "@prisma/client": "6.19.0",
     "argon2": "^0.41.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
     "helmet": "^8.0.0",
-    "jose": "^6.0.0",
     "reflect-metadata": "^0.2.0",
-    "rxjs": "^7.8.0"
+    "rxjs": "^7.8.0",
+    "@nestjs/jwt": "^11.0.0",
+    "cookie-parser": "^1.4.7",
+    "ioredis": "^5.6.0",
+    "dotenv": "^16.4.7"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
     "@types/node": "^22.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/express": "^5.0.0"
   }
 }

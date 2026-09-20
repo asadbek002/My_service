@@ -12,12 +12,20 @@
     "db:format": "prisma format --schema prisma/schema.prisma",
     "db:generate": "prisma generate --schema prisma/schema.prisma",
     "db:validate": "prisma validate --schema prisma/schema.prisma",
-    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\""
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
+    "db:migrate": "prisma migrate deploy",
+    "db:seed": "pnpm --filter @myservice/api seed"
   },
   "devDependencies": {
     "prettier": "^3.0.0",
-    "prisma": "^6.0.0",
+    "prisma": "6.19.0",
     "turbo": "^2.0.0",
     "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.0"
   }
 }

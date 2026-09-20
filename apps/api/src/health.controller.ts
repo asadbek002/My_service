@@ -1,16 +1,14 @@
-import { Controller, Get } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import { Public } from './auth/security';
+import { Database } from './database';
 
-@ApiTags('system')
 @Controller('health')
 export class HealthController {
-  @Get()
-  @ApiOperation({ summary: 'API process health check' })
-  getHealth() {
-    return {
-      status: 'ok',
-      service: 'myservice-api',
-      timestamp: new Date().toISOString(),
-    };
+  constructor(private readonly db: Database) {}
+  @Get() @Public()
+  async health() {
+    try { await this.db.$queryRaw`SELECT 1`; }
+    catch { throw new ServiceUnavailableException('Database unavailable'); }
+    return { status: 'ok', checks: { api: 'ok', database: 'ok' } };
   }
 }
