@@ -214,6 +214,10 @@ class RepairsController {
 @Controller('payments')
 class RefundController {
   constructor(private readonly db: Database) {}
+  @Get() @Permissions('payments.view')
+  list(@CurrentActor() actor: Actor) {
+    return this.db.payment.findMany({ where: { organizationId: actor.organizationId, order: orderScope(actor) }, include: { order: { select: { number: true, status: true, customer: { select: { firstName: true, phone: true } } } } }, orderBy: { createdAt: 'desc' }, take: 200 });
+  }
   @Post(':id/refund') @Permissions('payments.refund')
   async refund(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: RefundDto) {
     const payment = await this.db.payment.findFirst({ where: { id, organizationId: actor.organizationId, kind: 'PAYMENT' } });

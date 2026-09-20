@@ -104,7 +104,7 @@ class SearchController {
 class WarrantyController {
   constructor(private readonly db: Database) {}
   @Get() @Permissions('orders.view')
-  list(@CurrentActor() a: Actor) { return this.db.warranty.findMany({ where: { organizationId: a.organizationId, order: orderScope(a) }, take: 100, orderBy: { endDate: 'desc' } }); }
+  list(@CurrentActor() a: Actor) { return this.db.warranty.findMany({ where: { organizationId: a.organizationId, order: orderScope(a) }, include: { order: { select: { id: true, number: true, status: true, customer: { select: { firstName: true, phone: true } }, device: { select: { brand: true, model: true } } } } }, take: 100, orderBy: { endDate: 'desc' } }); }
   @Post(':id/claim') @Permissions('orders.create')
   claim(@CurrentActor() a: Actor, @Param('id') id: string, @Body() d: ClaimDto) {
     return this.db.$transaction(async tx => {

@@ -1,7 +1,10 @@
-import { Injectable, Module, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Controller, Get, Injectable, Module, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { Queue, Worker } from 'bullmq';
 import { Database } from '../database';
 import { createLink } from './links.module';
+import { CurrentActor, Permissions } from '../auth/security';
+import type { Actor } from '../auth/security';
+import { orderScope } from '../orders/orders.module';
 
 function render(template:string,values:Record<string,string>){return template.replace(/{{([a-z_]+)}}/g,(_,key:string)=>values[key]??'');}
 const labels: Record<string,string> = {
@@ -94,5 +97,14 @@ class Notifications implements OnModuleInit, OnModuleDestroy {
     }
   }
 }
-@Module({ providers: [Notifications] })
+@Controller('notifications')
+class NotificationsController {
+  constructor(private readonly db: Database) {}
+  @Get() @Permissions('orders.view')
+  async list(@CurrentActor() actor: Actor) {
+    const orders = await this.db.order.findMany({ where: orderScope(actor), select: { id: true } });
+    return this.db.notification.findMany({ where: { organizationId: actor.organizationId, orderId: { in: orders.map(order => order.id) } }, orderBy: { createdAt: 'desc' }, take: 200 });
+  }
+}
+@Module({ controllers: [NotificationsController], providers: [Notifications] })
 export class NotificationsModule {}

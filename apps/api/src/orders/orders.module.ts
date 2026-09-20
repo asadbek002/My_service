@@ -55,7 +55,7 @@ class CustomersController {
   }
   @Get(':id') @Permissions('customers.view')
   async get(@CurrentActor() actor: Actor, @Param('id') id: string) {
-    const c = await this.db.customer.findFirst({ where: { id, organizationId: actor.organizationId, ...(!actor.owner ? { orders: { some: { branchId: { in: actor.branchIds } } } } : {}) }, include: { devices: true } });
+    const c = await this.db.customer.findFirst({ where: { id, organizationId: actor.organizationId, ...(!actor.owner ? { orders: { some: { branchId: { in: actor.branchIds } } } } : {}) }, include: { devices: true, orders: { include: { device: true, payments: true }, orderBy: { createdAt: 'desc' } } } });
     if (!c) throw new NotFoundException(); return c;
   }
 }
@@ -63,6 +63,11 @@ class CustomersController {
 @Controller('devices')
 class DevicesController {
   constructor(private readonly db: Database) {}
+  @Get(':id') @Permissions('customers.view')
+  async get(@CurrentActor() actor: Actor, @Param('id') id: string) {
+    const device = await this.db.device.findFirst({ where: { id, organizationId: actor.organizationId, ...(!actor.owner ? { orders: { some: { branchId: { in: actor.branchIds } } } } : {}) }, include: { customer: true, orders: { where: orderScope(actor), orderBy: { createdAt: 'desc' } } } });
+    if (!device) throw new NotFoundException(); return device;
+  }
   @Post() @Permissions('customers.edit')
   async create(@CurrentActor() actor: Actor, @Body() dto: DeviceDto) {
     const customer = await this.db.customer.findFirst({ where: { id: dto.customerId, organizationId: actor.organizationId } });

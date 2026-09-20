@@ -27,7 +27,7 @@ class BranchDto {
 class StatusDto {
   @ApiProperty() @IsIn(['ACTIVE', 'SUSPENDED', 'ARCHIVED']) status!: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
 }
-const safe = { id: true, login: true, firstName: true, lastName: true, phone: true, status: true, mustChangePassword: true } as const;
+const safe = { id: true, login: true, firstName: true, lastName: true, phone: true, email: true, status: true, mustChangePassword: true, roles: { select: { role: { select: { name: true, systemKey: true } } } }, branches: { select: { branch: { select: { id: true, name: true } } } } } as const;
 
 @ApiTags('staff') @ApiBearerAuth()
 @Controller('staff')
