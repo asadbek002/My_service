@@ -32,7 +32,7 @@ import { HealthController } from './health.controller';
         return config;
       },
     }),
-    DatabaseModule, AuthModule, StaffModule, OrdersModule, RepairsModule, LinksModule, NotificationsModule, ManagementModule, SettingsModule, PlatformModule,
+    DatabaseModule, AuthModule, StaffModule, OrdersModule, RepairsModule, LinksModule, NotificationsModule, ManagementModule, SettingsModule, PlatformModule, DocumentsModule,
   ],
   controllers: [HealthController],
 })

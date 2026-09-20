@@ -6,11 +6,13 @@ import { api, clearAccess, logout } from '../lib/api';
 type Me = { id: string; firstName: string; login: string; mustChangePassword: boolean; permissions: string[] };
 type Staff = { id: string; firstName: string; login: string; phone: string; status: string };
 type Branch = { id: string; name: string };
+type OrderSummary = { id:string; status:string; number:string };
 export default function Dashboard() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(true);
@@ -26,7 +28,7 @@ export default function Dashboard() {
     api<Me>('/auth/me').then(async user => {
       setMe(user);
       if (!user.mustChangePassword) {
-        setBranches(await api<Branch[]>('/branches'));
+        setBranches(await api<Branch[]>('/branches')); setOrders(await api<OrderSummary[]>('/orders'));
         if (user.permissions.includes('staff.view')) await loadStaff();
       }
     }).catch(fail);
@@ -79,9 +81,9 @@ export default function Dashboard() {
       {!online && <p role="alert" className="error">Internet yo‘q. O‘zgarishlarni saqlash uchun qayta ulaning.</p>}
       {error && <p role="alert" className="error">{error}</p>}
       {tab === 'overview' ? <><p className="eyebrow">ISH JOYINGIZ</p><h1>Xush kelibsiz, {me.firstName}.</h1>
-        <div className="cards"><section><span className="muted">Sizga ochiq filiallar</span><strong>{branches.length}</strong></section>
+        <div className="cards"><section><span className="muted">Sizga ochiq filiallar</span><strong>{branches.length}</strong></section><section><span className="muted">Yangi</span><strong>{orders.filter(o=>o.status==='RECEIVED').length}</strong></section><section><span className="muted">Diagnostikada</span><strong>{orders.filter(o=>o.status==='DIAGNOSING').length}</strong></section><section><span className="muted">Ta’mirda</span><strong>{orders.filter(o=>o.status==='IN_REPAIR').length}</strong></section><section><span className="muted">Tayyor</span><strong>{orders.filter(o=>o.status==='READY').length}</strong></section>
         {me.permissions.includes('staff.view') && <section><span className="muted">Faol xodimlar</span><strong>{staff.filter(s => s.status === 'ACTIVE').length}</strong></section>}</div>
-        <section><h2>Filiallar</h2>{branches.map(b => <p key={b.id}>{b.name}</p>)}</section></>
+        <section><h2>Oxirgi buyurtmalar</h2>{orders.slice(0,8).map(o=><p key={o.id}><a href={'/orders/'+o.id}>{o.number}</a> · {o.status}</p>)}</section><section><h2>Filiallar</h2>{branches.map(b => <p key={b.id}>{b.name}</p>)}</section></>
       : <><h1>Jamoa boshqaruvi</h1><div className="staff-layout"><section>
         <h2>Xodimlar</h2><div className="table-scroll"><table><thead><tr><th>Ism</th><th>Login</th><th>Holat</th><th>Amal</th></tr></thead>
         <tbody>{staff.map(user => <tr key={user.id}><td>{user.firstName}</td><td>{user.login}</td><td>{user.status}</td><td>

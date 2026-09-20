@@ -37,9 +37,9 @@ export async function logout() {
 }
 export function clearAccess() { accessToken = null; }
 
-export async function apiBlob(path:string){
+export async function apiBlob(path:string,options:RequestInit={}){
  if(!accessToken&&!await refresh())throw new Error('SESSION_EXPIRED');
- const send=()=>fetch(base+path,{credentials:'include',cache:'no-store',headers:{Authorization:'Bearer '+accessToken}});
+ const send=()=>fetch(base+path,{...options,credentials:'include',cache:'no-store',headers:{...options.headers,Authorization:'Bearer '+accessToken}});
  let response=await send();if(response.status===401&&await refresh())response=await send();
  if(!response.ok)throw new Error('Hujjat yaratilmadi');return response.blob();
 }

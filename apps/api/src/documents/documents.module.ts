@@ -32,8 +32,9 @@ class DocumentsController{
   const order=await this.db.order.findFirst({where:{id,...orderScope(a)}});if(!order)throw new NotFoundException();
   const ext:{[key:string]:string}={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'};
   const objectKey=a.organizationId+'/orders/'+order.number+'/'+randomUUID()+'.'+ext[d.contentType];
+  const{client,bucket}=storage();
   const pending=await this.db.pendingUpload.create({data:{organizationId:a.organizationId,orderId:id,objectKey,kind:d.kind,contentType:d.contentType,size:d.size,sha256:d.sha256,uploadedBy:a.userId,expiresAt:new Date(Date.now()+15*60000)}});
-  const{client,bucket}=storage();const command=new PutObjectCommand({Bucket:bucket,Key:objectKey,ContentType:d.contentType,ContentLength:d.size,Metadata:{sha256:d.sha256}});
+  const command=new PutObjectCommand({Bucket:bucket,Key:objectKey,ContentType:d.contentType,ContentLength:d.size,Metadata:{sha256:d.sha256}});
   return{uploadId:pending.id,url:await getSignedUrl(client,command,{expiresIn:600}),headers:{'Content-Type':d.contentType,'x-amz-meta-sha256':d.sha256}};
  }
  @Post(':id/attachments/confirm')@Permissions('orders.edit')
@@ -53,7 +54,7 @@ class DocumentsController{
   if(!await this.db.order.findFirst({where:{id,...orderScope(a)}}))throw new NotFoundException();
   return this.db.attachment.findMany({where:{organizationId:a.organizationId,orderId:id},select:{id:true,kind:true,contentType:true,size:true,createdAt:true}});
  }
- @Get(':id/documents/:type')@Permissions('orders.view')
+ @Post(':id/documents/:type')@Permissions('orders.view')
  async document(@CurrentActor()a:Actor,@Param('id')id:string,@Param('type')type:string,@Res()res:Response){
   if(!['receipt','repair','payment','warranty'].includes(type))throw new NotFoundException();
   const order=await this.db.order.findFirst({where:{id,...orderScope(a)},include:{customer:true,device:true,payments:true,warranty:true}});

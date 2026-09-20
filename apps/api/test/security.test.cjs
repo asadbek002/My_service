@@ -221,7 +221,7 @@ test('signed upload verifies metadata and receipt is a PDF', async () => {
   assert.equal((await request('/orders/' + order.id + '/attachments/confirm', { ...auth, method: 'POST', body: { uploadId: signed.uploadId } })).status, 201);
   const attachments = await (await request('/orders/' + order.id + '/attachments', auth)).json();
   assert.ok(attachments.some(x => x.sha256 === undefined && x.kind === 'DAMAGE'));
-  const pdf = await request('/orders/' + order.id + '/documents/receipt', auth);
+  const pdf = await request('/orders/' + order.id + '/documents/receipt', { ...auth, method: 'POST' });
   assert.equal(pdf.status, 200);
   assert.equal(pdf.headers.get('content-type'), 'application/pdf');
   const pdfBytes = Buffer.from(await pdf.arrayBuffer());
