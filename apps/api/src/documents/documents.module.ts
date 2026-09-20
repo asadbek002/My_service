@@ -35,7 +35,7 @@ class DocumentsController{
   const{client,bucket}=storage();
   const pending=await this.db.pendingUpload.create({data:{organizationId:a.organizationId,orderId:id,objectKey,kind:d.kind,contentType:d.contentType,size:d.size,sha256:d.sha256,uploadedBy:a.userId,expiresAt:new Date(Date.now()+15*60000)}});
   const command=new PutObjectCommand({Bucket:bucket,Key:objectKey,ContentType:d.contentType,ContentLength:d.size,Metadata:{sha256:d.sha256}});
-  return{uploadId:pending.id,url:await getSignedUrl(client,command,{expiresIn:600}),headers:{'Content-Type':d.contentType,'x-amz-meta-sha256':d.sha256}};
+  return{uploadId:pending.id,url:await getSignedUrl(client,command,{expiresIn:600,unhoistableHeaders:new Set(['x-amz-meta-sha256']),signableHeaders:new Set(['content-type'])}),headers:{'Content-Type':d.contentType,'x-amz-meta-sha256':d.sha256}};
  }
  @Post(':id/attachments/confirm')@Permissions('orders.edit')
  async confirm(@CurrentActor()a:Actor,@Param('id')id:string,@Body()d:ConfirmDto){
