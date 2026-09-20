@@ -45,7 +45,7 @@ jobs:
         with:
           node-version: '22'
       - name: Start MinIO test storage
-        run: docker run -d --name minio-ci -p 9000:9000 -e MINIO_ROOT_USER=testaccess -e MINIO_ROOT_PASSWORD=testsecret123 minio/minio:latest server /data
+        run: docker run -d --name minio-ci -p 9000:9000 -e MINIO_ROOT_USER=testaccess -e MINIO_ROOT_PASSWORD=testsecret123 quay.io/minio/minio:latest server /data
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm db:validate
       - run: pnpm db:generate

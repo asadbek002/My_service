@@ -19,7 +19,7 @@ services:
     command: ["redis-server","--appendonly","yes","--requirepass","${REDIS_PASSWORD}"]
     volumes: [redis_data:/data]
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     env_file: .env
