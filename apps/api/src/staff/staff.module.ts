@@ -79,6 +79,9 @@ class StaffController {
     if (percentage.lessThan(0) || percentage.greaterThan(100)) throw new ConflictException('Percentage must be 0..100');
     return this.db.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${id} AND "organizationId" = ${actor.organizationId} FOR UPDATE`;
+      const subscription = await tx.subscription.findUnique({ where: { organizationId: actor.organizationId }, include: { plan: true } });
+      const flags = subscription?.plan.features as Record<string, unknown> | undefined;
+      if (!flags?.staff_commission) throw new ForbiddenException('STAFF_COMMISSION_NOT_IN_PLAN');
       const user = await tx.user.findFirst({ where: { id, organizationId: actor.organizationId, roles: { some: { role: { systemKey: 'TECHNICIAN' } } } } });
       if (!user) throw new NotFoundException('Technician not found');
       const now = new Date();

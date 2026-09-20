@@ -4,6 +4,8 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import type { NextFunction, Request, Response } from 'express';
+import { randomUUID } from 'node:crypto';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -12,6 +14,11 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.use(helmet());
   app.use(cookieParser());
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const requestId = randomUUID(); const started = Date.now(); res.setHeader('X-Request-Id', requestId);
+    res.on('finish', () => console.log(JSON.stringify({ level: res.statusCode >= 500 ? 'error' : 'info', event: 'http_request', requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - started, ip: req.ip, timestamp: new Date().toISOString() })));
+    next();
+  });
   app.enableCors({ origin: process.env.WEB_URL!, credentials: true });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   const spec = new DocumentBuilder().setTitle('MyService API').setVersion('0.2').addBearerAuth().build();

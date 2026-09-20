@@ -20,7 +20,7 @@ async function tenant() {
   const id = randomUUID();
   const org = await db.organization.create({ data: { name: id, slug: id } });
   const branch = await db.branch.create({ data: { name: 'Main', organizationId: org.id } });
-  const plan = await db.plan.create({ data: { name: id, maxStaff: 5, features: { inventory: true } } });
+  const plan = await db.plan.create({ data: { name: id, maxStaff: 5, features: { inventory: true, staff_commission: true } } });
   await db.subscription.create({ data: { organizationId: org.id, planId: plan.id, status: 'ACTIVE', expiresAt: new Date(Date.now() + 86400000) } });
   const role = await db.role.create({ data: { organizationId: org.id, name: 'OWNER', systemKey: 'OWNER' } });
   for (const key of ['staff.view', 'staff.manage', 'customers.view', 'customers.edit', 'orders.view', 'orders.create', 'orders.assign', 'orders.change_status', 'orders.edit', 'diagnostics.create', 'inventory.view', 'inventory.manage', 'inventory.use', 'inventory.view_cost', 'payments.view', 'payments.create', 'payments.refund']) {
