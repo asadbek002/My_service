@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
-import { lockedOrder, orderScope, record, transition } from '../orders/orders.module';
+import { finalChecklist, lockedOrder, orderScope, record, transition } from '../orders/orders.module';
 import { PartDto, ReceiveDto, ReserveDto, PaymentDto, RefundDto, FinishDto, DeliverDto, RepairActionDto } from './repairs.dto';
 
 async function feature(tx: Prisma.TransactionClient, actor: Actor) {
@@ -140,7 +140,8 @@ class RepairsController {
     return this.db.$transaction(async tx => {
       const order = await lockedOrder(tx, actor, id);
       if (order.status !== 'IN_REPAIR') throw new ConflictException('Repair not in progress');
-      const required = ['Display','Touch','Camera','Microphone','Speaker','Charging','Wi-Fi','Bluetooth'];
+      const setting = await tx.organizationSetting.findUnique({ where: { organizationId_key: { organizationId: actor.organizationId, key: 'final_test_checklist' } } });
+      const required = finalChecklist(setting?.value);
       if (!required.every(check => dto.passedChecks.includes(check))) throw new ConflictException('Final checklist incomplete');
       const parts = await tx.orderPart.findMany({ where: { organizationId: actor.organizationId, orderId: id } });
       if (parts.some(p => p.status === 'RESERVED')) throw new ConflictException('Reserved parts must be used or released');

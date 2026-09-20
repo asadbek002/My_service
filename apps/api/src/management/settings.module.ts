@@ -51,7 +51,7 @@ class SettingsController{
  general(@CurrentActor()a:Actor){return this.db.organizationSetting.findMany({where:{organizationId:a.organizationId}})}
  @Put('general/:key')@Permissions('settings.manage')
  async setting(@CurrentActor()a:Actor,@Param('key')key:string,@Body()d:SettingsDto){
-  if(!['general','expense_categories','warranty_terms'].includes(key))throw new BadRequestException('Unknown setting');
+  if(!['general','expense_categories','warranty_terms','final_test_checklist'].includes(key))throw new BadRequestException('Unknown setting');
   if(JSON.stringify(d.value).length>16000)throw new BadRequestException('Setting too large');
   const result=await this.db.organizationSetting.upsert({where:{organizationId_key:{organizationId:a.organizationId,key}},create:{organizationId:a.organizationId,key,value:d.value as Prisma.InputJsonObject},update:{value:d.value as Prisma.InputJsonObject}});
   await this.db.auditLog.create({data:{organizationId:a.organizationId,actorId:a.userId,action:'SETTING_CHANGED',entityId:key}});return result;

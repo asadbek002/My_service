@@ -3,7 +3,7 @@ import { use, useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, apiBlob, uploadAttachment } from '../../lib/api';
-type Order = { id: string; number: string; status: string; complaint: string; total: string; quoteVersion: number; diagnosis: string | null; requiredWork: string | null; customer: { firstName: string; phone: string }; device: { brand: string; model: string }; history: { id: string; toStatus: string; comment: string; createdAt: string }[] };
+type Order = { id: string; number: string; status: string; complaint: string; total: string; quoteVersion: number; diagnosis: string | null; requiredWork: string | null; customer: { firstName: string; phone: string }; device: { brand: string; model: string }; history: { id: string; toStatus: string; comment: string; createdAt: string }[]; finalTestChecklist: string[] };
 export default function OrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params); const router = useRouter();
   const [order, setOrder] = useState<Order | null>(null);
@@ -53,7 +53,7 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
     {['WAITING_PART','IN_REPAIR'].includes(order.status) && can('inventory.use') && <section><h2>Buyurtma detallari</h2><form onSubmit={form(d => action('/parts', { partId: d.get('partId'), quantity: Number(d.get('quantity')) }))}><label>Detal<select name="partId" required>{parts.map(p => <option key={p.id} value={p.id}>{p.name} — {p.salePrice}</option>)}</select></label><label>Soni<input name="quantity" type="number" min="1" defaultValue="1" required /></label><button disabled={busy}>Rezerv qilish</button></form>
       {order.status === 'IN_REPAIR' && <form onSubmit={form(d => action('/parts/' + d.get('partId') + '/use'))}><h3>Detalni ishlatish</h3><label>Detal<select name="partId" required>{parts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><button disabled={busy}>Ishlatildi</button></form>}
     </section>}
-    {order.status === 'IN_REPAIR' && can('orders.change_status') && <section><h2>Yakuniy tekshiruv</h2><form onSubmit={form(d => action('/repair/finish', { passedChecks: d.getAll('checks') }))}>{['Display','Touch','Camera','Microphone','Speaker','Charging','Wi-Fi','Bluetooth'].map(check => <label className="check" key={check}><input type="checkbox" name="checks" value={check} required/>{check}</label>)}<button disabled={busy}>Ta’mir tugadi</button></form></section>}
+    {order.status === 'IN_REPAIR' && can('orders.change_status') && <section><h2>Yakuniy tekshiruv</h2><form onSubmit={form(d => action('/repair/finish', { passedChecks: d.getAll('checks') }))}>{(order.finalTestChecklist??['Display','Touch','Camera','Microphone','Speaker','Charging','Wi-Fi','Bluetooth']).map(check => <label className="check" key={check}><input type="checkbox" name="checks" value={check} required/>{check}</label>)}<button disabled={busy}>Ta’mir tugadi</button></form></section>}
     {can('payments.view') && <section><h2>To‘lovlar</h2><p>Qoldiq: <strong>{Number(balance).toLocaleString('uz-UZ')} so‘m</strong></p>{payments.map(p => <p key={p.id}>{p.kind} · {p.method} · {p.amount} so‘m</p>)}
       {can('payments.create') && !['DELIVERED','CANCELLED'].includes(order.status) && <form onSubmit={form(async d => {
         setBusy(true); setError('');

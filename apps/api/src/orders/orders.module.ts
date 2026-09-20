@@ -6,6 +6,12 @@ import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { CustomerDto, DeviceDto, OrderDto, AssignDto, StatusDto, DiagnosisDto, ApprovalDto } from './orders.dto';
 
+const defaultFinalChecks = ['Display','Touch','Camera','Microphone','Speaker','Charging','Wi-Fi','Bluetooth'];
+export function finalChecklist(value: Prisma.JsonValue | null | undefined) {
+  const object = value && typeof value === 'object' && !Array.isArray(value) ? value as Prisma.JsonObject : undefined;
+  const items = Array.isArray(object?.items) ? object.items.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map(item => item.trim().slice(0,100)).slice(0,30) : [];
+  return [...new Set([...defaultFinalChecks, ...items])];
+}
 export function orderScope(actor: Actor): Prisma.OrderWhereInput {
   return {
     organizationId: actor.organizationId,
@@ -96,7 +102,9 @@ class OrdersController {
   @Get(':id') @Permissions('orders.view')
   async get(@CurrentActor() actor: Actor, @Param('id') id: string) {
     const order = await this.db.order.findFirst({ where: { id, ...orderScope(actor) }, include: { customer: true, device: true, assignments: { select: { userId: true, task: true } }, history: { orderBy: { createdAt: 'asc' } } } });
-    if (!order) throw new NotFoundException(); return order;
+    if (!order) throw new NotFoundException();
+    const setting = await this.db.organizationSetting.findUnique({ where: { organizationId_key: { organizationId: actor.organizationId, key: 'final_test_checklist' } } });
+    return { ...order, finalTestChecklist: finalChecklist(setting?.value) };
   }
   @Post() @Permissions('orders.create')
   async create(@CurrentActor() actor: Actor, @Body() dto: OrderDto) {

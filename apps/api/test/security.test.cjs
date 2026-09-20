@@ -170,7 +170,9 @@ test('reservation race, cancellation release, repair, split payment/refund and d
   assert.equal(stock.onHand, 0); assert.equal(stock.reserved, 0);
   assert.equal(await db.inventoryMovement.count({ where: { orderId: loser, type: 'USED' } }), 1);
   assert.equal((await request('/orders/' + loser + '/repair/finish', { ...auth, method: 'POST', body: { passedChecks: ['Display'] } })).status, 409);
-  assert.equal((await request('/orders/' + loser + '/repair/finish', { ...auth, method: 'POST', body: { passedChecks: ['Display','Touch','Camera','Microphone','Speaker','Charging','Wi-Fi','Bluetooth'] } })).status, 201);
+  await db.organizationSetting.upsert({ where: { organizationId_key: { organizationId: a.org.id, key: 'final_test_checklist' } }, create: { organizationId: a.org.id, key: 'final_test_checklist', value: { items: ['Face ID'] } }, update: { value: { items: ['Face ID'] } } });
+  assert.equal((await request('/orders/' + loser + '/repair/finish', { ...auth, method: 'POST', body: { passedChecks: ['Display','Touch','Camera','Microphone','Speaker','Charging','Wi-Fi','Bluetooth'] } })).status, 409);
+  assert.equal((await request('/orders/' + loser + '/repair/finish', { ...auth, method: 'POST', body: { passedChecks: ['Display','Touch','Camera','Microphone','Speaker','Charging','Wi-Fi','Bluetooth','Face ID'] } })).status, 201);
   const delivery = { warrantyDays: 90, warrantyTerms: 'Display replacement warranty' };
   assert.equal((await request('/orders/' + loser + '/deliver', { ...auth, method: 'POST', body: delivery })).status, 409);
   const paymentBody = { amount: '300000', method: 'CASH', idempotencyKey: randomUUID() };
