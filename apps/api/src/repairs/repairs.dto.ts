@@ -12,6 +12,19 @@ export class ReceiveDto {
   @ApiProperty() @IsInt() @Min(1) @Max(1000000) quantity!: number;
   @ApiProperty() @IsString() @Length(3, 1000) reason!: string;
 }
+export class AdjustDto {
+  @ApiProperty() @IsString() @Length(1, 100) branchId!: string;
+  @ApiProperty() @IsString() @Length(1, 100) partId!: string;
+  @ApiProperty() @IsInt() @Min(-1000000) @Max(1000000) quantity!: number;
+  @ApiProperty() @IsString() @Length(3, 1000) reason!: string;
+}
+export class TransferDto {
+  @ApiProperty() @IsString() @Length(1, 100) fromBranchId!: string;
+  @ApiProperty() @IsString() @Length(1, 100) toBranchId!: string;
+  @ApiProperty() @IsString() @Length(1, 100) partId!: string;
+  @ApiProperty() @IsInt() @Min(1) @Max(1000000) quantity!: number;
+  @ApiProperty() @IsString() @Length(3, 1000) reason!: string;
+}
 export class ReserveDto {
   @ApiProperty() @IsString() @Length(1, 100) partId!: string;
   @ApiProperty() @IsInt() @Min(1) @Max(1000000) quantity!: number;

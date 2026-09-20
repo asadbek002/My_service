@@ -189,6 +189,18 @@ test('reservation race, cancellation release, repair, split payment/refund and d
   assert.ok(await db.warranty.findUnique({ where: { orderId: loser } }));
 });
 
+test('stock adjustment and branch transfer preserve reserved availability', async () => {
+  const auth = await login(a.user);
+  const part = await db.part.findFirst({ where: { organizationId: a.org.id } });
+  const destination = await db.branch.create({ data: { organizationId: a.org.id, name: 'Transfer ' + randomUUID() } });
+  assert.equal((await request('/inventory/adjust', { ...auth, method: 'POST', body: { branchId: a.branch.id, partId: part.id, quantity: 2, reason: 'Physical count correction' } })).status, 201);
+  assert.equal((await request('/inventory/transfer', { ...auth, method: 'POST', body: { fromBranchId: a.branch.id, toBranchId: destination.id, partId: part.id, quantity: 1, reason: 'Move to new branch' } })).status, 201);
+  const source = await db.stock.findUnique({ where: { organizationId_branchId_partId: { organizationId: a.org.id, branchId: a.branch.id, partId: part.id } } });
+  const target = await db.stock.findUnique({ where: { organizationId_branchId_partId: { organizationId: a.org.id, branchId: destination.id, partId: part.id } } });
+  assert.equal(source.onHand, 1); assert.equal(target.onHand, 1);
+  assert.equal((await request('/inventory/transfer', { ...auth, method: 'POST', body: { fromBranchId: a.branch.id, toBranchId: destination.id, partId: part.id, quantity: 2, reason: 'Too much stock' } })).status, 409);
+});
+
 test('public links mask personal data and approval tokens are version-bound and single-use', async () => {
   const auth = await login(a.user);
   const { createHash, randomBytes } = require('node:crypto');

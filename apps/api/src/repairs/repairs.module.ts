@@ -5,7 +5,7 @@ import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { finalChecklist, lockedOrder, orderScope, record, transition } from '../orders/orders.module';
-import { PartDto, ReceiveDto, ReserveDto, PaymentDto, RefundDto, FinishDto, DeliverDto, RepairActionDto } from './repairs.dto';
+import { PartDto, ReceiveDto, AdjustDto, TransferDto, ReserveDto, PaymentDto, RefundDto, FinishDto, DeliverDto, RepairActionDto } from './repairs.dto';
 
 async function feature(tx: Prisma.TransactionClient, actor: Actor) {
   const subscription = await tx.subscription.findUnique({ where: { organizationId: actor.organizationId }, include: { plan: true } });
@@ -57,6 +57,40 @@ class InventoryController {
       const stock = await tx.stock.upsert({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: dto.branchId, partId: dto.partId } }, create: { organizationId: actor.organizationId, branchId: dto.branchId, partId: dto.partId, onHand: dto.quantity }, update: { onHand: { increment: dto.quantity } } });
       await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: dto.branchId, partId: dto.partId, quantity: dto.quantity, type: 'IN', reason: dto.reason, actorId: actor.userId } });
       await record(tx, actor, dto.partId, 'STOCK_RECEIVED'); return stock;
+    });
+  }
+  @Post('adjust') @Permissions('inventory.manage')
+  async adjust(@CurrentActor() actor: Actor, @Body() dto: AdjustDto) {
+    if (dto.quantity === 0 || (!actor.owner && !actor.branchIds.includes(dto.branchId))) throw new NotFoundException();
+    return this.db.$transaction(async tx => {
+      await feature(tx, actor);
+      const branch = await tx.branch.findFirst({ where: { id: dto.branchId, organizationId: actor.organizationId } });
+      const part = await tx.part.findFirst({ where: { id: dto.partId, organizationId: actor.organizationId } });
+      if (!branch || !part) throw new NotFoundException();
+      const current = await stockLock(tx, actor.organizationId, dto.branchId, dto.partId);
+      const next = (current?.onHand ?? 0) + dto.quantity;
+      if (next < 0 || next < (current?.reserved ?? 0)) throw new ConflictException('Adjustment would consume reserved or unavailable stock');
+      const stock = await tx.stock.upsert({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: dto.branchId, partId: dto.partId } }, create: { organizationId: actor.organizationId, branchId: dto.branchId, partId: dto.partId, onHand: next }, update: { onHand: next } });
+      await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: dto.branchId, partId: dto.partId, quantity: dto.quantity, type: 'ADJUSTMENT', reason: dto.reason, actorId: actor.userId } });
+      await record(tx, actor, dto.partId, 'STOCK_ADJUSTED'); return stock;
+    });
+  }
+  @Post('transfer') @Permissions('inventory.manage')
+  async transfer(@CurrentActor() actor: Actor, @Body() dto: TransferDto) {
+    if (dto.fromBranchId === dto.toBranchId || (!actor.owner && (!actor.branchIds.includes(dto.fromBranchId) || !actor.branchIds.includes(dto.toBranchId)))) throw new NotFoundException();
+    return this.db.$transaction(async tx => {
+      await feature(tx, actor);
+      const branches = await tx.branch.count({ where: { organizationId: actor.organizationId, id: { in: [dto.fromBranchId, dto.toBranchId] } } });
+      const part = await tx.part.findFirst({ where: { id: dto.partId, organizationId: actor.organizationId } });
+      if (branches !== 2 || !part) throw new NotFoundException();
+      const ordered = [dto.fromBranchId, dto.toBranchId].sort();
+      for (const branchId of ordered) await stockLock(tx, actor.organizationId, branchId, dto.partId);
+      const source = await tx.stock.findUnique({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: dto.fromBranchId, partId: dto.partId } } });
+      if (!source || source.onHand - source.reserved < dto.quantity) throw new ConflictException('Insufficient free stock');
+      await tx.stock.update({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: dto.fromBranchId, partId: dto.partId } }, data: { onHand: { decrement: dto.quantity } } });
+      await tx.stock.upsert({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: dto.toBranchId, partId: dto.partId } }, create: { organizationId: actor.organizationId, branchId: dto.toBranchId, partId: dto.partId, onHand: dto.quantity }, update: { onHand: { increment: dto.quantity } } });
+      await tx.inventoryMovement.createMany({ data: [{ organizationId: actor.organizationId, branchId: dto.fromBranchId, partId: dto.partId, quantity: -dto.quantity, type: 'TRANSFER', reason: dto.reason + ' → ' + dto.toBranchId, actorId: actor.userId }, { organizationId: actor.organizationId, branchId: dto.toBranchId, partId: dto.partId, quantity: dto.quantity, type: 'TRANSFER', reason: dto.reason + ' ← ' + dto.fromBranchId, actorId: actor.userId }] });
+      await record(tx, actor, dto.partId, 'STOCK_TRANSFERRED'); return { ok: true };
     });
   }
 }
