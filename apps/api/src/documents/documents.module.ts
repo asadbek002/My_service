@@ -22,7 +22,7 @@ class ConfirmDto{@IsString()@Length(1,100)uploadId!:string}
 function storage(){
  const endpoint=process.env.S3_ENDPOINT,bucket=process.env.S3_BUCKET,accessKeyId=process.env.S3_ACCESS_KEY,secretAccessKey=process.env.S3_SECRET_KEY;
  if(!endpoint||!bucket||!accessKeyId||!secretAccessKey)throw new ConflictException('Storage not configured');
- return{bucket,client:new S3Client({endpoint,region:process.env.S3_REGION??'us-east-1',forcePathStyle:true,credentials:{accessKeyId,secretAccessKey}})};
+ return{bucket,client:new S3Client({endpoint,region:process.env.S3_REGION??'us-east-1',forcePathStyle:true,requestChecksumCalculation:'WHEN_REQUIRED',credentials:{accessKeyId,secretAccessKey}})};
 }
 @Controller('orders')
 class DocumentsController{
