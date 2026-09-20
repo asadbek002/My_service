@@ -33,3 +33,8 @@ export class DeliverDto {
   @ApiProperty() @IsInt() @Min(1) @Max(1095) warrantyDays!: number;
   @ApiProperty() @IsString() @Length(5, 4000) warrantyTerms!: string;
 }
+
+export class RepairActionDto {
+  @ApiProperty() @IsString() @Length(3,1000) description!: string;
+  @ApiProperty() @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) laborAmount!: string;
+}

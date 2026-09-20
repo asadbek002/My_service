@@ -227,3 +227,16 @@ test('signed upload verifies metadata and receipt is a PDF', async () => {
   const pdfBytes = Buffer.from(await pdf.arrayBuffer());
   assert.equal(pdfBytes.subarray(0,4).toString(), '%PDF');
 });
+
+test('technician compensation is snapshotted into commission on delivery', async () => {
+  const auth = await login(a.user);
+  const technician = await db.user.findFirst({ where: { organizationId: a.org.id, roles: { some: { role: { systemKey: 'TECHNICIAN' } } } } });
+  assert.ok(technician);
+  assert.equal((await request('/staff/' + technician.id + '/compensation', { ...auth, method: 'POST', body: { type: 'PERCENTAGE', salary: '0', percentage: '30', fixedPerJob: '0' } })).status, 201);
+  const order = await db.order.findFirst({ where: { organizationId: a.org.id, status: 'DELIVERED' } });
+  // Delivery already happened before the rule; entries are immutable and are not backfilled.
+  assert.equal(await db.commissionEntry.count({ where: { orderId: order.id } }), 0);
+  const rules = await db.technicianCompensation.findMany({ where: { organizationId: a.org.id, userId: technician.id, effectiveTo: null } });
+  assert.equal(rules.length, 1);
+  assert.equal(rules[0].percentage.toString(), '30');
+});

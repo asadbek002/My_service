@@ -1,8 +1,8 @@
 import { Module, Controller, Get, Post, Patch, Param, Body, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { ApiProperty, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { IsString, IsIn, Length, Matches, IsArray, ArrayNotEmpty, ArrayUnique } from 'class-validator';
 import * as argon2 from 'argon2';
-import { Prisma } from '@prisma/client';
 import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
@@ -14,6 +14,12 @@ class CreateStaffDto {
   @ApiProperty() @IsString() @Matches(/^\+[1-9][0-9]{7,14}$/) phone!: string;
   @ApiProperty() @IsIn(['ADMIN', 'MANAGER', 'TECHNICIAN']) role!: string;
   @ApiProperty({ type: [String] }) @IsArray() @ArrayNotEmpty() @ArrayUnique() @IsString({ each: true }) branchIds!: string[];
+}
+class CompensationDto {
+  @ApiProperty() @IsIn(['SALARY','PERCENTAGE','FIXED_PER_JOB','SALARY_PLUS_PERCENTAGE']) type!: string;
+  @ApiProperty() @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) salary!: string;
+  @ApiProperty() @IsString() @Matches(/^\d{1,3}(\.\d{1,2})?$/) percentage!: string;
+  @ApiProperty() @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) fixedPerJob!: string;
 }
 class StatusDto {
   @ApiProperty() @IsIn(['ACTIVE', 'SUSPENDED', 'ARCHIVED']) status!: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
@@ -62,6 +68,22 @@ class StaffController {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Login unavailable');
       throw error;
     }
+  }
+  @Post(':id/compensation') @Permissions('staff.manage')
+  async compensation(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: CompensationDto) {
+    if (!actor.owner) throw new ForbiddenException();
+    const percentage = new Prisma.Decimal(dto.percentage);
+    if (percentage.lessThan(0) || percentage.greaterThan(100)) throw new ConflictException('Percentage must be 0..100');
+    return this.db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${id} AND "organizationId" = ${actor.organizationId} FOR UPDATE`;
+      const user = await tx.user.findFirst({ where: { id, organizationId: actor.organizationId, roles: { some: { role: { systemKey: 'TECHNICIAN' } } } } });
+      if (!user) throw new NotFoundException('Technician not found');
+      const now = new Date();
+      await tx.technicianCompensation.updateMany({ where: { organizationId: actor.organizationId, userId: id, effectiveTo: null }, data: { effectiveTo: now } });
+      const rule = await tx.technicianCompensation.create({ data: { organizationId: actor.organizationId, userId: id, type: dto.type, salary: dto.salary, percentage, fixedPerJob: dto.fixedPerJob, effectiveFrom: now } });
+      await tx.auditLog.create({ data: { organizationId: actor.organizationId, actorId: actor.userId, action: 'COMPENSATION_CHANGED', entityId: id } });
+      return rule;
+    });
   }
   @Patch(':id/status') @Permissions('staff.manage')
   async status(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: StatusDto) {

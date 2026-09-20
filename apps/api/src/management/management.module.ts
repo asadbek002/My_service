@@ -80,8 +80,9 @@ class ReportsController {
     const users = await this.db.user.findMany({ where: { organizationId: a.organizationId, ...(!a.owner ? { branches: { some: { branchId: { in: a.branchIds } } } } : {}), roles: { some: { role: { systemKey: 'TECHNICIAN' } } } }, select: { id: true, firstName: true } });
     return Promise.all(users.map(async user => {
       const assignments = await this.db.orderAssignment.findMany({ where: { organizationId: a.organizationId, userId: user.id, order: orderScope(a) }, include: { order: { select: { status: true } } } });
+      const commission = await this.db.commissionEntry.aggregate({ where: { organizationId: a.organizationId, userId: user.id, order: orderScope(a) }, _sum: { amount: true } });
       const sessions = await this.db.repairSession.findMany({ where: { organizationId: a.organizationId, userId: user.id, endedAt: { not: null }, order: orderScope(a) } });
-      return { ...user, assigned: assignments.length, completed: assignments.filter(x => x.order.status === 'DELIVERED').length, repairSeconds: sessions.reduce((n,s) => n + Math.max(0, (s.endedAt!.getTime() - s.startedAt.getTime()) / 1000),0) };
+      return { ...user, assigned: assignments.length, completed: assignments.filter(x => x.order.status === 'DELIVERED').length, repairSeconds: sessions.reduce((n,s) => n + Math.max(0, (s.endedAt!.getTime() - s.startedAt.getTime()) / 1000),0), commission: commission._sum.amount ?? 0 };
     }));
   }
 }

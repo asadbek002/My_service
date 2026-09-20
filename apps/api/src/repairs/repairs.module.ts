@@ -5,7 +5,7 @@ import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { lockedOrder, orderScope, record, transition } from '../orders/orders.module';
-import { PartDto, ReceiveDto, ReserveDto, PaymentDto, RefundDto, FinishDto, DeliverDto } from './repairs.dto';
+import { PartDto, ReceiveDto, ReserveDto, PaymentDto, RefundDto, FinishDto, DeliverDto, RepairActionDto } from './repairs.dto';
 
 async function feature(tx: Prisma.TransactionClient, actor: Actor) {
   const subscription = await tx.subscription.findUnique({ where: { organizationId: actor.organizationId }, include: { plan: true } });
@@ -124,6 +124,17 @@ class RepairsController {
       await record(tx, actor, id, 'REPAIR_PAUSED'); return { ok: true };
     });
   }
+  @Post(':id/repair/actions') @Permissions('orders.change_status')
+  action(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: RepairActionDto) {
+    return this.db.$transaction(async tx => {
+      const order = await lockedOrder(tx, actor, id);
+      if (order.status !== 'IN_REPAIR') throw new ConflictException('Repair not in progress');
+      const assigned = await tx.orderAssignment.findFirst({ where: { organizationId: actor.organizationId, orderId: id, userId: actor.userId } });
+      if (!actor.owner && !actor.permissions.includes('orders.assign') && !assigned) throw new ForbiddenException('Not assigned');
+      const action = await tx.repairAction.create({ data: { organizationId: actor.organizationId, orderId: id, userId: actor.userId, description: dto.description, laborAmount: dto.laborAmount } });
+      await record(tx, actor, id, 'REPAIR_ACTION_COMPLETED'); return action;
+    });
+  }
   @Post(':id/repair/finish') @Permissions('orders.change_status')
   finish(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: FinishDto) {
     return this.db.$transaction(async tx => {
@@ -135,6 +146,11 @@ class RepairsController {
       if (parts.some(p => p.status === 'RESERVED')) throw new ConflictException('Reserved parts must be used or released');
       const usedTotal = parts.filter(p => p.status === 'USED').reduce((s, p) => s.plus(p.unitPrice.mul(p.quantity)), new Prisma.Decimal(0));
       if (!usedTotal.equals(order.partsTotal)) throw new ConflictException('Used parts must match approved quote');
+      const actions = await tx.repairAction.findMany({ where: { organizationId: actor.organizationId, orderId: id } });
+      if (actions.length) {
+        const actionLabor = actions.reduce((sum, action) => sum.plus(action.laborAmount), new Prisma.Decimal(0));
+        if (!actionLabor.equals(order.labor)) throw new ConflictException('Repair action labor must match approved labor');
+      }
       const sessions = await tx.repairSession.count({ where: { organizationId: actor.organizationId, orderId: id } });
       if (!sessions) throw new ConflictException('Start a repair session first');
       await tx.repairSession.updateMany({ where: { organizationId: actor.organizationId, orderId: id, endedAt: null }, data: { endedAt: new Date() } });
@@ -174,6 +190,17 @@ class RepairsController {
       if (order.status !== 'READY' || !order.finalTest) throw new ConflictException('Final test and READY required');
       if (!(await balance(tx, actor.organizationId, id, order.total)).isZero()) throw new ConflictException('Outstanding balance');
       const startDate = new Date();
+      const actions = await tx.repairAction.findMany({ where: { organizationId: actor.organizationId, orderId: id } });
+      const perUser = new Map<string, Prisma.Decimal>();
+      for (const action of actions) perUser.set(action.userId, (perUser.get(action.userId) ?? new Prisma.Decimal(0)).plus(action.laborAmount));
+      for (const [userId, labor] of perUser) {
+        const rule = await tx.technicianCompensation.findFirst({ where: { organizationId: actor.organizationId, userId, effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] }, orderBy: { effectiveFrom: 'desc' } });
+        if (!rule || rule.type === 'SALARY') continue;
+        let amount = new Prisma.Decimal(0);
+        if (['PERCENTAGE','SALARY_PLUS_PERCENTAGE'].includes(rule.type) && rule.percentage) amount = amount.plus(labor.mul(rule.percentage).div(100));
+        if (rule.type === 'FIXED_PER_JOB' && rule.fixedPerJob) amount = amount.plus(rule.fixedPerJob);
+        await tx.commissionEntry.create({ data: { organizationId: actor.organizationId, orderId: id, userId, amount, ruleSnapshot: { type: rule.type, percentage: rule.percentage?.toString() ?? null, fixedPerJob: rule.fixedPerJob?.toString() ?? null, labor: labor.toString() } } });
+      }
       const warranty = await tx.warranty.create({ data: { organizationId: actor.organizationId, orderId: id, startDate, endDate: new Date(startDate.getTime() + dto.warrantyDays * 86400000), terms: dto.warrantyTerms } });
       await transition(tx, actor, order, 'DELIVERED', 'Device delivered');
       await record(tx, actor, warranty.id, 'WARRANTY_CREATED'); return warranty;
