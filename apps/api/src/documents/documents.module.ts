@@ -1,4 +1,4 @@
-import {BadRequestException,Body,ConflictException,Controller,Get,Module,NotFoundException,Param,Post,Res}from'@nestjs/common';
+import {BadRequestException,Body,ConflictException,Controller,Get,HttpCode,Module,NotFoundException,Param,Post,Res}from'@nestjs/common';
 import{IsIn,IsInt,IsString,Length,Matches,Max,Min}from'class-validator';
 import{HeadObjectCommand,PutObjectCommand,S3Client}from'@aws-sdk/client-s3';
 import{getSignedUrl}from'@aws-sdk/s3-request-presigner';
@@ -54,7 +54,7 @@ class DocumentsController{
   if(!await this.db.order.findFirst({where:{id,...orderScope(a)}}))throw new NotFoundException();
   return this.db.attachment.findMany({where:{organizationId:a.organizationId,orderId:id},select:{id:true,kind:true,contentType:true,size:true,createdAt:true}});
  }
- @Post(':id/documents/:type')@Permissions('orders.view')
+ @Post(':id/documents/:type')@HttpCode(200)@Permissions('orders.view')
  async document(@CurrentActor()a:Actor,@Param('id')id:string,@Param('type')type:string,@Res()res:Response){
   if(!['receipt','repair','payment','warranty'].includes(type))throw new NotFoundException();
   const order=await this.db.order.findFirst({where:{id,...orderScope(a)},include:{customer:true,device:true,payments:true,warranty:true}});
