@@ -21,6 +21,11 @@ import { HealthController } from './health.controller';
         for (const key of ['DATABASE_URL', 'REDIS_URL', 'JWT_ACCESS_SECRET', 'WEB_URL']) {
           if (typeof config[key] !== 'string' || !config[key]) throw new Error(key + ' is required');
         }
+        if (config.NODE_ENV === 'production') {
+          for (const key of ['S3_ENDPOINT','S3_BUCKET','S3_ACCESS_KEY','S3_SECRET_KEY']) {
+            if (typeof config[key] !== 'string' || !config[key]) throw new Error(key + ' is required in production');
+          }
+        }
         const secret = String(config.JWT_ACCESS_SECRET);
         if (secret.length < 32 || secret.startsWith('replace')) throw new Error('JWT_ACCESS_SECRET must be a random secret of at least 32 characters');
         return config;

@@ -66,7 +66,7 @@ class DocumentsController{
   const qrData=await QRCode.toDataURL(process.env.WEB_URL+'/track/'+track,{width:180,margin:1});const qr=await pdf.embedPng(qrData);
   page.drawText('MY SERVICE',{x:34,y:548,size:22,font:bold,color:rgb(.08,.08,.08)});page.drawText(type.toUpperCase()+' DOCUMENT',{x:34,y:524,size:9,font});
   const rows=[['Order',snapshot.number],['Customer',snapshot.customer],['Phone',snapshot.phone],['Device',snapshot.device],['Status',snapshot.status],['Total',snapshot.total+' UZS'],['Paid',snapshot.paid+' UZS'],['Balance',snapshot.balance+' UZS'],...(snapshot.warrantyEnd?[['Warranty end',snapshot.warrantyEnd.slice(0,10)]]:[])];
-  rows.forEach(([k,v],i)=>{const y=480-i*27;page.drawText(k,{x:34,y,size:9,font,color:rgb(.4,.4,.4)});page.drawText(v,{x:145,y,size:10,font:bold});});
+  for(const[i,row]of rows.entries()){const k=row[0],v=row[1];if(!k||!v)continue;const y=480-i*27;page.drawText(k,{x:34,y,size:9,font,color:rgb(.4,.4,.4)});page.drawText(v,{x:145,y,size:10,font:bold});}
   page.drawImage(qr,{x:250,y:40,width:130,height:130});page.drawText('Status tracking',{x:270,y:26,size:8,font});
   await this.db.document.create({data:{organizationId:a.organizationId,orderId:id,type:type.toUpperCase(),snapshot,createdBy:a.userId}});
   const bytes=await pdf.save();res.setHeader('Content-Type','application/pdf');res.setHeader('Content-Disposition','inline; filename="'+order.number+'-'+type+'.pdf"');res.setHeader('Cache-Control','private, no-store');res.send(Buffer.from(bytes));
