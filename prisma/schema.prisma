@@ -257,6 +257,8 @@ model Order {
   warranty Warranty?
   parentOrderId String?
   warrantyClaims WarrantyClaim[]
+  attachments Attachment[]
+  documents Document[]
   @@unique([organizationId, id])
   @@unique([organizationId, number])
   @@index([organizationId, branchId, status])
@@ -473,4 +475,44 @@ model PlatformSession {
   tokenHash String @unique
   expiresAt DateTime
   admin PlatformAdmin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+}
+
+model Attachment {
+  id String @id @default(cuid())
+  organizationId String
+  orderId String
+  objectKey String @unique
+  kind String
+  contentType String
+  size Int
+  sha256 String
+  uploadedBy String
+  createdAt DateTime @default(now())
+  order Order @relation(fields:[organizationId,orderId],references:[organizationId,id],onDelete:Restrict)
+  @@index([organizationId,orderId])
+}
+model PendingUpload {
+  id String @id @default(cuid())
+  organizationId String
+  orderId String
+  objectKey String @unique
+  kind String
+  contentType String
+  size Int
+  sha256 String
+  uploadedBy String
+  expiresAt DateTime
+  @@index([organizationId,orderId])
+}
+model Document {
+  id String @id @default(cuid())
+  organizationId String
+  orderId String
+  type String
+  objectKey String? @unique
+  snapshot Json
+  createdAt DateTime @default(now())
+  createdBy String
+  order Order @relation(fields:[organizationId,orderId],references:[organizationId,id],onDelete:Restrict)
+  @@index([organizationId,orderId,type])
 }

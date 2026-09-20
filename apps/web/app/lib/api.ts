@@ -36,3 +36,18 @@ export async function logout() {
   try { await api('/auth/logout', { method: 'POST' }); } finally { accessToken = null; }
 }
 export function clearAccess() { accessToken = null; }
+
+export async function apiBlob(path:string){
+ if(!accessToken&&!await refresh())throw new Error('SESSION_EXPIRED');
+ const send=()=>fetch(base+path,{credentials:'include',cache:'no-store',headers:{Authorization:'Bearer '+accessToken}});
+ let response=await send();if(response.status===401&&await refresh())response=await send();
+ if(!response.ok)throw new Error('Hujjat yaratilmadi');return response.blob();
+}
+export async function uploadAttachment(orderId:string,file:File,kind:string){
+ const digest=await crypto.subtle.digest('SHA-256',await file.arrayBuffer());
+ const sha256=Array.from(new Uint8Array(digest)).map(x=>x.toString(16).padStart(2,'0')).join('');
+ const signed=await api<{uploadId:string;url:string;headers:Record<string,string>}>('/orders/'+orderId+'/attachments/presign',{method:'POST',body:JSON.stringify({kind,contentType:file.type,size:file.size,sha256})});
+ const uploaded=await fetch(signed.url,{method:'PUT',headers:signed.headers,body:file});
+ if(!uploaded.ok)throw new Error('Rasm storage ga yuklanmadi');
+ return api('/orders/'+orderId+'/attachments/confirm',{method:'POST',body:JSON.stringify({uploadId:signed.uploadId})});
+}

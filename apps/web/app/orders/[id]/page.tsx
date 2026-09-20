@@ -2,7 +2,7 @@
 import { use, useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { api } from '../../lib/api';
+import { api, apiBlob, uploadAttachment } from '../../lib/api';
 type Order = { id: string; number: string; status: string; complaint: string; total: string; quoteVersion: number; diagnosis: string | null; requiredWork: string | null; customer: { firstName: string; phone: string }; device: { brand: string; model: string }; history: { id: string; toStatus: string; comment: string; createdAt: string }[] };
 export default function OrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params); const router = useRouter();
@@ -12,6 +12,7 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
   const [parts, setParts] = useState<{ id: string; name: string; salePrice: string }[]>([]);
   const [staff, setStaff] = useState<{ id: string; firstName: string }[]>([]);
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  const [attachments, setAttachments] = useState<{ id:string;kind:string;size:number }[]>([]);
   const [links, setLinks] = useState<{ tracking: string; telegram: string | null } | null>(null);
   const [paymentKey, setPaymentKey] = useState('');
   const [payments, setPayments] = useState<{ id: string; kind: string; amount: string; method: string }[]>([]);
@@ -20,7 +21,7 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
   function fail(e: unknown) { if (e instanceof Error && e.message === 'SESSION_EXPIRED') router.replace('/login'); else setError(e instanceof Error ? e.message : 'So‘rov bajarilmadi'); }
   async function load() {
     const me = await api<{ permissions: string[] }>('/auth/me'); setPermissions(me.permissions);
-    setOrder(await api<Order>(path));
+    setOrder(await api<Order>(path)); try { setAttachments(await api(path + '/attachments')); } catch {}
     if (me.permissions.includes('payments.view')) { const p = await api<{ balance: string; entries: typeof payments }>(path + '/payments'); setBalance(p.balance); setPayments(p.entries); }
     if (me.permissions.includes('inventory.view')) { try { setParts(await api<typeof parts>('/inventory')); } catch {} }
     if (me.permissions.includes('orders.assign')) setStaff(await api<typeof staff>('/orders/technicians'));
@@ -37,8 +38,9 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
   return <main className="page"><header><Link href="/orders">← Buyurtmalar</Link><span className="brand">MY SERVICE</span></header>
     <div className="title-row"><div><p className="eyebrow">{order.status}</p><h1>{order.number}</h1></div><strong>{Number(order.total).toLocaleString('uz-UZ')} so‘m</strong></div>
     {error && <p role="alert" className="error">{error}</p>}
+    <section style={{marginBottom:24}}><h2>Hujjatlar</h2><div className="actions">{['receipt','repair','payment','warranty'].map(type=><button className="secondary" key={type} onClick={async()=>{try{const blob=await apiBlob(path+'/documents/'+type);window.open(URL.createObjectURL(blob),'_blank','noopener,noreferrer')}catch(e){fail(e)}}}>{type}</button>)}</div></section>
     {can('orders.edit') && <section style={{ marginBottom: 24 }}><button disabled={busy} onClick={async () => { setBusy(true); try { setLinks(await api(path + '/links', { method: 'POST' })); } catch(e) { fail(e); } finally { setBusy(false); } }}>Mijoz uchun havolalar</button>{links && <><p><a href={links.tracking} target="_blank" rel="noreferrer">Buyurtmani kuzatish</a></p>{links.telegram && <p><a href={links.telegram} target="_blank" rel="noreferrer">Telegramni ulash</a></p>}</>}</section>}
-    <div className="detail-grid"><section><h2>{order.device.brand} {order.device.model}</h2><p>{order.customer.firstName} · {order.customer.phone}</p><p className="muted">{order.complaint}</p>
+    <div className="detail-grid"><section><h2>Qurilma rasmlari</h2><p className="muted">JPEG, PNG yoki WebP; 10 MB gacha.</p><input type="file" accept="image/jpeg,image/png,image/webp" onChange={async e=>{const file=e.target.files?.[0];if(!file)return;setBusy(true);try{await uploadAttachment(id,file,'DAMAGE');await load()}catch(e){fail(e)}finally{setBusy(false)}}}/>{attachments.map(x=><p key={x.id}>{x.kind} · {Math.round(x.size/1024)} KB</p>)}</section><section><h2>{order.device.brand} {order.device.model}</h2><p>{order.customer.firstName} · {order.customer.phone}</p><p className="muted">{order.complaint}</p>
       {order.diagnosis && <><h3>Diagnostika</h3><p>{order.diagnosis}</p><p>{order.requiredWork}</p></>}
       <div className="actions">{order.status === 'RECEIVED' && can('orders.change_status') && <button disabled={busy} onClick={() => action('/status', { status: 'DIAGNOSING', comment: 'Diagnostika boshlandi' }, 'PATCH')}>Diagnostikani boshlash</button>}
       {['WAITING_PART','IN_REPAIR'].includes(order.status) && can('orders.change_status') && <><button disabled={busy} onClick={() => action('/repair/start')}>Ishni boshlash / davom etish</button><button disabled={busy} className="secondary" onClick={() => action('/repair/pause')}>Tanaffus</button></>}</div>
