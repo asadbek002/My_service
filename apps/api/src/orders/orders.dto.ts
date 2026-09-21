@@ -2,7 +2,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, Length, Matches, IsArray, ArrayMaxSize, IsInt, Min, IsIn, IsBoolean } from 'class-validator';
 export class CustomerDto {
   @ApiProperty() @IsString() @Length(1, 100) firstName!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 100) lastName?: string;
   @ApiProperty() @IsString() @Matches(/^\+[1-9][0-9]{7,14}$/) phone!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Matches(/^@?[A-Za-z0-9_]{5,32}$/) telegramUsername?: string;
+  @ApiPropertyOptional() @IsOptional() @IsIn(['AUTO','TELEGRAM','SMS']) notificationPreference?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(0, 2000) notes?: string;
 }
 export class DeviceDto {

@@ -1,0 +1,5 @@
+ALTER TABLE "Customer" ADD COLUMN "lastName" TEXT;
+ALTER TABLE "Customer" ADD COLUMN "telegramUsername" TEXT;
+ALTER TABLE "Customer" ADD COLUMN "telegramUserId" TEXT;
+ALTER TABLE "Customer" ADD COLUMN "notificationPreference" TEXT NOT NULL DEFAULT 'AUTO';
+ALTER TABLE "Customer" ADD COLUMN "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;

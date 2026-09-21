@@ -2,7 +2,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { api } from '../lib/api';
+import { api, uploadAttachment } from '../lib/api';
 type Order = { id: string; number: string; status: string; total: string; customer: { firstName: string; phone: string }; device: { brand: string; model: string } };
 type Customer = { id: string; firstName: string; phone: string };
 type Branch = { id: string; name: string };
@@ -17,6 +17,7 @@ export default function Orders() {
   const [showNew, setShowNew] = useState(false);
   const [customerId, setCustomerId] = useState('');
   const [deviceId, setDeviceId] = useState('');
+  const [photos, setPhotos] = useState<File[]>([]);
   function fail(e: unknown) { if (e instanceof Error && e.message === 'SESSION_EXPIRED') router.replace('/login'); else setError(e instanceof Error ? e.message : 'Ulanishda xato'); }
   async function load() {
     const me = await api<{ permissions: string[] }>('/auth/me'); setPermissions(me.permissions);
@@ -26,18 +27,18 @@ export default function Orders() {
   useEffect(() => { load().catch(fail); }, []);
   async function customer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(''); const data = new FormData(event.currentTarget);
-    try { const c = await api<Customer>('/customers', { method: 'POST', body: JSON.stringify({ firstName: data.get('firstName'), phone: data.get('phone') }) }); setCustomers(old => [c, ...old]); setCustomerId(c.id); }
+    try { const c = await api<Customer>('/customers', { method: 'POST', body: JSON.stringify({ firstName: data.get('firstName'), ...(data.get('lastName') ? { lastName: data.get('lastName') } : {}), phone: data.get('phone'), ...(data.get('telegramUsername') ? { telegramUsername: data.get('telegramUsername') } : {}), notificationPreference: data.get('notificationPreference') }) }); setCustomers(old => [c, ...old]); setCustomerId(c.id); }
     catch(e) { fail(e); } finally { setBusy(false); }
   }
   async function device(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(''); const data = new FormData(event.currentTarget);
-    try { const d = await api<{ id: string }>('/devices', { method: 'POST', body: JSON.stringify({ customerId, category: data.get('category'), brand: data.get('brand'), model: data.get('model'), ...(data.get('imei') ? { imei: data.get('imei') } : {}) }) }); setDeviceId(d.id); }
+    try { const d = await api<{ id: string }>('/devices', { method: 'POST', body: JSON.stringify({ customerId, category: data.get('category'), brand: data.get('brand'), model: data.get('model'), ...(data.get('imei') ? { imei: data.get('imei') } : {}), ...(data.get('serialNumber') ? { serialNumber: data.get('serialNumber') } : {}), ...(data.get('color') ? { color: data.get('color') } : {}) }) }); setDeviceId(d.id); }
     catch(e) { fail(e); } finally { setBusy(false); }
   }
   async function receive(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(''); const data = new FormData(event.currentTarget);
     if (!navigator.onLine) { setError('Internet yo‘q. Qabul saqlanmadi.'); setBusy(false); return; }
-    try { const o = await api<{ id: string }>('/orders', { method: 'POST', body: JSON.stringify({ customerId, deviceId, branchId: data.get('branchId'), complaint: data.get('complaint'), accessories: String(data.get('accessories')).split(',').map(s => s.trim()).filter(Boolean), condition: String(data.get('condition')).split(',').map(s => s.trim()).filter(Boolean) }) }); router.push('/orders/' + o.id); }
+    try { const o = await api<{ id: string }>('/orders', { method: 'POST', body: JSON.stringify({ customerId, deviceId, branchId: data.get('branchId'), complaint: data.get('complaint'), accessories: String(data.get('accessories')).split(',').map(s => s.trim()).filter(Boolean), condition: String(data.get('condition')).split(',').map(s => s.trim()).filter(Boolean) }) }); const kinds=['FRONT','BACK','LEFT','RIGHT','DAMAGE','OTHER']; for(let i=0;i<photos.length;i++) await uploadAttachment(o.id,photos[i],kinds[Math.min(i,kinds.length-1)]); router.push('/orders/' + o.id); }
     catch(e) { fail(e); } finally { setBusy(false); }
   }
   return <main className="page"><header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/dashboard">Bosh sahifa</Link></header>
@@ -45,9 +46,9 @@ export default function Orders() {
     {error && <p role="alert" className="error">{error}</p>}
     {showNew && <div className="intake-grid">
       <section><h2>1. Mijoz</h2><label>Mavjud mijoz<select value={customerId} onChange={e => { setCustomerId(e.target.value); setDeviceId(''); }}><option value="">Tanlang</option>{customers.map(c => <option key={c.id} value={c.id}>{c.firstName} — {c.phone}</option>)}</select></label>
-      <hr/><form onSubmit={customer}><label>Ism<input name="firstName" required /></label><label>Telefon<input name="phone" type="tel" required placeholder="+998901234567" /></label><button disabled={busy}>Yangi mijoz yaratish</button></form></section>
-      <section><h2>2. Qurilma</h2>{deviceId ? <p className="success">Qurilma saqlandi.</p> : <form onSubmit={device}><label>Kategoriya<input name="category" defaultValue="Telefon" required /></label><label>Brend<input name="brand" required /></label><label>Model<input name="model" required /></label><label>IMEI<input name="imei" /></label><button disabled={busy || !customerId}>Qurilmani saqlash</button></form>}</section>
-      <section><h2>3. Qabul tafsilotlari</h2><form onSubmit={receive}><label>Filial<select name="branchId" required>{branches.map(b => <option value={b.id} key={b.id}>{b.name}</option>)}</select></label><label>Mijoz shikoyati<textarea name="complaint" required maxLength={4000}/></label><label>Komplektatsiya<input name="accessories" placeholder="Telefon, kabel, chexol" /></label><label>Tashqi holat<input name="condition" placeholder="Ekran singan, tirnalgan" /></label><button disabled={busy || !deviceId}>Qabul qilish</button></form></section>
+      <hr/><form onSubmit={customer}><label>Ism<input name="firstName" required /></label><label>Familiya<input name="lastName" /></label><label>Telefon<input name="phone" type="tel" required placeholder="+998901234567" /></label><label>Telegram username<input name="telegramUsername" placeholder="@username" /></label><label>Xabar kanali<select name="notificationPreference"><option value="AUTO">Avtomatik</option><option value="TELEGRAM">Telegram</option><option value="SMS">SMS</option></select></label><button disabled={busy}>Yangi mijoz yaratish</button></form></section>
+      <section><h2>2. Qurilma</h2>{deviceId ? <p className="success">Qurilma saqlandi.</p> : <form onSubmit={device}><label>Kategoriya<input name="category" defaultValue="Telefon" required /></label><label>Brend<input name="brand" required /></label><label>Model<input name="model" required /></label><label>IMEI<input name="imei" /></label><label>Serial raqam<input name="serialNumber" /></label><label>Rang<input name="color" /></label><button disabled={busy || !customerId}>Qurilmani saqlash</button></form>}</section>
+      <section><h2>3. Qabul tafsilotlari</h2><form onSubmit={receive}><label>Filial<select name="branchId" required>{branches.map(b => <option value={b.id} key={b.id}>{b.name}</option>)}</select></label><label>Mijoz shikoyati<textarea name="complaint" required maxLength={4000}/></label><label>Komplektatsiya<input name="accessories" placeholder="Telefon, kabel, chexol" /></label><label>Tashqi holat<input name="condition" placeholder="Ekran singan, tirnalgan" /></label><label>Holat rasmlari<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e=>setPhotos(Array.from(e.target.files??[]).slice(0,6))}/><small>{photos.length} ta rasm tanlandi; qabuldan keyin private storage’ga yuklanadi.</small></label><button disabled={busy || !deviceId}>Qabul qilish</button></form></section>
     </div>}
     <section><div className="table-scroll"><table><thead><tr><th>Raqam</th><th>Mijoz</th><th>Qurilma</th><th>Holat</th><th>Jami</th></tr></thead><tbody>{orders.map(o => <tr key={o.id}><td><Link href={'/orders/' + o.id}>{o.number}</Link></td><td>{o.customer.firstName}<small>{o.customer.phone}</small></td><td>{o.device.brand} {o.device.model}</td><td>{o.status}</td><td>{Number(o.total).toLocaleString('uz-UZ')} so‘m</td></tr>)}</tbody></table>{orders.length === 0 && <p className="muted">Hozircha buyurtmalar yo‘q.</p>}</div></section>
   </main>;

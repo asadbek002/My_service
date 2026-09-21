@@ -51,7 +51,7 @@ class CustomersController {
   async create(@CurrentActor() actor: Actor, @Body() dto: CustomerDto) {
     try {
       return await this.db.$transaction(async tx => {
-        const c = await tx.customer.create({ data: { organizationId: actor.organizationId, firstName: dto.firstName, phone: dto.phone, ...(dto.notes !== undefined ? { notes: dto.notes } : {}) } });
+        const c = await tx.customer.create({ data: { organizationId: actor.organizationId, firstName: dto.firstName, phone: dto.phone, ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}), ...(dto.telegramUsername !== undefined ? { telegramUsername: dto.telegramUsername.replace(/^@/,'') } : {}), ...(dto.notificationPreference !== undefined ? { notificationPreference: dto.notificationPreference } : {}), ...(dto.notes !== undefined ? { notes: dto.notes } : {}) } });
         await record(tx, actor, c.id, 'CUSTOMER_CREATED'); return c;
       });
     } catch (e) {

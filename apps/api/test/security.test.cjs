@@ -113,9 +113,10 @@ test('logout revokes server session', async () => {
 
 test('intake, concurrent numbering, tenant isolation and versioned approval', async () => {
   const auth = await login(a.user);
-  const customerResponse = await request('/customers', { ...auth, method: 'POST', body: { firstName: 'Ali', phone: '+998900000001' } });
+  const customerResponse = await request('/customers', { ...auth, method: 'POST', body: { firstName: 'Ali', lastName: 'Valiyev', phone: '+998900000001', telegramUsername: '@ali_test', notificationPreference: 'AUTO' } });
   assert.equal(customerResponse.status, 201);
   const customer = await customerResponse.json();
+  assert.equal(customer.lastName, 'Valiyev'); assert.equal(customer.telegramUsername, 'ali_test');
   const deviceResponse = await request('/devices', { ...auth, method: 'POST', body: { customerId: customer.id, category: 'Phone', brand: 'Apple', model: 'iPhone 15' } });
   assert.equal(deviceResponse.status, 201);
   const device = await deviceResponse.json();
