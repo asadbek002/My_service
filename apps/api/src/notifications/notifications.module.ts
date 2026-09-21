@@ -16,7 +16,7 @@ const labels: Record<string,string> = {
   ORDER_DELIVERED: 'Qurilmangiz topshirildi.',
 };
 @Injectable()
-class Notifications implements OnModuleInit, OnModuleDestroy {
+export class Notifications implements OnModuleInit, OnModuleDestroy {
   private queue?: Queue;
   private worker?: Worker;
   private timer?: ReturnType<typeof setInterval>;
@@ -71,7 +71,9 @@ class Notifications implements OnModuleInit, OnModuleDestroy {
     let channel = 'SMS';
     try {
       if (order.customer.telegramChatId && process.env.TELEGRAM_BOT_TOKEN && flags?.telegram) {
-        const response = await fetch('https://api.telegram.org/bot' + process.env.TELEGRAM_BOT_TOKEN + '/sendMessage', {
+        const telegramBase = process.env.NODE_ENV === 'test' && process.env.TELEGRAM_API_URL ? new URL(process.env.TELEGRAM_API_URL) : new URL('https://api.telegram.org/');
+        const telegramUrl = new URL('bot' + process.env.TELEGRAM_BOT_TOKEN + '/sendMessage', telegramBase);
+        const response = await fetch(telegramUrl, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(10000),
           body: JSON.stringify({ chat_id: order.customer.telegramChatId, text: message('TELEGRAM'), ...(approval ? { reply_markup: { inline_keyboard: [[{ text: 'Narxni ko‘rish va tasdiqlash', url: link }]] } } : {}) }),
         });
@@ -85,7 +87,7 @@ class Notifications implements OnModuleInit, OnModuleDestroy {
       }
       if (!flags?.sms || process.env.SMS_PROVIDER !== 'webhook' || !process.env.SMS_API_URL || !process.env.SMS_API_KEY) throw new Error('SMS_NOT_CONFIGURED');
       const endpoint = new URL(process.env.SMS_API_URL);
-      if (endpoint.protocol !== 'https:') throw new Error('SMS_HTTPS_REQUIRED');
+      if (endpoint.protocol !== 'https:' && !(process.env.NODE_ENV === 'test' && ['127.0.0.1','localhost'].includes(endpoint.hostname))) throw new Error('SMS_HTTPS_REQUIRED');
       const sms = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.SMS_API_KEY, 'Idempotency-Key': event.id }, signal: AbortSignal.timeout(10000), body: JSON.stringify({ to: order.customer.phone, message: message('SMS'), reference: event.id }) });
       if (!sms.ok) throw new Error('SMS_PROVIDER_REJECTED');
       const result = await sms.json() as { id?: string };
