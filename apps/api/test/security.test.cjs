@@ -150,8 +150,9 @@ test('reservation race, cancellation release, repair, split payment/refund and d
   const auth = await login(a.user);
   const customer = await (await request('/customers', { ...auth, method: 'POST', body: { firstName: 'Vali', phone: '+998900000002' } })).json();
   const device = await (await request('/devices', { ...auth, method: 'POST', body: { customerId: customer.id, category: 'Phone', brand: 'Apple', model: 'iPhone' } })).json();
-  const partR = await request('/inventory/parts', { ...auth, method: 'POST', body: { name: 'OLED', sku: 'oled-test', purchasePrice: '550000', salePrice: '700000' } });
+  const partR = await request('/inventory/parts', { ...auth, method: 'POST', body: { name: 'OLED', sku: 'oled-test', barcode: '4780000000012', brand: 'Apple', compatibleModels: ['iPhone 13', 'iPhone 14'], storageLocation: 'A-12', minimumQuantity: 2, purchasePrice: '550000', salePrice: '700000' } });
   assert.equal(partR.status, 201); const part = await partR.json();
+  assert.equal(part.barcode, '4780000000012'); assert.deepEqual(part.compatibleModels, ['iPhone 13', 'iPhone 14']); assert.equal(part.storageLocation, 'A-12');
   assert.equal((await request('/inventory/receive', { ...auth, method: 'POST', body: { partId: part.id, branchId: a.branch.id, quantity: 1, reason: 'Supplier delivery' } })).status, 201);
   const ids = [];
   for (let i = 0; i < 2; i++) {
@@ -319,4 +320,4 @@ test('permanent Telegram failure falls back to idempotent SMS delivery', async (
   }
 });
 
-test('CSV export is plan-gated and protects spreadsheet cells', async()=>{const auth=await login(a.user);const response=await request('/reports/export',auth);assert.equal(response.status,200);assert.ok(response.headers.get('content-type').startsWith('text/csv'));const csv=await response.text();assert.ok(csv.startsWith('\uFEFF'));assert.ok(csv.includes('order'));});
+test('CSV export is plan-gated and protects spreadsheet cells', async()=>{const auth=await login(a.user);const response=await request('/reports/export',auth);assert.equal(response.status,200);assert.ok(response.headers.get('content-type').startsWith('text/csv'));const bytes=new Uint8Array(await response.arrayBuffer());assert.deepEqual([...bytes.slice(0,3)],[0xef,0xbb,0xbf]);const csv=new TextDecoder().decode(bytes);assert.ok(csv.includes('order'));});

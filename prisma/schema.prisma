@@ -314,6 +314,10 @@ model Part {
   organizationId String
   name String
   sku String
+  barcode String?
+  brand String?
+  compatibleModels String[] @default([])
+  storageLocation String?
   purchasePrice Decimal @db.Decimal(18,2)
   salePrice Decimal @db.Decimal(18,2)
   minimumQuantity Int @default(0)
@@ -322,6 +326,7 @@ model Part {
   orderParts OrderPart[]
   @@unique([organizationId,id])
   @@unique([organizationId,sku])
+  @@unique([organizationId,barcode])
 }
 model Stock {
   organizationId String

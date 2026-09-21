@@ -3,6 +3,11 @@ import { IsString, Length, Matches, IsInt, Min, Max, IsIn, IsArray, IsOptional, 
 export class PartDto {
   @ApiProperty() @IsString() @Length(1, 200) name!: string;
   @ApiProperty() @IsString() @Length(1, 64) sku!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 128) barcode?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 100) brand?: string;
+  @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() @ArrayMaxSize(100) @ArrayUnique() @IsString({ each: true }) compatibleModels?: string[];
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 100) storageLocation?: string;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) @Max(1000000) minimumQuantity?: number;
   @ApiProperty() @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) purchasePrice!: string;
   @ApiProperty() @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) salePrice!: string;
 }
