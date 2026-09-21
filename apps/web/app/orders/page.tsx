@@ -24,7 +24,7 @@ export default function Orders() {
     setOrders(await api<Order[]>('/orders')); setBranches(await api<Branch[]>('/branches'));
     if (me.permissions.includes('customers.view')) setCustomers(await api<Customer[]>('/customers'));
   }
-  useEffect(() => { load().catch(fail); }, []);
+  useEffect(() => { if(new URLSearchParams(window.location.search).get('new')==='1')setShowNew(true);load().catch(fail); }, []);
   async function customer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(''); const data = new FormData(event.currentTarget);
     try { const c = await api<Customer>('/customers', { method: 'POST', body: JSON.stringify({ firstName: data.get('firstName'), ...(data.get('lastName') ? { lastName: data.get('lastName') } : {}), phone: data.get('phone'), ...(data.get('telegramUsername') ? { telegramUsername: data.get('telegramUsername') } : {}), notificationPreference: data.get('notificationPreference') }) }); setCustomers(old => [c, ...old]); setCustomerId(c.id); }
