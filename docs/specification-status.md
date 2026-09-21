@@ -32,7 +32,7 @@ Legend: ✅ implemented and repository-verifiable; ◐ implemented core with a r
 | 26 | Status history | ✅ | Immutable transition history with actor/comment/time. |
 | 27 | Diagnosis | ✅ | Separate complaint, diagnosis, work, labor, part total and quote versions. |
 | 28 | Customer approval | ✅ | Staff evidence and single-use version-bound public approval. |
-| 29 | Inventory catalog | ◐ | SKU, unique barcode, brand, compatible models, storage location, prices, minimums and suppliers exist; live camera acceptance remains a device release check. |
+| 29 | Inventory catalog | ✅ | SKU, unique barcode, camera scanning, brand, compatible models, storage location, prices, minimums and suppliers are implemented. |
 | 30 | Inventory movement | ✅ | IN, OUT, RETURN, RESERVE, RELEASE, USED, ADJUSTMENT and TRANSFER are transactional and auditable. |
 | 31 | Order part | ✅ | Transactional reserve/use/release with race tests. |
 | 32 | Suppliers | ✅ | Contact/profile data and receipt linkage. |
