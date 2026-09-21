@@ -395,6 +395,8 @@ model Warranty {
   startDate DateTime
   endDate DateTime
   terms String
+  coveredOrderPartIds String[] @default([])
+  coveredRepairActionIds String[] @default([])
   order Order @relation(fields: [organizationId,orderId], references: [organizationId,id], onDelete: Restrict)
   @@unique([organizationId,orderId])
   @@index([organizationId,endDate])

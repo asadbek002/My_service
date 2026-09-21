@@ -176,7 +176,8 @@ test('reservation race, cancellation release, repair, split payment/refund and d
   await db.organizationSetting.upsert({ where: { organizationId_key: { organizationId: a.org.id, key: 'final_test_checklist' } }, create: { organizationId: a.org.id, key: 'final_test_checklist', value: { items: ['Face ID'] } }, update: { value: { items: ['Face ID'] } } });
   assert.equal((await request('/orders/' + loser + '/repair/finish', { ...auth, method: 'POST', body: { passedChecks: ['Display','Touch','Camera','Microphone','Speaker','Charging','Wi-Fi','Bluetooth'] } })).status, 409);
   assert.equal((await request('/orders/' + loser + '/repair/finish', { ...auth, method: 'POST', body: { passedChecks: ['Display','Touch','Camera','Microphone','Speaker','Charging','Wi-Fi','Bluetooth','Face ID'] } })).status, 201);
-  const delivery = { warrantyDays: 90, warrantyTerms: 'Display replacement warranty' };
+  const coverage=await db.orderPart.findFirst({where:{organizationId:a.org.id,orderId:loser}});
+  const delivery = { warrantyDays: 90, warrantyTerms: 'Display replacement warranty', coveredOrderPartIds:[coverage.id], coveredRepairActionIds:[] };
   assert.equal((await request('/orders/' + loser + '/deliver', { ...auth, method: 'POST', body: delivery })).status, 409);
   const paymentBody = { amount: '300000', method: 'CASH', idempotencyKey: randomUUID() };
   const paid = await Promise.all([1,2].map(() => request('/orders/' + loser + '/payments', { ...auth, method: 'POST', body: paymentBody })));
@@ -189,7 +190,7 @@ test('reservation race, cancellation release, repair, split payment/refund and d
   const warranty = await request('/orders/' + loser + '/deliver', { ...auth, method: 'POST', body: delivery });
   assert.equal(warranty.status, 201);
   assert.equal((await db.order.findUnique({ where: { id: loser } })).status, 'DELIVERED');
-  assert.ok(await db.warranty.findUnique({ where: { orderId: loser } }));
+  const storedWarranty=await db.warranty.findUnique({ where: { orderId: loser } });assert.ok(storedWarranty);assert.deepEqual(storedWarranty.coveredOrderPartIds,[coverage.id]);
 });
 
 test('only explicit permission can deliver an order with outstanding debt', async () => {
@@ -214,6 +215,10 @@ test('stock adjustment and branch transfer preserve reserved availability', asyn
   const supplierResponse=await request('/suppliers',{...auth,method:'POST',body:{name:'Parts Hub',phone:'+998901119999',company:'Parts LLC',telegram:'@partshub',address:'Tashkent',notes:'Primary supplier'}});assert.equal(supplierResponse.status,201);const supplier=await supplierResponse.json();
   assert.equal((await request('/inventory/receive',{...auth,method:'POST',body:{branchId:destination.id,partId:part.id,quantity:1,supplierId:supplier.id,reason:'Invoice 001'}})).status,201);
   assert.equal(await db.inventoryMovement.count({where:{organizationId:a.org.id,partId:part.id,supplierId:supplier.id,type:'IN'}}),1);
+  assert.equal((await request('/inventory/out',{...auth,method:'POST',body:{branchId:destination.id,partId:part.id,quantity:1,reason:'Workshop consumable'}})).status,201);
+  assert.equal((await request('/inventory/return',{...auth,method:'POST',body:{branchId:destination.id,partId:part.id,quantity:1,supplierId:supplier.id,reason:'Defective item return'}})).status,201);
+  assert.equal((await request('/inventory/return',{...auth,method:'POST',body:{branchId:destination.id,partId:part.id,quantity:1,supplierId:supplier.id,reason:'No stock remains'}})).status,409);
+  const detailResponse=await request('/inventory/'+part.id,auth);assert.equal(detailResponse.status,200);const detail=await detailResponse.json();assert.ok(detail.movements.some(item=>item.supplier?.id===supplier.id));assert.ok(detail.movements.some(item=>item.type==='OUT'));assert.ok(detail.movements.some(item=>item.type==='RETURN'));
 });
 
 test('public links mask personal data and approval tokens are version-bound and single-use', async () => {

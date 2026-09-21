@@ -1,0 +1,2 @@
+ALTER TABLE "Warranty" ADD COLUMN "coveredOrderPartIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE "Warranty" ADD COLUMN "coveredRepairActionIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

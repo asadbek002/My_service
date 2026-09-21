@@ -45,6 +45,8 @@ export class FinishDto {
 }
 export class DeliverDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() allowDebt?: boolean;
+  @ApiPropertyOptional({type:[String]}) @IsOptional() @IsArray() @ArrayMaxSize(100) @ArrayUnique() @IsString({each:true}) coveredOrderPartIds?: string[];
+  @ApiPropertyOptional({type:[String]}) @IsOptional() @IsArray() @ArrayMaxSize(100) @ArrayUnique() @IsString({each:true}) coveredRepairActionIds?: string[];
   @ApiProperty() @IsInt() @Min(1) @Max(1095) warrantyDays!: number;
   @ApiProperty() @IsString() @Length(5, 4000) warrantyTerms!: string;
 }

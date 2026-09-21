@@ -101,7 +101,7 @@ class OrdersController {
   }
   @Get(':id') @Permissions('orders.view')
   async get(@CurrentActor() actor: Actor, @Param('id') id: string) {
-    const order = await this.db.order.findFirst({ where: { id, ...orderScope(actor) }, include: { customer: true, device: true, assignments: { select: { userId: true, task: true } }, history: { orderBy: { createdAt: 'asc' } } } });
+    const order = await this.db.order.findFirst({ where: { id, ...orderScope(actor) }, include: { customer: true, device: true, assignments: { select: { userId: true, task: true } }, history: { orderBy: { createdAt: 'asc' } }, parts: { include: { part: { select: { id: true, name: true } } } }, repairActions: { select: { id: true, description: true } } } });
     if (!order) throw new NotFoundException();
     const setting = await this.db.organizationSetting.findUnique({ where: { organizationId_key: { organizationId: actor.organizationId, key: 'final_test_checklist' } } });
     return { ...order, finalTestChecklist: finalChecklist(setting?.value) };

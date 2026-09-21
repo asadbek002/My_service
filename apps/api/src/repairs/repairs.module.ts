@@ -5,7 +5,7 @@ import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { finalChecklist, lockedOrder, orderScope, record, transition } from '../orders/orders.module';
-import { PartDto, ReceiveDto, AdjustDto, TransferDto, ReserveDto, PaymentDto, RefundDto, FinishDto, DeliverDto, RepairActionDto } from './repairs.dto';
+import { PartDto, ReceiveDto, AdjustDto, TransferDto, StockMoveDto, ReserveDto, PaymentDto, RefundDto, FinishDto, DeliverDto, RepairActionDto } from './repairs.dto';
 
 async function feature(tx: Prisma.TransactionClient, actor: Actor) {
   const subscription = await tx.subscription.findUnique({ where: { organizationId: actor.organizationId }, include: { plan: true } });
@@ -100,6 +100,25 @@ class InventoryController {
       await tx.stock.upsert({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: dto.toBranchId, partId: dto.partId } }, create: { organizationId: actor.organizationId, branchId: dto.toBranchId, partId: dto.partId, onHand: dto.quantity }, update: { onHand: { increment: dto.quantity } } });
       await tx.inventoryMovement.createMany({ data: [{ organizationId: actor.organizationId, branchId: dto.fromBranchId, partId: dto.partId, quantity: dto.quantity, type: 'TRANSFER', reason: dto.reason + ' → ' + dto.toBranchId, actorId: actor.userId }, { organizationId: actor.organizationId, branchId: dto.toBranchId, partId: dto.partId, quantity: dto.quantity, type: 'TRANSFER', reason: dto.reason + ' ← ' + dto.fromBranchId, actorId: actor.userId }] });
       await record(tx, actor, dto.partId, 'STOCK_TRANSFERRED'); return { ok: true };
+    });
+  }
+  @Post('out') @Permissions('inventory.manage')
+  out(@CurrentActor() actor: Actor, @Body() dto: StockMoveDto) { return this.remove(actor,dto,'OUT'); }
+  @Post('return') @Permissions('inventory.manage')
+  returned(@CurrentActor() actor: Actor, @Body() dto: StockMoveDto) { return this.remove(actor,dto,'RETURN'); }
+  private remove(actor: Actor, dto: StockMoveDto, type: 'OUT'|'RETURN') {
+    if (!actor.owner && !actor.branchIds.includes(dto.branchId)) throw new NotFoundException();
+    return this.db.$transaction(async tx => {
+      await feature(tx,actor);
+      const branch=await tx.branch.findFirst({where:{id:dto.branchId,organizationId:actor.organizationId}});
+      const part=await tx.part.findFirst({where:{id:dto.partId,organizationId:actor.organizationId}});
+      const supplier=dto.supplierId?await tx.supplier.findFirst({where:{id:dto.supplierId,organizationId:actor.organizationId}}):null;
+      if(!branch||!part||(dto.supplierId&&!supplier))throw new NotFoundException();
+      const stock=await stockLock(tx,actor.organizationId,dto.branchId,dto.partId);
+      if(!stock||stock.onHand-stock.reserved<dto.quantity)throw new ConflictException('Insufficient free stock');
+      const updated=await tx.stock.update({where:{organizationId_branchId_partId:{organizationId:actor.organizationId,branchId:dto.branchId,partId:dto.partId}},data:{onHand:{decrement:dto.quantity}}});
+      await tx.inventoryMovement.create({data:{organizationId:actor.organizationId,branchId:dto.branchId,partId:dto.partId,quantity:dto.quantity,type,reason:dto.reason,actorId:actor.userId,...(dto.supplierId?{supplierId:dto.supplierId}:{})}});
+      await record(tx,actor,dto.partId,type==='RETURN'?'STOCK_RETURNED':'STOCK_ISSUED');return updated;
     });
   }
 }
@@ -239,6 +258,8 @@ class RepairsController {
       if (!outstanding.isZero() && (!dto.allowDebt || !actor.permissions.includes('payments.deliver_with_debt'))) throw new ConflictException('Outstanding balance');
       const startDate = new Date();
       const actions = await tx.repairAction.findMany({ where: { organizationId: actor.organizationId, orderId: id } });
+      const coveredParts=dto.coveredOrderPartIds??[],coveredActions=dto.coveredRepairActionIds??[];
+      if(coveredParts.length!==await tx.orderPart.count({where:{organizationId:actor.organizationId,orderId:id,id:{in:coveredParts}}})||coveredActions.length!==actions.filter(action=>coveredActions.includes(action.id)).length)throw new NotFoundException('Warranty coverage item not found');
       const perUser = new Map<string, Prisma.Decimal>();
       for (const action of actions) perUser.set(action.userId, (perUser.get(action.userId) ?? new Prisma.Decimal(0)).plus(action.laborAmount));
       for (const [userId, labor] of perUser) {
@@ -249,7 +270,7 @@ class RepairsController {
         if (rule.type === 'FIXED_PER_JOB' && rule.fixedPerJob) amount = amount.plus(rule.fixedPerJob);
         await tx.commissionEntry.create({ data: { organizationId: actor.organizationId, orderId: id, userId, amount, ruleSnapshot: { type: rule.type, percentage: rule.percentage?.toString() ?? null, fixedPerJob: rule.fixedPerJob?.toString() ?? null, labor: labor.toString() } } });
       }
-      const warranty = await tx.warranty.create({ data: { organizationId: actor.organizationId, orderId: id, startDate, endDate: new Date(startDate.getTime() + dto.warrantyDays * 86400000), terms: dto.warrantyTerms } });
+      const warranty = await tx.warranty.create({ data: { organizationId: actor.organizationId, orderId: id, startDate, endDate: new Date(startDate.getTime() + dto.warrantyDays * 86400000), terms: dto.warrantyTerms, coveredOrderPartIds: coveredParts, coveredRepairActionIds: coveredActions } });
       await transition(tx, actor, order, 'DELIVERED', outstanding.isZero() ? 'Device delivered' : 'Device delivered with outstanding balance');
       await record(tx, actor, warranty.id, 'WARRANTY_CREATED'); return warranty;
     });
