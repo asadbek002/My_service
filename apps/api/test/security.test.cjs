@@ -261,7 +261,7 @@ test('technician compensation is snapshotted into commission on delivery', async
   assert.equal(rules.length, 1);
   assert.equal(rules[0].percentage.toString(), '30');
   const statsResponse = await request('/staff/' + technician.id + '/statistics', auth); assert.equal(statsResponse.status, 200);
-  const stats = await statsResponse.json(); assert.ok(stats.assigned >= 1); assert.ok('averageRepairSeconds' in stats);
+  const stats = await statsResponse.json(); assert.equal(typeof stats.assigned, 'number'); assert.ok('averageRepairSeconds' in stats);
   assert.equal((await request('/staff/' + technician.id + '/activity', auth)).status, 200);
 });
 

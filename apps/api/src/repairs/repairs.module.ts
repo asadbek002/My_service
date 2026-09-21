@@ -31,6 +31,14 @@ class InventoryController {
     const parts = await this.db.part.findMany({ where: { organizationId: actor.organizationId }, include: { stocks: { where: actor.owner ? {} : { branchId: { in: actor.branchIds } } } }, take: 100 });
     return parts.map(({ purchasePrice, ...part }) => ({ ...part, ...(actor.permissions.includes('inventory.view_cost') ? { purchasePrice } : {}) }));
   }
+  @Get(':id') @Permissions('inventory.view')
+  async detail(@CurrentActor() actor: Actor, @Param('id') id: string) {
+    await feature(this.db, actor);
+    const part=await this.db.part.findFirst({where:{id,organizationId:actor.organizationId},include:{stocks:{where:actor.owner?{}:{branchId:{in:actor.branchIds}},include:{branch:{select:{name:true}}}},orderParts:{where:{order:orderScope(actor)},select:{orderId:true,quantity:true,status:true,unitCost:true,unitPrice:true}}}});
+    if(!part)throw new NotFoundException();
+    const movements=await this.db.inventoryMovement.findMany({where:{organizationId:actor.organizationId,partId:id,...(!actor.owner?{branchId:{in:actor.branchIds}}:{})},include:{supplier:true},orderBy:{createdAt:'desc'},take:200});
+    const{purchasePrice,...safe}=part;return{...safe,...(actor.permissions.includes('inventory.view_cost')?{purchasePrice}:{}),movements};
+  }
   @Post('parts') @Permissions('inventory.manage')
   async part(@CurrentActor() actor: Actor, @Body() dto: PartDto) {
     await feature(this.db, actor);
