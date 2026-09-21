@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, Length, Matches, IsInt, Min, Max, IsIn, IsArray, IsOptional, ArrayMinSize, ArrayMaxSize, ArrayUnique } from 'class-validator';
+import { IsString, Length, Matches, IsInt, Min, Max, IsIn, IsArray, IsOptional, IsBoolean, ArrayMinSize, ArrayMaxSize, ArrayUnique } from 'class-validator';
 export class PartDto {
   @ApiProperty() @IsString() @Length(1, 200) name!: string;
   @ApiProperty() @IsString() @Length(1, 64) sku!: string;
@@ -44,6 +44,7 @@ export class FinishDto {
   @ApiProperty({ type: [String] }) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(30) @ArrayUnique() @IsString({ each: true }) passedChecks!: string[];
 }
 export class DeliverDto {
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() allowDebt?: boolean;
   @ApiProperty() @IsInt() @Min(1) @Max(1095) warrantyDays!: number;
   @ApiProperty() @IsString() @Length(5, 4000) warrantyTerms!: string;
 }

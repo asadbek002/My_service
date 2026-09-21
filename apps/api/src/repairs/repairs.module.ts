@@ -235,7 +235,8 @@ class RepairsController {
     return this.db.$transaction(async tx => {
       const order = await lockedOrder(tx, actor, id);
       if (order.status !== 'READY' || !order.finalTest) throw new ConflictException('Final test and READY required');
-      if (!(await balance(tx, actor.organizationId, id, order.total)).isZero()) throw new ConflictException('Outstanding balance');
+      const outstanding=await balance(tx, actor.organizationId, id, order.total);
+      if (!outstanding.isZero() && (!dto.allowDebt || !actor.permissions.includes('payments.deliver_with_debt'))) throw new ConflictException('Outstanding balance');
       const startDate = new Date();
       const actions = await tx.repairAction.findMany({ where: { organizationId: actor.organizationId, orderId: id } });
       const perUser = new Map<string, Prisma.Decimal>();
@@ -249,7 +250,7 @@ class RepairsController {
         await tx.commissionEntry.create({ data: { organizationId: actor.organizationId, orderId: id, userId, amount, ruleSnapshot: { type: rule.type, percentage: rule.percentage?.toString() ?? null, fixedPerJob: rule.fixedPerJob?.toString() ?? null, labor: labor.toString() } } });
       }
       const warranty = await tx.warranty.create({ data: { organizationId: actor.organizationId, orderId: id, startDate, endDate: new Date(startDate.getTime() + dto.warrantyDays * 86400000), terms: dto.warrantyTerms } });
-      await transition(tx, actor, order, 'DELIVERED', 'Device delivered');
+      await transition(tx, actor, order, 'DELIVERED', outstanding.isZero() ? 'Device delivered' : 'Device delivered with outstanding balance');
       await record(tx, actor, warranty.id, 'WARRANTY_CREATED'); return warranty;
     });
   }

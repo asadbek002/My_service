@@ -5,7 +5,7 @@ const db = new PrismaClient();
 const permissionKeys = [
   'orders.view','orders.create','orders.edit','orders.assign','orders.change_status',
   'customers.view','customers.edit','diagnostics.create','inventory.view','inventory.use',
-  'inventory.manage','inventory.view_cost','payments.view','payments.create','payments.refund',
+  'inventory.manage','inventory.view_cost','payments.view','payments.create','payments.refund','payments.deliver_with_debt',
   'reports.view','reports.finance','expenses.manage','staff.view','staff.manage','settings.manage',
 ];
 async function main() {
@@ -16,7 +16,7 @@ async function main() {
   if (await db.user.findUnique({ where: { login } })) { console.log('Owner exists; seed did not reset credentials'); return; }
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
   await db.$transaction(async tx => {
-    const plan = await tx.plan.upsert({ where: { name: 'Development' }, update: {}, create: { name: 'Development', features: { inventory: true, telegram: true, sms: true, multi_branch: true } } });
+    const plan = await tx.plan.upsert({ where: { name: 'Development' }, update: {}, create: { name: 'Development', features: { inventory: true, telegram: true, sms: true, multi_branch: true, advanced_reports: true, staff_commission: true, exports: true } } });
     const org = await tx.organization.create({ data: { name: 'MyService', slug: 'myservice' } });
     const branch = await tx.branch.create({ data: { organizationId: org.id, name: 'Asosiy filial' } });
     await tx.subscription.create({ data: { organizationId: org.id, planId: plan.id, expiresAt: new Date(Date.now() + 30 * 86400000) } });

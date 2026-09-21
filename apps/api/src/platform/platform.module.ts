@@ -45,7 +45,7 @@ class SubscriptionDto {
   @IsISO8601() expiresAt!: string;
 }
 const rolePermissions: Record<string,string[]> = {
- OWNER: ['orders.view','orders.create','orders.edit','orders.assign','orders.change_status','customers.view','customers.edit','diagnostics.create','inventory.view','inventory.use','inventory.manage','inventory.view_cost','payments.view','payments.create','payments.refund','reports.view','reports.finance','staff.view','staff.manage','settings.manage','expenses.manage'],
+ OWNER: ['orders.view','orders.create','orders.edit','orders.assign','orders.change_status','customers.view','customers.edit','diagnostics.create','inventory.view','inventory.use','inventory.manage','inventory.view_cost','payments.view','payments.create','payments.refund','payments.deliver_with_debt','reports.view','reports.finance','staff.view','staff.manage','settings.manage','expenses.manage'],
  ADMIN: ['orders.view','orders.create','orders.edit','orders.assign','orders.change_status','customers.view','customers.edit','diagnostics.create','inventory.view','inventory.use','inventory.manage','payments.view','payments.create','reports.view','staff.view'],
  MANAGER: ['orders.view','orders.create','orders.edit','orders.assign','orders.change_status','customers.view','customers.edit','payments.view','payments.create'],
  TECHNICIAN: ['orders.view','orders.change_status','diagnostics.create','inventory.view','inventory.use'],

@@ -23,7 +23,7 @@ async function tenant() {
   const plan = await db.plan.create({ data: { name: id, maxStaff: 5, features: { inventory: true, staff_commission: true } } });
   await db.subscription.create({ data: { organizationId: org.id, planId: plan.id, status: 'ACTIVE', expiresAt: new Date(Date.now() + 86400000) } });
   const role = await db.role.create({ data: { organizationId: org.id, name: 'OWNER', systemKey: 'OWNER' } });
-  for (const key of ['staff.view', 'staff.manage', 'customers.view', 'customers.edit', 'orders.view', 'orders.create', 'orders.assign', 'orders.change_status', 'orders.edit', 'diagnostics.create', 'inventory.view', 'inventory.manage', 'inventory.use', 'inventory.view_cost', 'payments.view', 'payments.create', 'payments.refund']) {
+  for (const key of ['staff.view', 'staff.manage', 'customers.view', 'customers.edit', 'orders.view', 'orders.create', 'orders.assign', 'orders.change_status', 'orders.edit', 'diagnostics.create', 'inventory.view', 'inventory.manage', 'inventory.use', 'inventory.view_cost', 'payments.view', 'payments.create', 'payments.refund', 'payments.deliver_with_debt']) {
     const p = await db.permission.upsert({ where: { key }, create: { key }, update: {} });
     await db.rolePermission.create({ data: { roleId: role.id, permissionId: p.id } });
   }
@@ -190,6 +190,14 @@ test('reservation race, cancellation release, repair, split payment/refund and d
   assert.equal(warranty.status, 201);
   assert.equal((await db.order.findUnique({ where: { id: loser } })).status, 'DELIVERED');
   assert.ok(await db.warranty.findUnique({ where: { orderId: loser } }));
+});
+
+test('only explicit permission can deliver an order with outstanding debt', async () => {
+  const auth=await login(a.user);const source=await db.order.findFirst({where:{organizationId:a.org.id}});
+  const order=await db.order.create({data:{organizationId:a.org.id,branchId:source.branchId,customerId:source.customerId,deviceId:source.deviceId,number:'DEBT-'+randomUUID(),complaint:'Debt delivery',accessories:[],condition:[],status:'READY',total:'100000',finalTest:{passedChecks:['Display']}}});
+  const body={warrantyDays:30,warrantyTerms:'Limited service warranty'};
+  assert.equal((await request('/orders/'+order.id+'/deliver',{...auth,method:'POST',body})).status,409);
+  assert.equal((await request('/orders/'+order.id+'/deliver',{...auth,method:'POST',body:{...body,allowDebt:true}})).status,201);
 });
 
 test('stock adjustment and branch transfer preserve reserved availability', async () => {
