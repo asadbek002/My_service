@@ -28,7 +28,7 @@ This file records implemented behavior in the repository.
 - Assignment, guarded status transitions, history, diagnosis, immutable quote versions and approval evidence.
 - Customer tracking and version-bound single-use approval links.
 - Repair sessions/actions, mandatory final checks, delivery and warranty creation/claims.
-- Inventory catalog, stock ledger, receive/adjust, reservations, idempotent use and cancellation release.
+- Inventory catalog, supplier-linked receipts, stock ledger/detail, adjustment, branch transfer, reservations, idempotent use and cancellation release.
 - Split payments, idempotency keys, refunds, custom payment methods and expenses.
 - Effective-dated technician compensation rules with immutable delivery commission snapshots.
 
@@ -42,23 +42,25 @@ This file records implemented behavior in the repository.
 
 ### Product surfaces
 
-- Login and password change, role-aware dashboard and global search.
-- Order intake/list/detail, repair and inventory screens.
+- Login and password change, role-aware owner/technician dashboard and global search.
+- Order intake with private photos, customer/device/staff profiles, repair, payments, warranties, suppliers and inventory ledger screens.
 - Expenses, reports, branches, roles, templates, payment methods, subscription and audit settings.
 - Public tracking/approval pages.
 - Platform-admin login, plans, organization onboarding, subscriptions and system statistics.
 
 ## Verified acceptance coverage
 
-Integration tests cover auth rejection and rotation, refresh-token reuse, immediate revocation, tenant/branch isolation, subscription write lock, concurrent numbering, diagnosis approval versions, inventory reservation races, cancellation release, idempotent part usage, repair final checks, split payment/refund rules, delivery warranty, customer-link privacy, platform separation, signed S3 uploads, PDF output and compensation snapshots.
+Integration tests cover Telegram-to-SMS fallback, platform MRR, custom final checks, supplier receipts, stock transfers, debt-delivery permission, audit context, staff statistics, auth rejection and rotation, refresh-token reuse, immediate revocation, tenant/branch isolation, subscription write lock, concurrent numbering, diagnosis approval versions, inventory reservation races, cancellation release, idempotent part usage, repair final checks, split payment/refund rules, delivery warranty, customer-link privacy, platform separation, signed S3 uploads, PDF output and compensation snapshots.
 
 ## External production inputs
 
 - Production domain, DNS and TLS termination.
 - Random production secrets and a secret manager.
-- Telegram bot credentials and a real SMS provider implementation/configuration.
+- Telegram bot credentials and real SMS provider configuration.
 - Production S3 credentials, monitoring/error reporting and an encrypted off-host backup destination.
 - A restore drill and full browser/device acceptance run after deployment.
 - A committed dependency lockfile should be generated during the later local setup before release pinning.
 
 No production deployment has been performed because current work is intentionally limited to GitHub.
+
+Detailed 1–78 mapping: [specification-status.md](specification-status.md).

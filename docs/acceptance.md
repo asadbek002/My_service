@@ -9,7 +9,7 @@ This checklist maps the product specification to repository evidence. A checked 
 - [x] Secure login, password change, refresh rotation/reuse detection and logout.
 - [x] Staff, customer, device and order intake workflows.
 - [x] Assignment, diagnosis, quote approval and controlled order status transitions.
-- [x] Inventory ledger, reservation race handling, use and cancellation rollback.
+- [x] Inventory ledger, supplier receipts, adjustment/transfer, reservation race handling, use and cancellation rollback.
 - [x] Repair session, final checklist, payments, refunds, delivery and warranty.
 - [x] Expenses, reporting, global search and technician compensation.
 - [x] Customer tracking/approval links and Telegram linking.
@@ -25,7 +25,7 @@ This checklist maps the product specification to repository evidence. A checked 
 - [x] Production builds for API and web.
 - [x] Integration suite with PostgreSQL, Redis and MinIO.
 - [x] Security regression coverage for tenant escape, cross-branch membership, stale sessions and token reuse.
-- [x] Business regression coverage for concurrent numbering, stock races, duplicate writes and refund limits.
+- [x] Business regression coverage for concurrent numbering, stock races/transfers, duplicate writes, refund limits, notification fallback and debt-delivery permission.
 
 ## Production gate
 
@@ -48,3 +48,5 @@ This checklist maps the product specification to repository evidence. A checked 
 8. Customer opens the tracking page without seeing private personal data.
 9. Owner verifies reports, expenses, inventory movements, commission and audit entries.
 10. Operator validates notification delivery, backup creation and restore.
+
+See [specification-status.md](specification-status.md) for the complete 78-item audit.
