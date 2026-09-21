@@ -13,7 +13,7 @@ export interface EskizSendResult {
 @Injectable()
 export class EskizClient implements OnModuleInit, OnModuleDestroy {
   private redis?: Redis;
-  private inMemoryToken?: string; // Redis yo'q bo'lganda fallback
+  private inMemoryToken: string | undefined = undefined; // Redis yo'q bo'lganda fallback
   private inMemoryExpiry = 0;
   private readonly logger = new Logger('EskizClient');
 
@@ -25,7 +25,7 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
       });
       await this.redis.connect();
     } catch {
-      this.redis = undefined;
+
     }
   }
 

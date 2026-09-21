@@ -7,18 +7,17 @@ const TTL = 600; // 10 daqiqa
 
 @Injectable()
 export class SubscriptionCache implements OnModuleInit, OnModuleDestroy {
-  private redis?: Redis;
+  private redis?: Redis | undefined;
 
   constructor(private readonly db: Database) {}
 
   async onModuleInit() {
     if (!process.env.REDIS_URL) return;
     try {
-      this.redis = new Redis(process.env.REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 1, enableOfflineQueue: false });
-      await this.redis.connect();
-    } catch {
-      this.redis = undefined; // Redis yo'q bo'lsa DB fallback ishlaydi
-    }
+      const r = new Redis(process.env.REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 1, enableOfflineQueue: false });
+      await r.connect();
+      this.redis = r;
+    } catch { /* Redis yo'q bo'lsa DB fallback ishlaydi */ }
   }
 
   async onModuleDestroy() {
