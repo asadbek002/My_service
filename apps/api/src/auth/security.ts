@@ -14,7 +14,7 @@ export interface Actor {
   branchIds: string[];
   permissions: string[];
   owner: boolean;
-  ip: string;
+  ip?: string;
 }
 export type AuthRequest = Request & { actor: Actor };
 export const CurrentActor = createParamDecorator((_data: unknown, ctx: ExecutionContext): Actor => ctx.switchToHttp().getRequest<AuthRequest>().actor);

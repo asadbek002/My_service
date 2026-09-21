@@ -257,6 +257,9 @@ test('technician compensation is snapshotted into commission on delivery', async
   const rules = await db.technicianCompensation.findMany({ where: { organizationId: a.org.id, userId: technician.id, effectiveTo: null } });
   assert.equal(rules.length, 1);
   assert.equal(rules[0].percentage.toString(), '30');
+  const statsResponse = await request('/staff/' + technician.id + '/statistics', auth); assert.equal(statsResponse.status, 200);
+  const stats = await statsResponse.json(); assert.ok(stats.assigned >= 1); assert.ok('averageRepairSeconds' in stats);
+  assert.equal((await request('/staff/' + technician.id + '/activity', auth)).status, 200);
 });
 
 test('platform analytics calculates MRR without accepting tenant credentials', async () => {

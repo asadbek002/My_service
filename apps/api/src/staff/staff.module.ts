@@ -1,4 +1,4 @@
-import { Module, Controller, Get, Post, Patch, Param, Body, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Module, Controller, Get, Post, Patch, Param, Body, Query, BadRequestException, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ApiProperty, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { IsString, IsIn, Length, Matches, IsArray, ArrayNotEmpty, ArrayUnique } from 'class-validator';
@@ -36,6 +36,27 @@ class StaffController {
   @Get() @Permissions('staff.view')
   list(@CurrentActor() actor: Actor) {
     return this.db.user.findMany({ where: { organizationId: actor.organizationId }, select: safe, take: 100, orderBy: { createdAt: 'desc' } });
+  }
+  @Get(':id/activity') @Permissions('staff.view')
+  async activity(@CurrentActor() actor: Actor, @Param('id') id: string) {
+    if (!await this.db.user.findFirst({ where: { id, organizationId: actor.organizationId } })) throw new NotFoundException();
+    return this.db.auditLog.findMany({ where: { organizationId: actor.organizationId, actorId: id }, orderBy: { createdAt: 'desc' }, take: 200 });
+  }
+  @Get(':id/statistics') @Permissions('staff.view')
+  async statistics(@CurrentActor() actor: Actor, @Param('id') id: string, @Query('from') from?: string, @Query('to') to?: string) {
+    if (!await this.db.user.findFirst({ where: { id, organizationId: actor.organizationId } })) throw new NotFoundException();
+    const start=from?new Date(from):new Date(Date.now()-30*86400000),end=to?new Date(to):new Date();
+    if(isNaN(start.getTime())||isNaN(end.getTime())||start>end||end.getTime()-start.getTime()>366*86400000)throw new BadRequestException('Invalid range');
+    const [assignments,sessions,actions,commission,warrantyReturns]=await Promise.all([
+      this.db.orderAssignment.findMany({where:{organizationId:actor.organizationId,userId:id},include:{order:{select:{status:true,history:{where:{toStatus:'DELIVERED',createdAt:{gte:start,lte:end}},select:{id:true}}}}}}),
+      this.db.repairSession.findMany({where:{organizationId:actor.organizationId,userId:id,startedAt:{gte:start,lte:end},endedAt:{not:null}}}),
+      this.db.repairAction.aggregate({where:{organizationId:actor.organizationId,userId:id,completedAt:{gte:start,lte:end}},_sum:{laborAmount:true},_count:true}),
+      this.db.commissionEntry.aggregate({where:{organizationId:actor.organizationId,userId:id,createdAt:{gte:start,lte:end}},_sum:{amount:true}}),
+      this.db.warrantyClaim.count({where:{organizationId:actor.organizationId,createdAt:{gte:start,lte:end},parentOrder:{assignments:{some:{userId:id}}}}}),
+    ]);
+    const completed=assignments.filter(item=>item.order.history.length>0).length,active=assignments.filter(item=>!['DELIVERED','CANCELLED','UNREPAIRABLE'].includes(item.order.status)).length;
+    const repairSeconds=sessions.reduce((sum,item)=>sum+Math.max(0,(item.endedAt!.getTime()-item.startedAt.getTime())/1000),0);
+    return{assigned:assignments.length,completed,active,averageRepairSeconds:sessions.length?Math.round(repairSeconds/sessions.length):0,warrantyReturns,workRevenue:actions._sum.laborAmount??0,repairActions:actions._count,commission:commission._sum.amount??0,from:start,to:end};
   }
   @Get(':id') @Permissions('staff.view')
   async get(@CurrentActor() actor: Actor, @Param('id') id: string) {
