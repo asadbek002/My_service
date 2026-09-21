@@ -27,6 +27,7 @@ class PlanDto {
   @IsOptional() @IsInt() @Min(1) maxBranches?: number;
   @IsOptional() @IsInt() @Min(1) maxStaff?: number;
   @IsOptional() @IsInt() @Min(1) monthlyOrders?: number;
+  @IsOptional() @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) monthlyPrice?: string;
   @IsObject() features!: Record<string, boolean>;
 }
 class OrganizationDto {
@@ -83,7 +84,7 @@ class PlatformController {
     if (Object.entries(d.features).some(([k,v])=>!allowed.includes(k)||typeof v!=='boolean')) throw new BadRequestException('Unknown feature or non-boolean value');
     try {
       return await this.db.$transaction(async tx => {
-        const plan=await tx.plan.create({data:{name:d.name,features:d.features as Prisma.InputJsonObject,maxBranches:d.maxBranches??null,maxStaff:d.maxStaff??null,monthlyOrders:d.monthlyOrders??null}});
+        const plan=await tx.plan.create({data:{name:d.name,features:d.features as Prisma.InputJsonObject,maxBranches:d.maxBranches??null,maxStaff:d.maxStaff??null,monthlyOrders:d.monthlyOrders??null,monthlyPrice:d.monthlyPrice??'0'}});
         await tx.auditLog.create({data:{organizationId:'PLATFORM',actorId:req.adminId,action:'PLAN_CREATED',entityId:plan.id}});return plan;
       });
     } catch(e) { if(e instanceof Prisma.PrismaClientKnownRequestError&&e.code==='P2002') throw new ConflictException('Plan name exists');throw e; }
@@ -122,6 +123,22 @@ class PlatformController {
       return sub;
     });
   }
+  @Get('analytics')
+  async analytics() {
+    const now=new Date(),since=new Date(Date.now()-30*86400000);
+    const [totalOrganizations,newOrganizations,activeSubscriptions,trials,churned,active] = await Promise.all([
+      this.db.organization.count(),this.db.organization.count({where:{createdAt:{gte:since}}}),
+      this.db.subscription.count({where:{status:'ACTIVE',expiresAt:{gt:now}}}),this.db.subscription.count({where:{status:'TRIAL',expiresAt:{gt:now}}}),
+      this.db.subscription.count({where:{status:{in:['SUSPENDED','EXPIRED']}}}),
+      this.db.subscription.findMany({where:{status:'ACTIVE',expiresAt:{gt:now}},include:{plan:true}}),
+    ]);
+    const mrr=active.reduce((sum,item)=>sum.plus(item.plan.monthlyPrice),new Prisma.Decimal(0));
+    return {totalOrganizations,activeOrganizations:activeSubscriptions+trials,activeSubscriptions,trials,newOrganizations,churned,churnRate:totalOrganizations?Number((churned/totalOrganizations*100).toFixed(2)):0,mrr};
+  }
+  @Get('invoices')
+  invoices(){return this.db.subscriptionInvoice.findMany({orderBy:{issuedAt:'desc'},take:100})}
+  @Get('usage')
+  usage(){return this.db.usageRecord.findMany({orderBy:{period:'desc'},take:200})}
   @Get('system')
   async system() { await this.db.$queryRaw`SELECT 1`; return {database:'ok',organizations:await this.db.organization.count(),activeSubscriptions:await this.db.subscription.count({where:{status:'ACTIVE',expiresAt:{gt:new Date()}}}),pendingOutbox:await this.db.outboxEvent.count({where:{publishedAt:null}}),failedNotifications:await this.db.notification.count({where:{status:'FAILED'}})}; }
 }

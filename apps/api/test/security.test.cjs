@@ -255,3 +255,18 @@ test('technician compensation is snapshotted into commission on delivery', async
   assert.equal(rules.length, 1);
   assert.equal(rules[0].percentage.toString(), '30');
 });
+
+test('platform analytics calculates MRR without accepting tenant credentials', async () => {
+  const tenantAuth = await login(a.user);
+  assert.equal((await request('/platform/analytics', tenantAuth)).status, 401);
+  const login = 'platform-' + randomUUID();
+  await db.platformAdmin.create({ data: { login, passwordHash: await argon2.hash(password) } });
+  const signedIn = await request('/platform/auth/login', { method: 'POST', body: { login, password } });
+  assert.equal(signedIn.status, 201); const token = (await signedIn.json()).accessToken;
+  const created = await request('/platform/plans', { token, method: 'POST', body: { name: 'PRO-' + randomUUID(), monthlyPrice: '123000', features: { inventory: true, telegram: true, sms: true, advanced_reports: true, multi_branch: true, staff_commission: true, exports: true } } });
+  assert.equal(created.status, 201); const plan = await created.json();
+  await db.subscription.update({ where: { organizationId: a.org.id }, data: { planId: plan.id, status: 'ACTIVE', expiresAt: new Date(Date.now() + 86400000) } });
+  const analyticsResponse = await request('/platform/analytics', { token });
+  assert.equal(analyticsResponse.status, 200); const analytics = await analyticsResponse.json();
+  assert.ok(Number(analytics.mrr) >= 123000); assert.ok(analytics.activeOrganizations >= 1);
+});
