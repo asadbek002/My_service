@@ -53,9 +53,10 @@ class InventoryController {
       await feature(tx, actor);
       const branch = await tx.branch.findFirst({ where: { id: dto.branchId, organizationId: actor.organizationId } });
       const part = await tx.part.findFirst({ where: { id: dto.partId, organizationId: actor.organizationId } });
-      if (!branch || !part) throw new NotFoundException();
+      const supplier = dto.supplierId ? await tx.supplier.findFirst({ where: { id: dto.supplierId, organizationId: actor.organizationId } }) : null;
+      if (!branch || !part || (dto.supplierId && !supplier)) throw new NotFoundException();
       const stock = await tx.stock.upsert({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: dto.branchId, partId: dto.partId } }, create: { organizationId: actor.organizationId, branchId: dto.branchId, partId: dto.partId, onHand: dto.quantity }, update: { onHand: { increment: dto.quantity } } });
-      await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: dto.branchId, partId: dto.partId, quantity: dto.quantity, type: 'IN', reason: dto.reason, actorId: actor.userId } });
+      await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: dto.branchId, partId: dto.partId, quantity: dto.quantity, type: 'IN', reason: dto.reason, actorId: actor.userId, ...(dto.supplierId ? { supplierId: dto.supplierId } : {}) } });
       await record(tx, actor, dto.partId, 'STOCK_RECEIVED'); return stock;
     });
   }

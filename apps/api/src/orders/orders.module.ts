@@ -26,7 +26,7 @@ export async function lockedOrder(tx: Prisma.TransactionClient, actor: Actor, id
   return order;
 }
 export async function record(tx: Prisma.TransactionClient, actor: Actor, id: string, action: string, oldValue?: Prisma.InputJsonValue, newValue?: Prisma.InputJsonValue) {
-  await tx.auditLog.create({ data: { organizationId: actor.organizationId, actorId: actor.userId, action, entityId: id, ip: actor.ip, ...(oldValue !== undefined ? { oldValue } : {}), ...(newValue !== undefined ? { newValue } : {}) } });
+  await tx.auditLog.create({ data: { organizationId: actor.organizationId, actorId: actor.userId, action, entityId: id, ...(actor.ip ? { ip: actor.ip } : {}), ...(oldValue !== undefined ? { oldValue } : {}), ...(newValue !== undefined ? { newValue } : {}) } });
   await tx.outboxEvent.create({ data: { organizationId: actor.organizationId, type: action, entityId: id, payload: { actorId: actor.userId } } });
 }
 export async function transition(tx: Prisma.TransactionClient, actor: Actor, order: { id: string; status: string }, toStatus: string, comment: string) {

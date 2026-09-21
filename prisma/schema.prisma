@@ -339,12 +339,15 @@ model InventoryMovement {
   branchId String
   partId String
   orderId String?
+  supplierId String?
   type String
   quantity Int
   reason String
   actorId String
   createdAt DateTime @default(now())
+  supplier Supplier? @relation(fields:[organizationId,supplierId],references:[organizationId,id],onDelete:Restrict)
   @@index([organizationId,branchId,partId,createdAt])
+  @@index([organizationId,supplierId])
 }
 model OrderPart {
   id String @id @default(cuid())
@@ -440,7 +443,11 @@ model Supplier {
   name String
   phone String
   company String?
+  telegram String?
+  address String?
   notes String?
+  movements InventoryMovement[]
+  @@unique([organizationId,id])
   @@index([organizationId])
 }
 model WarrantyClaim {

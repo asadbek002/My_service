@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Param, Query, Module, ConflictException, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
-import { IsString, Length, Matches } from 'class-validator';
+import { IsString, IsOptional, Length, Matches } from 'class-validator';
 import { Prisma } from '@prisma/client';
 import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
@@ -14,6 +14,10 @@ class ExpenseDto {
 class SupplierDto {
   @IsString() @Length(1,200) name!: string;
   @IsString() @Matches(/^\+[1-9][0-9]{7,14}$/) phone!: string;
+  @IsOptional() @IsString() @Length(1,200) company?: string;
+  @IsOptional() @IsString() @Length(1,100) telegram?: string;
+  @IsOptional() @IsString() @Length(1,500) address?: string;
+  @IsOptional() @IsString() @Length(1,2000) notes?: string;
 }
 class ClaimDto { @IsString() @Length(3,4000) reason!: string; }
 function range(from?: string, to?: string) {

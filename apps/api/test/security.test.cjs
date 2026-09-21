@@ -203,6 +203,9 @@ test('stock adjustment and branch transfer preserve reserved availability', asyn
   assert.equal(source.onHand, 1); assert.equal(target.onHand, 1);
   assert.equal(await db.inventoryMovement.count({ where: { organizationId: a.org.id, partId: part.id, type: 'TRANSFER', quantity: 1 } }), 2);
   assert.equal((await request('/inventory/transfer', { ...auth, method: 'POST', body: { fromBranchId: a.branch.id, toBranchId: destination.id, partId: part.id, quantity: 2, reason: 'Too much stock' } })).status, 409);
+  const supplierResponse=await request('/suppliers',{...auth,method:'POST',body:{name:'Parts Hub',phone:'+998901119999',company:'Parts LLC',telegram:'@partshub',address:'Tashkent',notes:'Primary supplier'}});assert.equal(supplierResponse.status,201);const supplier=await supplierResponse.json();
+  assert.equal((await request('/inventory/receive',{...auth,method:'POST',body:{branchId:destination.id,partId:part.id,quantity:1,supplierId:supplier.id,reason:'Invoice 001'}})).status,201);
+  assert.equal(await db.inventoryMovement.count({where:{organizationId:a.org.id,partId:part.id,supplierId:supplier.id,type:'IN'}}),1);
 });
 
 test('public links mask personal data and approval tokens are version-bound and single-use', async () => {

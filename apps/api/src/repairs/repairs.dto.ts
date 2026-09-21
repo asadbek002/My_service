@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, Length, Matches, IsInt, Min, Max, IsIn, IsArray, ArrayMinSize, ArrayMaxSize, ArrayUnique } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, Length, Matches, IsInt, Min, Max, IsIn, IsArray, IsOptional, ArrayMinSize, ArrayMaxSize, ArrayUnique } from 'class-validator';
 export class PartDto {
   @ApiProperty() @IsString() @Length(1, 200) name!: string;
   @ApiProperty() @IsString() @Length(1, 64) sku!: string;
@@ -10,6 +10,7 @@ export class ReceiveDto {
   @ApiProperty() @IsString() @Length(1, 100) branchId!: string;
   @ApiProperty() @IsString() @Length(1, 100) partId!: string;
   @ApiProperty() @IsInt() @Min(1) @Max(1000000) quantity!: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1,100) supplierId?: string;
   @ApiProperty() @IsString() @Length(3, 1000) reason!: string;
 }
 export class AdjustDto {

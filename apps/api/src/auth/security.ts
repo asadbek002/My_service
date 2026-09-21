@@ -50,7 +50,7 @@ export class SecurityGuard implements CanActivate {
     req.actor = {
       userId: user.id, organizationId: user.organizationId, sessionId: session.id,
       branchIds: user.branches.map(b => b.branchId), permissions,
-      owner: user.roles.some(r => r.role.systemKey === 'OWNER'), ip: req.ip,
+      owner: user.roles.some(r => r.role.systemKey === 'OWNER'), ...(req.ip ? { ip: req.ip } : {}),
     };
     const required = this.reflector.getAllAndOverride<string[]>('permissions', targets) ?? [];
     if (!required.every(p => permissions.includes(p))) throw new ForbiddenException();
