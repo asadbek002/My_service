@@ -42,6 +42,18 @@ class StaffController {
     if (!await this.db.user.findFirst({ where: { id, organizationId: actor.organizationId } })) throw new NotFoundException();
     return this.db.auditLog.findMany({ where: { organizationId: actor.organizationId, actorId: id }, orderBy: { createdAt: 'desc' }, take: 200 });
   }
+  @Get(':id/active') @Permissions('staff.view')
+  async isActive(@CurrentActor() actor: Actor, @Param('id') id: string, @Query('days') daysParam?: string) {
+    if (!await this.db.user.findFirst({ where: { id, organizationId: actor.organizationId } })) throw new NotFoundException();
+    const days = Math.min(Math.max(parseInt(daysParam ?? '5', 10) || 5, 1), 30);
+    const since = new Date(Date.now() - days * 86400000);
+    // Variant B: auditLog (login, status changes) + document changes (order status, assignments, repairs)
+    const [auditCount, orderActivityCount] = await Promise.all([
+      this.db.auditLog.count({ where: { organizationId: actor.organizationId, actorId: id, createdAt: { gte: since } } }),
+      this.db.orderHistory.count({ where: { organizationId: actor.organizationId, actorId: id, createdAt: { gte: since } } }),
+    ]);
+    return { userId: id, days, since, active: auditCount + orderActivityCount > 0, auditEvents: auditCount, orderEvents: orderActivityCount };
+  }
   @Get(':id/statistics') @Permissions('staff.view')
   async statistics(@CurrentActor() actor: Actor, @Param('id') id: string, @Query('from') from?: string, @Query('to') to?: string) {
     if (!await this.db.user.findFirst({ where: { id, organizationId: actor.organizationId } })) throw new NotFoundException();

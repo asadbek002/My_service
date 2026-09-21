@@ -297,6 +297,7 @@ model OrderHistory {
   createdAt DateTime @default(now())
   order Order @relation(fields: [organizationId, orderId], references: [organizationId, id], onDelete: Restrict)
   @@index([organizationId, orderId, createdAt])
+  @@index([organizationId, actorId, createdAt])
 }
 model OutboxEvent {
   id String @id @default(cuid())
