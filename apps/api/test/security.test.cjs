@@ -23,7 +23,7 @@ async function tenant() {
   const plan = await db.plan.create({ data: { name: id, maxStaff: 5, features: { inventory: true, staff_commission: true } } });
   await db.subscription.create({ data: { organizationId: org.id, planId: plan.id, status: 'ACTIVE', expiresAt: new Date(Date.now() + 86400000) } });
   const role = await db.role.create({ data: { organizationId: org.id, name: 'OWNER', systemKey: 'OWNER' } });
-  for (const key of ['staff.view', 'staff.manage', 'customers.view', 'customers.edit', 'orders.view', 'orders.create', 'orders.assign', 'orders.change_status', 'orders.edit', 'diagnostics.create', 'inventory.view', 'inventory.manage', 'inventory.use', 'inventory.view_cost', 'payments.view', 'payments.create', 'payments.refund', 'payments.deliver_with_debt']) {
+  for (const key of ['staff.view', 'staff.manage', 'customers.view', 'customers.edit', 'orders.view', 'orders.create', 'orders.assign', 'orders.change_status', 'orders.edit', 'diagnostics.create', 'inventory.view', 'inventory.manage', 'inventory.use', 'inventory.view_cost', 'payments.view', 'payments.create', 'payments.refund', 'payments.deliver_with_debt', 'reports.view', 'reports.finance']) {
     const p = await db.permission.upsert({ where: { key }, create: { key }, update: {} });
     await db.rolePermission.create({ data: { roleId: role.id, permissionId: p.id } });
   }
@@ -318,3 +318,5 @@ test('permanent Telegram failure falls back to idempotent SMS delivery', async (
     for(const [key,value] of Object.entries({TELEGRAM_API_URL:old.telegram,SMS_API_URL:old.sms,SMS_API_KEY:old.key,SMS_PROVIDER:old.provider,TELEGRAM_BOT_TOKEN:old.token})){if(value===undefined)delete process.env[key];else process.env[key]=value;}
   }
 });
+
+test('CSV export is plan-gated and protects spreadsheet cells', async()=>{const auth=await login(a.user);const response=await request('/reports/export',auth);assert.equal(response.status,200);assert.ok(response.headers.get('content-type').startsWith('text/csv'));const csv=await response.text();assert.ok(csv.startsWith('\uFEFF'));assert.ok(csv.includes('order'));});

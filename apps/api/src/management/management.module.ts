@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Post, Param, Query, Module, ConflictException, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Get, Post, Param, Query, Res, Module, ConflictException, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { IsString, IsOptional, Length, Matches } from 'class-validator';
+import type { Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
@@ -94,6 +95,14 @@ class ReportsController {
       const refunds = payments.find(p => p.kind === 'REFUND')?._sum.amount ?? new Prisma.Decimal(0);
       return { revenue, received, refunds, netCash: received.minus(refunds), partCost: cost, operatingExpenses: expenses._sum.amount ?? 0, contributionAfterExpenses: revenue.minus(cost).minus(expenses._sum.amount ?? 0), basis: 'Delivered order revenue minus installed part snapshots and non-PURCHASE expenses; cash flows shown separately. Not statutory accounting.' };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  }
+  @Get('export') @Permissions('reports.view')
+  async export(@CurrentActor() a: Actor,@Res() res: Response,@Query('from') from?: string,@Query('to') to?: string){
+    const subscription=await this.db.subscription.findUnique({where:{organizationId:a.organizationId},include:{plan:true}});const flags=subscription?.plan.features as Record<string,unknown>|undefined;if(!flags?.exports)throw new ForbiddenException('EXPORTS_NOT_IN_PLAN');
+    const createdAt=range(from,to);const orders=await this.db.order.findMany({where:{...orderScope(a),createdAt},include:{customer:{select:{firstName:true,phone:true}},device:{select:{brand:true,model:true,imei:true}},payments:{select:{kind:true,amount:true}}},orderBy:{createdAt:'asc'}});
+    const cell=(value:unknown)=>{let text=String(value??'');if(/^[=+\-@]/.test(text))text="'"+text;return '"'+text.replaceAll('"','""')+'"'};
+    const rows=[['order','created_at','status','customer','phone','device','imei','total','paid','balance'],...orders.map(order=>{const paid=order.payments.reduce((sum,p)=>p.kind==='REFUND'?sum.minus(p.amount):sum.plus(p.amount),new Prisma.Decimal(0));return[order.number,order.createdAt.toISOString(),order.status,order.customer.firstName,order.customer.phone,order.device.brand+' '+order.device.model,order.device.imei??'',order.total.toString(),paid.toString(),order.total.minus(paid).toString()]})];
+    const csv='\uFEFF'+rows.map(row=>row.map(cell).join(',')).join('\r\n');res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="myservice-orders.csv"');res.setHeader('Cache-Control','private, no-store');res.send(csv);
   }
   @Get('technicians') @Permissions('reports.view')
   async technicians(@CurrentActor() a: Actor) {

@@ -26,6 +26,13 @@ export class TransferDto {
   @ApiProperty() @IsInt() @Min(1) @Max(1000000) quantity!: number;
   @ApiProperty() @IsString() @Length(3, 1000) reason!: string;
 }
+export class StockMoveDto {
+  @ApiProperty() @IsString() @Length(1, 100) branchId!: string;
+  @ApiProperty() @IsString() @Length(1, 100) partId!: string;
+  @ApiProperty() @IsInt() @Min(1) @Max(1000000) quantity!: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 100) supplierId?: string;
+  @ApiProperty() @IsString() @Length(3, 1000) reason!: string;
+}
 export class ReserveDto {
   @ApiProperty() @IsString() @Length(1, 100) partId!: string;
   @ApiProperty() @IsInt() @Min(1) @Max(1000000) quantity!: number;
