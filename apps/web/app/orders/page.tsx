@@ -38,7 +38,7 @@ export default function Orders() {
   async function receive(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(''); const data = new FormData(event.currentTarget);
     if (!navigator.onLine) { setError('Internet yo‘q. Qabul saqlanmadi.'); setBusy(false); return; }
-    try { const o = await api<{ id: string }>('/orders', { method: 'POST', body: JSON.stringify({ customerId, deviceId, branchId: data.get('branchId'), complaint: data.get('complaint'), accessories: String(data.get('accessories')).split(',').map(s => s.trim()).filter(Boolean), condition: String(data.get('condition')).split(',').map(s => s.trim()).filter(Boolean) }) }); const kinds=['FRONT','BACK','LEFT','RIGHT','DAMAGE','OTHER']; for(let i=0;i<photos.length;i++) await uploadAttachment(o.id,photos[i],kinds[Math.min(i,kinds.length-1)]); router.push('/orders/' + o.id); }
+    try { const o = await api<{ id: string }>('/orders', { method: 'POST', body: JSON.stringify({ customerId, deviceId, branchId: data.get('branchId'), complaint: data.get('complaint'), accessories: String(data.get('accessories')).split(',').map(s => s.trim()).filter(Boolean), condition: String(data.get('condition')).split(',').map(s => s.trim()).filter(Boolean) }) }); const kinds=['FRONT','BACK','LEFT','RIGHT','DAMAGE','OTHER']; for(let i=0;i<photos.length;i++){const file=photos[i],kind=kinds[Math.min(i,kinds.length-1)]??'OTHER';if(file)await uploadAttachment(o.id,file,kind);} router.push('/orders/' + o.id); }
     catch(e) { fail(e); } finally { setBusy(false); }
   }
   return <main className="page"><header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/dashboard">Bosh sahifa</Link></header>

@@ -134,6 +134,8 @@ test('intake, concurrent numbering, tenant isolation and versioned approval', as
   for (const labor of ['150000', '160000']) {
     assert.equal((await request('/orders/' + order.id + '/diagnosis', { ...auth, method: 'POST', body: { diagnosis: 'OLED damaged', requiredWork: 'Replace display', labor, partsTotal: '700000' } })).status, 201);
   }
+  const quoteAudit = await db.auditLog.findFirst({ where: { organizationId: a.org.id, entityId: order.id, action: 'QUOTE_UPDATED' }, orderBy: { createdAt: 'desc' } });
+  assert.equal(quoteAudit.oldValue.quoteVersion, 1); assert.equal(quoteAudit.newValue.quoteVersion, 2); assert.ok(quoteAudit.ip);
   assert.equal((await request('/orders/' + order.id + '/approve', { ...auth, method: 'POST', body: { quoteVersion: 1, approved: true, evidence: 'Customer phone confirmation' } })).status, 409);
   assert.equal((await request('/orders/' + order.id + '/approve', { ...auth, method: 'POST', body: { quoteVersion: 2, approved: true, evidence: 'Customer phone confirmation' } })).status, 201);
   assert.equal((await request('/orders/' + order.id + '/status', { ...auth, method: 'PATCH', body: { status: 'IN_REPAIR', comment: 'Part available' } })).status, 200);

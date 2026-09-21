@@ -1,0 +1,3 @@
+ALTER TABLE "AuditLog" ADD COLUMN "oldValue" JSONB;
+ALTER TABLE "AuditLog" ADD COLUMN "newValue" JSONB;
+ALTER TABLE "AuditLog" ADD COLUMN "ip" TEXT;

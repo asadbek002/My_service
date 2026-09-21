@@ -163,6 +163,9 @@ model AuditLog {
   actorId        String?
   action         String
   entityId       String?
+  oldValue       Json?
+  newValue       Json?
+  ip             String?
   createdAt      DateTime @default(now())
 
   @@index([organizationId, createdAt])

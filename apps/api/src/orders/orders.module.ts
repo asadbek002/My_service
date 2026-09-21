@@ -25,8 +25,8 @@ export async function lockedOrder(tx: Prisma.TransactionClient, actor: Actor, id
   if (!order) throw new NotFoundException('Order not found');
   return order;
 }
-export async function record(tx: Prisma.TransactionClient, actor: Actor, id: string, action: string) {
-  await tx.auditLog.create({ data: { organizationId: actor.organizationId, actorId: actor.userId, action, entityId: id } });
+export async function record(tx: Prisma.TransactionClient, actor: Actor, id: string, action: string, oldValue?: Prisma.InputJsonValue, newValue?: Prisma.InputJsonValue) {
+  await tx.auditLog.create({ data: { organizationId: actor.organizationId, actorId: actor.userId, action, entityId: id, ip: actor.ip, ...(oldValue !== undefined ? { oldValue } : {}), ...(newValue !== undefined ? { newValue } : {}) } });
   await tx.outboxEvent.create({ data: { organizationId: actor.organizationId, type: action, entityId: id, payload: { actorId: actor.userId } } });
 }
 export async function transition(tx: Prisma.TransactionClient, actor: Actor, order: { id: string; status: string }, toStatus: string, comment: string) {
@@ -176,6 +176,7 @@ class OrdersController {
         total: new Prisma.Decimal(dto.labor).plus(dto.partsTotal), quoteVersion: { increment: 1 }, approvedVersion: null,
         approvalStatus: 'PENDING', approvalChannel: null, approvedAt: null,
       } });
+      await record(tx, actor, id, 'QUOTE_UPDATED', { diagnosis: order.diagnosis, requiredWork: order.requiredWork, labor: order.labor.toString(), partsTotal: order.partsTotal.toString(), total: order.total.toString(), quoteVersion: order.quoteVersion }, { diagnosis: dto.diagnosis, requiredWork: dto.requiredWork, labor: dto.labor, partsTotal: dto.partsTotal, total: new Prisma.Decimal(dto.labor).plus(dto.partsTotal).toString(), quoteVersion: order.quoteVersion + 1 });
       await transition(tx, actor, order, 'WAITING_CUSTOMER_APPROVAL', 'Diagnosis/quote updated'); return { ok: true };
     });
   }

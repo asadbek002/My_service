@@ -14,6 +14,7 @@ export interface Actor {
   branchIds: string[];
   permissions: string[];
   owner: boolean;
+  ip: string;
 }
 export type AuthRequest = Request & { actor: Actor };
 export const CurrentActor = createParamDecorator((_data: unknown, ctx: ExecutionContext): Actor => ctx.switchToHttp().getRequest<AuthRequest>().actor);
@@ -49,7 +50,7 @@ export class SecurityGuard implements CanActivate {
     req.actor = {
       userId: user.id, organizationId: user.organizationId, sessionId: session.id,
       branchIds: user.branches.map(b => b.branchId), permissions,
-      owner: user.roles.some(r => r.role.systemKey === 'OWNER'),
+      owner: user.roles.some(r => r.role.systemKey === 'OWNER'), ip: req.ip,
     };
     const required = this.reflector.getAllAndOverride<string[]>('permissions', targets) ?? [];
     if (!required.every(p => permissions.includes(p))) throw new ForbiddenException();
