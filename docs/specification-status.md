@@ -32,8 +32,8 @@ Legend: ✅ implemented and repository-verifiable; ◐ implemented core with a r
 | 26 | Status history | ✅ | Immutable transition history with actor/comment/time. |
 | 27 | Diagnosis | ✅ | Separate complaint, diagnosis, work, labor, part total and quote versions. |
 | 28 | Customer approval | ✅ | Staff evidence and single-use version-bound public approval. |
-| 29 | Inventory catalog | ◐ | SKU, prices, minimums and suppliers exist; barcode-specific scanning UI is not implemented. |
-| 30 | Inventory movement | ◐ | IN, RESERVE, RELEASE, USED, ADJUSTMENT and TRANSFER are implemented; generic RETURN remains a later workflow. |
+| 29 | Inventory catalog | ◐ | SKU, unique barcode, brand, compatible models, storage location, prices, minimums and suppliers exist; live camera acceptance remains a device release check. |
+| 30 | Inventory movement | ✅ | IN, OUT, RETURN, RESERVE, RELEASE, USED, ADJUSTMENT and TRANSFER are transactional and auditable. |
 | 31 | Order part | ✅ | Transactional reserve/use/release with race tests. |
 | 32 | Suppliers | ✅ | Contact/profile data and receipt linkage. |
 | 33 | Split payments | ✅ | Multiple payments per order. |
@@ -48,13 +48,13 @@ Legend: ✅ implemented and repository-verifiable; ◐ implemented core with a r
 | 42 | Notification types | ✅ | Workflow events map to automatic notification types. |
 | 43 | Templates | ✅ | Separate Telegram/SMS templates with validated variables. |
 | 44 | Notification history | ✅ | Delivery status, provider ID and safe error code UI/API. |
-| 45 | Warranty | ◐ | Order warranty is complete; direct part/action-level warranty attachment is not modeled separately. |
+| 45 | Warranty | ✅ | Delivery warranty stores validated covered order-part and repair-action identifiers with terms and dates. |
 | 46 | Warranty claim | ✅ | Active warranty creates a parent-linked new order. |
 | 47 | Delivery | ✅ | READY/final test/balance gates and explicit debt permission. |
 | 48 | Documents | ✅ | Receipt, repair, payment and warranty PDF/QR documents. |
 | 49 | Client tracking | ✅ | Tokenized public tracking without personal identifiers. |
 | 50 | Global search | ✅ | Phone, name, order number, IMEI, serial and model. |
-| 51 | Reports | ◐ | Finance and technician period reports exist; richer export/preset UI remains optional. |
+| 51 | Reports | ✅ | Finance and technician reports, date filters, quick presets and plan-gated UTF-8 CSV export are implemented. |
 | 52 | Technician dashboard | ✅ | Workload, completion, average time and commission data. |
 | 53 | Branches | ✅ | Owner-wide and assigned branch/order scopes plus branch limits. |
 | 54 | Audit log | ✅ | Actor/action/entity/time/IP and quote old/new values. |
