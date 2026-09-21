@@ -1,4 +1,5 @@
 import { Controller, Get, Injectable, Module, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import { EskizClient } from './eskiz.client';
 import { Queue, Worker } from 'bullmq';
 import { Database } from '../database';
 import { createLink } from './links.module';
@@ -22,7 +23,7 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
   private timer?: ReturnType<typeof setInterval>;
   private dispatching = false;
   private readonly logger = new Logger('Notifications');
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: Database, private readonly eskiz: EskizClient) {}
   async onModuleInit() {
     if (process.env.NOTIFICATIONS_ENABLED !== 'true') return;
     const url = new URL(process.env.REDIS_URL!);
@@ -85,27 +86,22 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
         // Retry transient Telegram failures. Permanent rejection falls through to SMS.
         if (response.status >= 500 || response.status === 429) throw new Error('TELEGRAM_RETRY');
       }
-      if (!flags?.sms || !process.env.SMS_PROVIDER || !process.env.SMS_API_URL || !process.env.SMS_API_KEY) throw new Error('SMS_NOT_CONFIGURED');
-      const endpoint = new URL(process.env.SMS_API_URL);
-      if (endpoint.protocol !== 'https:' && !(process.env.NODE_ENV === 'test' && ['127.0.0.1','localhost'].includes(endpoint.hostname))) throw new Error('SMS_HTTPS_REQUIRED');
+      if (!flags?.sms || !process.env.SMS_PROVIDER || !process.env.SMS_API_KEY) throw new Error('SMS_NOT_CONFIGURED');
       let smsProviderId = '';
       if (process.env.SMS_PROVIDER === 'eskiz') {
-        // Eskiz.uz — token olish
-        const tokenRes = await fetch('https://notify.eskiz.uz/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(10000), body: JSON.stringify({ email: process.env.SMS_API_KEY, password: process.env.SMS_API_SECRET }) });
-        if (!tokenRes.ok) throw new Error('SMS_PROVIDER_REJECTED');
-        const tokenData = await tokenRes.json() as { data?: { token?: string } };
-        const eskizToken = tokenData.data?.token;
-        if (!eskizToken) throw new Error('SMS_PROVIDER_REJECTED');
-        const sms = await fetch('https://notify.eskiz.uz/api/message/sms/send', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + eskizToken }, signal: AbortSignal.timeout(10000), body: JSON.stringify({ mobile_phone: order.customer.phone.replace('+', ''), message: message('SMS'), from: process.env.SMS_FROM ?? '4546', callback_url: '' }) });
-        if (!sms.ok) throw new Error('SMS_PROVIDER_REJECTED');
-        const smsData = await sms.json() as { id?: string; data?: { id?: string } };
-        smsProviderId = String(smsData.id ?? smsData.data?.id ?? '');
+        // EskizClient: token cache + refresh + send
+        const result = await this.eskiz.send(order.customer.phone, message('SMS'));
+        smsProviderId = result.id;
       } else {
         // Generic webhook provider
+        const apiUrl = process.env.SMS_API_URL;
+        if (!apiUrl) throw new Error('SMS_NOT_CONFIGURED');
+        const endpoint = new URL(apiUrl);
+        if (endpoint.protocol !== 'https:' && !(process.env.NODE_ENV === 'test' && ['127.0.0.1','localhost'].includes(endpoint.hostname))) throw new Error('SMS_HTTPS_REQUIRED');
         const sms = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.SMS_API_KEY, 'Idempotency-Key': event.id }, signal: AbortSignal.timeout(10000), body: JSON.stringify({ to: order.customer.phone, message: message('SMS'), reference: event.id }) });
         if (!sms.ok) throw new Error('SMS_PROVIDER_REJECTED');
-        const result = await sms.json() as { id?: string };
-        smsProviderId = String(result.id ?? '');
+        const smsResult = await sms.json() as { id?: string };
+        smsProviderId = String(smsResult.id ?? '');
       }
       await this.db.notification.update({ where: { id: notification.id }, data: { status: 'SENT', channel, providerId: smsProviderId, sentAt: new Date(), errorCode: null } });
     } catch (error) {
@@ -124,5 +120,5 @@ class NotificationsController {
     return this.db.notification.findMany({ where: { organizationId: actor.organizationId, orderId: { in: orders.map(order => order.id) } }, orderBy: { createdAt: 'desc' }, take: 200 });
   }
 }
-@Module({ controllers: [NotificationsController], providers: [Notifications] })
+@Module({ controllers: [NotificationsController], providers: [Notifications, EskizClient], exports: [EskizClient] })
 export class NotificationsModule {}
