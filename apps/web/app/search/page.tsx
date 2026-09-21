@@ -1,6 +1,74 @@
 'use client';
-import{useState,type FormEvent}from'react';import Link from'next/link';import{useRouter}from'next/navigation';import{api}from'../lib/api';
-type Result={id:string;number:string;status:string;device:{model:string}};
-export default function Search(){const router=useRouter();const[items,setItems]=useState<Result[]>([]);const[error,setError]=useState('');
-async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const q=String(new FormData(e.currentTarget).get('q'));try{setItems(await api('/search?q='+encodeURIComponent(q)))}catch(e){if(e instanceof Error&&e.message==='SESSION_EXPIRED')router.replace('/login');else setError(e instanceof Error?e.message:'Xato')}}
-return <main className="page"><header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/orders">Buyurtmalar</Link></header><h1>Global qidiruv</h1><form className="search-form" onSubmit={submit}><input name="q" minLength={2} placeholder="Telefon, ism, buyurtma, IMEI, serial yoki model" required/><button>Qidirish</button></form>{error&&<p className="error">{error}</p>}<section>{items.map(x=><p key={x.id}><Link href={'/orders/'+x.id}><strong>{x.number}</strong> · {x.device.model} · {x.status}</Link></p>)}{!items.length&&<p className="muted">Kamida 2 ta belgi kiriting.</p>}</section></main>}
+import Link from 'next/link';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../lib/api';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { StatusBadge } from '../../components/ui/status-badge';
+
+type SearchResult = { orders: { id: string; number: string; status: string; customer: { firstName: string; phone: string }; device: { brand: string; model: string } }[]; customers: { id: string; firstName: string; phone: string }[] };
+
+export default function Search() {
+  const [q, setQ] = useState('');
+  const [submitted, setSubmitted] = useState('');
+
+  const { data, isLoading } = useQuery<SearchResult>({
+    queryKey: ['search', submitted],
+    queryFn: () => api('/search?q=' + encodeURIComponent(submitted)),
+    enabled: submitted.length >= 2,
+  });
+
+  return (
+    <main className="page">
+      <header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/dashboard">Bosh sahifa</Link></header>
+      <div className="title-row"><div><p className="eyebrow">QIDIRISH</p><h1>Global qidirish</h1></div></div>
+
+      <form className="search-form" onSubmit={e => { e.preventDefault(); setSubmitted(q); }}>
+        <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Telefon, ism, buyurtma raqami, IMEI..." autoFocus />
+        <Button type="submit" disabled={q.length < 2}>Qidirish</Button>
+      </form>
+
+      {isLoading && <p className="muted">Qidirilmoqda...</p>}
+
+      {data && (
+        <>
+          {data.orders.length > 0 && (
+            <section style={{ marginTop: 24 }}>
+              <h2>Buyurtmalar ({data.orders.length})</h2>
+              <div className="table-scroll">
+                <table>
+                  <thead><tr><th>Raqam</th><th>Mijoz</th><th>Qurilma</th><th>Holat</th></tr></thead>
+                  <tbody>
+                    {data.orders.map(o => (
+                      <tr key={o.id}>
+                        <td><Link href={'/orders/' + o.id}>{o.number}</Link></td>
+                        <td>{o.customer.firstName}<small>{o.customer.phone}</small></td>
+                        <td>{o.device.brand} {o.device.model}</td>
+                        <td><StatusBadge status={o.status} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+          {data.customers.length > 0 && (
+            <section style={{ marginTop: 24 }}>
+              <h2>Mijozlar ({data.customers.length})</h2>
+              {data.customers.map(c => (
+                <div key={c.id} style={{ padding: '10px 0', borderBottom: '1px solid #eee', fontSize: 14 }}>
+                  <Link href={'/customers/' + c.id}>{c.firstName}</Link>
+                  <small style={{ marginLeft: 8, color: '#666' }}>{c.phone}</small>
+                </div>
+              ))}
+            </section>
+          )}
+          {data.orders.length === 0 && data.customers.length === 0 && (
+            <p className="muted" style={{ marginTop: 24 }}>"{submitted}" bo'yicha hech narsa topilmadi.</p>
+          )}
+        </>
+      )}
+    </main>
+  );
+}

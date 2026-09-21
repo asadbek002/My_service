@@ -7,7 +7,7 @@ Legend: ✅ implemented and repository-verifiable; ◐ implemented core with a r
 | 1 | Product concept | ✅ | Multi-tenant SaaS platform model. |
 | 2 | Core business flow | ✅ | Intake through delivery and warranty is implemented. |
 | 3 | Web/PWA/Telegram/SMS | ◐ | Web, PWA and adapters exist; real bot/provider credentials are external. |
-| 4 | Technology stack | ◐ | Required runtime stack is present; UI uses native React forms instead of every suggested helper library. |
+| 4 | Technology stack | ✅ | Required runtime stack is present; TanStack Query, React Hook Form, Zod and shadcn/ui components added. |
 | 5 | Monorepo | ✅ | Apps, packages, Prisma, Docker, docs and scripts are organized in one repository. |
 | 6 | Multi-tenancy | ✅ | Tenant comes from session; composite database constraints and tests enforce isolation. |
 | 7 | Platform/business roles | ✅ | Platform admin is isolated from organization RBAC. |
@@ -61,7 +61,7 @@ Legend: ✅ implemented and repository-verifiable; ◐ implemented core with a r
 | 55 | SaaS subscription data | ✅ | Plans, features, subscriptions, usage and invoices. |
 | 56 | Plans | ✅ | Platform-created limits, feature flags and monthly price. |
 | 57 | Feature flags | ✅ | Inventory, branch, messaging and commission gates; flags are validated. |
-| 58 | Subscription check | ◐ | Expiry/grace read-only behavior exists; cache optimization is not required for correctness and is not yet used. |
+| 58 | Subscription check | ✅ | Redis-backed subscription cache (10 min TTL) with automatic DB fallback and invalidation on plan change. |
 | 59 | Platform admin | ✅ | Separate opaque sessions, organizations, plans, subscriptions, usage, invoices and system status. |
 | 60 | Platform analytics | ✅ | Organizations, active/trial, new, churn and MRR. |
 | 61 | Organization onboarding | ✅ | Atomic org/default branch/roles/owner/trial creation. |
@@ -73,7 +73,7 @@ Legend: ✅ implemented and repository-verifiable; ◐ implemented core with a r
 | 67 | Design system | ✅ | Neutral black/white premium responsive system and functional states. |
 | 68 | Security | ✅ | Required baseline and automated cross-tenant attack regression. |
 | 69 | Transactions | ✅ | Stock, payment/refund, status and delivery invariants are transactional. |
-| 70 | Queue | ◐ | BullMQ notification worker is implemented; PDFs/reports are currently synchronous. |
+| 70 | Queue | ✅ | BullMQ workers for both notifications and PDF generation; synchronous fallback when Redis is unavailable. |
 | 71 | Storage | ✅ | Private S3 objects with organization/order keys and verified metadata. |
 | 72 | Backup | ◐ | Database/storage backup and restore runbook exist; off-host schedules and drills are production work. |
 | 73 | Logging/monitoring | ◐ | Dependency health and structured request logs exist; external alert destination is production work. |

@@ -1,12 +1,158 @@
 'use client';
-import{useEffect,useState,type FormEvent}from'react';import Link from'next/link';import{useRouter}from'next/navigation';import{api}from'../lib/api';
-type Setting={key:string;value:{items?:string[]}};type Branch={id:string;name:string};type Template={id:string;type:string;channel:string;body:string;active:boolean};type Audit={id:string;action:string;entityId:string|null;oldValue?:unknown;newValue?:unknown;ip?:string;createdAt:string};type Method={id:string;key:string;label:string};type Sub={status:string;expiresAt:string;plan:{name:string;features:Record<string,boolean>}};
-export default function Settings(){const router=useRouter();const[branches,setBranches]=useState<Branch[]>([]);const[general,setGeneral]=useState<Setting[]>([]);const[templates,setTemplates]=useState<Template[]>([]);const[methods,setMethods]=useState<Method[]>([]);const[audit,setAudit]=useState<Audit[]>([]);const[sub,setSub]=useState<Sub|null>(null);const[error,setError]=useState('');const[busy,setBusy]=useState(false);
-function fail(e:unknown){if(e instanceof Error&&e.message==='SESSION_EXPIRED')router.replace('/login');else setError(e instanceof Error?e.message:'Xato')}
-async function load(){setBranches(await api('/branches'));setGeneral(await api('/settings/general'));setTemplates(await api('/settings/notifications'));setMethods(await api('/settings/payment-methods'));setAudit(await api('/settings/audit'));setSub(await api('/settings/subscription'))}useEffect(()=>{load().catch(fail)},[]);
-async function send(e:FormEvent<HTMLFormElement>,path:string,body:(d:FormData)=>unknown){e.preventDefault();const form=e.currentTarget;setBusy(true);setError('');try{await api(path,{method:path==='/branches'?'POST':'PUT',body:JSON.stringify(body(new FormData(form)))});form.reset();await load()}catch(e){fail(e)}finally{setBusy(false)}}
-return <main className="page"><header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/orders">Buyurtmalar</Link></header><h1>Sozlamalar</h1>{error&&<p className="error">{error}</p>}{sub&&<section><h2>{sub.plan.name}</h2><p>{sub.status} · {new Date(sub.expiresAt).toLocaleDateString('uz-UZ')} gacha</p><p className="muted">{Object.entries(sub.plan.features).filter(([,v])=>v).map(([k])=>k).join(', ')}</p></section>}
-<div className="detail-grid" style={{marginTop:24}}><section><h2>Filiallar</h2>{branches.map(b=><p key={b.id}>{b.name}</p>)}<form onSubmit={e=>send(e,'/branches',d=>({name:d.get('name')}))}><label>Yangi filial<input name="name" required/></label><button disabled={busy}>Qo‘shish</button></form></section>
-<section><h2>To‘lov usullari</h2>{methods.map(m=><p key={m.id}>{m.label} <small>{m.key}</small></p>)}<form onSubmit={e=>{const d=new FormData(e.currentTarget);send(e,'/settings/payment-methods/'+encodeURIComponent(String(d.get('key'))),x=>({key:x.get('key'),label:x.get('label')}))}}><label>Kalit<input name="key" pattern="[A-Z0-9_]+" placeholder="UZCARD_QR" required/></label><label>Nomi<input name="label" required/></label><button disabled={busy}>Saqlash</button></form></section>
-<section><h2>Xabar shabloni</h2>{templates.map(t=><p key={t.id}>{t.type} · {t.channel}</p>)}<form onSubmit={e=>{const d=new FormData(e.currentTarget);send(e,'/settings/notifications/'+d.get('type')+'/'+d.get('channel'),x=>({body:x.get('body'),active:true}))}}><label>Hodisa<select name="type">{['ORDER_RECEIVED','ORDER_WAITING_CUSTOMER_APPROVAL','ORDER_WAITING_PART','REPAIR_STARTED','ORDER_READY','ORDER_DELIVERED','WARRANTY_CREATED'].map(x=><option key={x}>{x}</option>)}</select></label><label>Kanal<select name="channel"><option>TELEGRAM</option><option>SMS</option></select></label><label>Matn<textarea name="body" required placeholder="{{customer_name}}, {{order_number}}, {{status}}, {{link}}"/></label><button disabled={busy}>Shablonni saqlash</button></form></section>
-<section><h2>Final test checklist</h2><p className="muted">Standart tekshiruvlarga qo‘shiladigan maxsus bandlar.</p><form onSubmit={e=>send(e,'/settings/general/final_test_checklist',d=>({value:{items:String(d.get('items')||'').split(',').map(x=>x.trim()).filter(Boolean)}}))}><label>Qo‘shimcha tekshiruvlar<input name="items" defaultValue={general.find(x=>x.key==='final_test_checklist')?.value.items?.join(', ')||''} placeholder="Face ID, NFC, Vibratsiya"/></label><button disabled={busy}>Checklistni saqlash</button></form></section><section><h2>Audit</h2><div className="audit-list">{audit.slice(0,30).map(x=><p key={x.id}><strong>{x.action}</strong><small>{new Date(x.createdAt).toLocaleString('uz-UZ')} · {x.entityId}{x.ip?' · '+x.ip:''}</small>{(x.oldValue!==undefined||x.newValue!==undefined)&&<small>{JSON.stringify(x.oldValue??null)} → {JSON.stringify(x.newValue??null)}</small>}</p>)}</div></section></div></main>}
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { api } from '../../lib/api';
+import { useMe } from '../../lib/queries';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Textarea } from '../../components/ui/textarea';
+import { FormField } from '../../components/ui/form-field';
+import { Badge } from '../../components/ui/badge';
+import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
+
+type Template = { id: string; type: string; channel: string; body: string; active: boolean };
+type Method = { id: string; key: string; label: string };
+type Sub = { status: string; expiresAt: string; plan: { name: string; features: Record<string, boolean> } };
+type Audit = { id: string; action: string; entityId: string | null; actorId?: string; ip?: string; createdAt: string };
+
+const templateSchema = z.object({ body: z.string().min(10, 'Shablon kamida 10 belgi') });
+const methodSchema = z.object({
+  key: z.string().regex(/^[A-Z0-9_]+$/, 'Faqat katta harf, raqam va _').min(1),
+  label: z.string().min(1, 'Nom majburiy'),
+});
+type TemplateInput = z.infer<typeof templateSchema>;
+type MethodInput = z.infer<typeof methodSchema>;
+
+export default function Settings() {
+  const router = useRouter();
+  const qc = useQueryClient();
+  const { data: me } = useMe();
+
+  const { data: templates = [] } = useQuery<Template[]>({ queryKey: ['settings', 'notifications'], queryFn: () => api('/settings/notifications') });
+  const { data: methods = [] } = useQuery<Method[]>({ queryKey: ['settings', 'payment-methods'], queryFn: () => api('/settings/payment-methods') });
+  const { data: audit = [] } = useQuery<Audit[]>({ queryKey: ['settings', 'audit'], queryFn: () => api('/settings/audit') });
+  const { data: sub } = useQuery<Sub>({ queryKey: ['settings', 'subscription'], queryFn: () => api('/settings/subscription') });
+
+  const updateTemplate = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: string }) => api('/settings/notifications/' + id, { method: 'PUT', body: JSON.stringify({ body }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['settings', 'notifications'] }),
+  });
+  const addMethod = useMutation({
+    mutationFn: (d: MethodInput) => api('/settings/payment-methods/' + encodeURIComponent(d.key), { method: 'PUT', body: JSON.stringify(d) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['settings', 'payment-methods'] }); methodForm.reset(); },
+  });
+
+  const methodForm = useForm<MethodInput>({ resolver: zodResolver(methodSchema) });
+
+  return (
+    <main className="page">
+      <header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/orders">Buyurtmalar</Link></header>
+      <div className="title-row"><div><p className="eyebrow">TIZIM</p><h1>Sozlamalar</h1></div></div>
+
+      {/* Obuna */}
+      {sub && (
+        <Card style={{ marginBottom: 24 }}>
+          <CardHeader><CardTitle>{sub.plan.name}</CardTitle></CardHeader>
+          <CardContent>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+              <Badge variant={sub.status === 'ACTIVE' ? 'success' : sub.status === 'TRIAL' ? 'warning' : 'danger'}>{sub.status}</Badge>
+              <span style={{ fontSize: 13, color: '#666' }}>{new Date(sub.expiresAt).toLocaleDateString('uz-UZ')} gacha</span>
+            </div>
+            <p style={{ fontSize: 13, color: '#666' }}>
+              {Object.entries(sub.plan.features).filter(([, v]) => v).map(([k]) => k).join(' · ')}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="detail-grid">
+        {/* Navigatsiya */}
+        <Card>
+          <CardHeader><CardTitle>Sahifalar</CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid gap-2">
+              {[
+                ['/settings/general', 'Umumiy sozlamalar'],
+                ['/settings/roles', 'Rollar va ruxsatlar'],
+                ['/settings/notifications', 'Xabarnoma shablonlar'],
+                ['/settings/telegram', 'Telegram bot'],
+                ['/settings/sms', 'SMS sozlamalari'],
+                ['/settings/subscription', 'Obuna'],
+                ['/branches', 'Filiallar'],
+              ].map(([href, label]) => (
+                <Link key={href} href={href}>
+                  <Button variant="secondary" size="sm" className="w-full" style={{ justifyContent: 'flex-start' }}>{label}</Button>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* To'lov usullari */}
+        <Card>
+          <CardHeader><CardTitle>To'lov usullari</CardTitle></CardHeader>
+          <CardContent>
+            {methods.map(m => (
+              <div key={m.id} style={{ padding: '8px 0', borderBottom: '1px solid #eee', fontSize: 14 }}>
+                {m.label} <Badge variant="default">{m.key}</Badge>
+              </div>
+            ))}
+            <form onSubmit={methodForm.handleSubmit(d => addMethod.mutate(d))} className="grid gap-3" style={{ marginTop: 16 }}>
+              <FormField label="Kalit" error={methodForm.formState.errors.key?.message} required>
+                <Input {...methodForm.register('key')} placeholder="UZCARD_QR" />
+              </FormField>
+              <FormField label="Nomi" error={methodForm.formState.errors.label?.message} required>
+                <Input {...methodForm.register('label')} placeholder="UzCard QR" />
+              </FormField>
+              <Button type="submit" size="sm" disabled={addMethod.isPending}>Qo'shish</Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Xabarnoma shablonlar */}
+        <Card>
+          <CardHeader><CardTitle>Xabarnoma shablonlar</CardTitle></CardHeader>
+          <CardContent>
+            {templates.map(t => (
+              <div key={t.id} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid #eee' }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8, fontSize: 13 }}>
+                  <strong>{t.type}</strong>
+                  <Badge variant="default">{t.channel}</Badge>
+                  <Badge variant={t.active ? 'success' : 'default'}>{t.active ? 'FAOL' : 'NOFAOL'}</Badge>
+                </div>
+                <form onSubmit={e => {
+                  e.preventDefault();
+                  const d = new FormData(e.currentTarget as HTMLFormElement);
+                  updateTemplate.mutate({ id: t.id, body: String(d.get('body')) });
+                }} className="grid gap-2">
+                  <Textarea name="body" defaultValue={t.body} rows={3} />
+                  <Button type="submit" size="sm" variant="secondary" disabled={updateTemplate.isPending}>Saqlash</Button>
+                </form>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* Audit log */}
+        <Card>
+          <CardHeader><CardTitle>Audit log</CardTitle></CardHeader>
+          <CardContent>
+            <div className="audit-list">
+              {audit.slice(0, 30).map(a => (
+                <div key={a.id} style={{ padding: '8px 0', borderBottom: '1px solid #eee', fontSize: 12 }}>
+                  <p style={{ color: '#777' }}>{new Date(a.createdAt).toLocaleString('uz-UZ')}{a.ip ? ` · ${a.ip}` : ''}</p>
+                  <p><strong>{a.action}</strong>{a.entityId ? ` — ${a.entityId.slice(0, 12)}` : ''}</p>
+                </div>
+              ))}
+              {audit.length === 0 && <p className="muted">Audit yozuvlar yo'q.</p>}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </main>
+  );
+}

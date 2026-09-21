@@ -1,26 +1,171 @@
 'use client';
-import { useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { api } from '../lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { api } from '../../lib/api';
+import { useMe, useBranches } from '../../lib/queries';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Select } from '../../components/ui/select';
+import { FormField } from '../../components/ui/form-field';
+import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 import BarcodeScanner from './barcode-scanner';
-type Supplier={id:string;name:string;company?:string};
-type Part = { id: string; name: string; sku: string; barcode?: string; brand?: string; compatibleModels: string[]; storageLocation?: string; salePrice: string; stocks: { branchId: string; onHand: number; reserved: number }[] };
+import { useState } from 'react';
+
+type Part = { id: string; name: string; sku: string; barcode?: string; brand?: string; salePrice: string; stocks: { branchId: string; onHand: number; reserved: number }[] };
+type Supplier = { id: string; name: string };
+
+const partSchema = z.object({
+  name: z.string().min(1, 'Nomi majburiy'),
+  sku: z.string().min(1, 'SKU majburiy'),
+  barcode: z.string().optional(),
+  brand: z.string().optional(),
+  salePrice: z.string().regex(/^\d+(\.\d{1,2})?$/, "Noto'g'ri narx"),
+  purchasePrice: z.string().regex(/^\d+(\.\d{1,2})?$/, "Noto'g'ri narx"),
+  minimumQuantity: z.string().optional(),
+  compatibleModels: z.string().optional(),
+  storageLocation: z.string().optional(),
+  supplierId: z.string().optional(),
+});
+const receiveSchema = z.object({
+  partId: z.string().min(1, 'Detal tanlang'),
+  branchId: z.string().min(1, 'Filial tanlang'),
+  quantity: z.string().regex(/^\d+$/, 'Butun son kiriting').refine(v => Number(v) > 0),
+  note: z.string().optional(),
+});
+type PartInput = z.infer<typeof partSchema>;
+type ReceiveInput = z.infer<typeof receiveSchema>;
+
 export default function Inventory() {
-  const router = useRouter(); const [parts, setParts] = useState<Part[]>([]); const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
-  const [suppliers,setSuppliers]=useState<Supplier[]>([]); const [search,setSearch]=useState(''); const [manage, setManage] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
-  function fail(e: unknown) { if (e instanceof Error && e.message === 'SESSION_EXPIRED') router.replace('/login'); else setError(e instanceof Error ? e.message : 'Xato'); }
-  async function load() { const me=await api<{permissions:string[]}>('/auth/me');const allowed=me.permissions.includes('inventory.manage');setManage(allowed);setParts(await api<Part[]>('/inventory'));setBranches(await api<typeof branches>('/branches'));if(allowed)setSuppliers(await api<Supplier[]>('/suppliers')); }
-  useEffect(() => { load().catch(fail); }, []);
-  async function submit(e: FormEvent<HTMLFormElement>, path: string) {
-    e.preventDefault(); const form = e.currentTarget; const d: Record<string, unknown> = Object.fromEntries(new FormData(form)); if(path!=='parts') d.quantity=Number(d.quantity); else { d.minimumQuantity=Number(d.minimumQuantity || 0); d.compatibleModels=String(d.compatibleModels || '').split(',').map(x=>x.trim()).filter(Boolean); }if(!d.supplierId)delete d.supplierId; setBusy(true); setError('');
-    try { await api('/inventory/' + path, { method: 'POST', body: JSON.stringify(d) }); form.reset(); await load(); }
-    catch(e) { fail(e); } finally { setBusy(false); }
-  }
-  const q=search.trim().toLowerCase();const visibleParts=q?parts.filter(p=>[p.name,p.sku,p.barcode,p.brand,p.storageLocation,...p.compatibleModels].some(v=>v?.toLowerCase().includes(q))):parts;
-  return <main className="page"><header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/orders">Buyurtmalar</Link></header><h1>Ombor</h1>{error && <p role="alert" className="error">{error}</p>}
-    <section><div className="inline-form"><label>Detal qidirish<input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Nomi, SKU yoki barcode" /></label><BarcodeScanner onScan={setSearch}/></div><div className="table-scroll"><table><thead><tr><th>Detal</th><th>SKU / barcode</th><th>Brend / joy</th><th>Sotuv narxi</th><th>Mavjud</th><th>Rezerv</th><th>Erkin</th></tr></thead><tbody>{visibleParts.map(p => { const n = p.stocks.reduce((s, x) => s + x.onHand, 0); const r = p.stocks.reduce((s, x) => s + x.reserved, 0); return <tr key={p.id}><td><Link href={'/inventory/'+p.id}>{p.name}</Link></td><td>{p.sku}{p.barcode && <small><br/>{p.barcode}</small>}</td><td>{p.brand || '—'}{p.storageLocation && <small><br/>{p.storageLocation}</small>}</td><td>{p.salePrice}</td><td>{n}</td><td>{r}</td><td>{n-r}</td></tr>; })}</tbody></table></div></section>
-    {manage && <div className="detail-grid" style={{ marginTop: 24 }}><section><h2>Yangi detal</h2><form onSubmit={e => submit(e, 'parts')}><label>Nomi<input name="name" required /></label><label>SKU<input name="sku" required /></label><label>Barcode<input name="barcode" /></label><label>Brend<input name="brand" /></label><label>Mos modellar (vergul bilan)<input name="compatibleModels" placeholder="iPhone 13, iPhone 14" /></label><label>Saqlash joyi<input name="storageLocation" placeholder="A-12" /></label><label>Minimal qoldiq<input name="minimumQuantity" type="number" min="0" defaultValue="0" /></label><label>Xarid narxi<input name="purchasePrice" type="number" min="0" step=".01" required /></label><label>Sotuv narxi<input name="salePrice" type="number" min="0" step=".01" required /></label><button disabled={busy}>Detal yaratish</button></form></section>
-    <section><h2>Omborga kirim</h2><form onSubmit={e => submit(e, 'receive')}><label>Filial<select name="branchId" required>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label><label>Detal<select name="partId" required>{parts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Soni<input name="quantity" type="number" min="1" required /></label><label>Yetkazib beruvchi<select name="supplierId"><option value="">Ko‘rsatilmagan</option>{suppliers.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Sabab / hujjat<input name="reason" required minLength={3} /></label><button disabled={busy}>Kirimni saqlash</button></form></section><section><h2>Qoldiqni tuzatish</h2><form onSubmit={e => submit(e, 'adjust')}><label>Filial<select name="branchId" required>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label><label>Detal<select name="partId" required>{parts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Farq (+/−)<input name="quantity" type="number" required /></label><label>Sabab<input name="reason" required minLength={3}/></label><button disabled={busy}>Tuzatishni saqlash</button></form></section><section><h2>Filiallararo transfer</h2><form onSubmit={e => submit(e, 'transfer')}><label>Qayerdan<select name="fromBranchId" required>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label><label>Qayerga<select name="toBranchId" required>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label><label>Detal<select name="partId" required>{parts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Soni<input name="quantity" type="number" min="1" required /></label><label>Sabab<input name="reason" required minLength={3}/></label><button disabled={busy}>Transfer qilish</button></form></section><section><h2>Ombordan chiqim</h2><form onSubmit={e => submit(e, 'out')}><label>Filial<select name="branchId" required>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label><label>Detal<select name="partId" required>{parts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Soni<input name="quantity" type="number" min="1" required/></label><label>Sabab<input name="reason" required minLength={3}/></label><button disabled={busy}>Chiqim qilish</button></form></section><section><h2>Supplierga qaytarish</h2><form onSubmit={e => submit(e, 'return')}><label>Filial<select name="branchId" required>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label><label>Detal<select name="partId" required>{parts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Supplier<select name="supplierId" required>{suppliers.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Soni<input name="quantity" type="number" min="1" required/></label><label>Sabab<input name="reason" required minLength={3}/></label><button disabled={busy}>Qaytarishni saqlash</button></form></section></div>}
-  </main>;
+  const qc = useQueryClient();
+  const { data: me } = useMe();
+  const { data: branches = [] } = useBranches();
+  const [search, setSearch] = useState('');
+
+  const { data: parts = [], isLoading } = useQuery<Part[]>({ queryKey: ['parts'], queryFn: () => api('/inventory') });
+  const { data: suppliers = [] } = useQuery<Supplier[]>({ queryKey: ['suppliers'], queryFn: () => api('/suppliers') });
+
+  const createPart = useMutation({
+    mutationFn: (d: PartInput) => api('/inventory/parts', { method: 'POST', body: JSON.stringify({
+      ...d,
+      minimumQuantity: Number(d.minimumQuantity || 0),
+      compatibleModels: d.compatibleModels?.split(',').map(x => x.trim()).filter(Boolean) ?? [],
+      supplierId: d.supplierId || undefined,
+    })}),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['parts'] }); partForm.reset(); },
+  });
+  const receivePart = useMutation({
+    mutationFn: (d: ReceiveInput) => api('/inventory/receive', { method: 'POST', body: JSON.stringify({ ...d, quantity: Number(d.quantity) }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['parts'] }); receiveForm.reset(); },
+  });
+
+  const partForm = useForm<PartInput>({ resolver: zodResolver(partSchema) });
+  const receiveForm = useForm<ReceiveInput>({ resolver: zodResolver(receiveSchema) });
+
+  const canManage = me?.permissions.includes('inventory.manage');
+  const q = search.trim().toLowerCase();
+  const visible = q ? parts.filter(p => [p.name, p.sku, p.barcode, p.brand].some(v => v?.toLowerCase().includes(q))) : parts;
+
+  return (
+    <main className="page">
+      <header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/dashboard">Bosh sahifa</Link></header>
+      <div className="title-row"><div><p className="eyebrow">OMBOR</p><h1>Inventar</h1></div></div>
+
+      <div className="search-form">
+        <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Qidirish: nom, SKU, barcode..." />
+        <BarcodeScanner onScan={v => setSearch(v)} />
+      </div>
+
+      <div className="detail-grid">
+        <section>
+          {isLoading ? <p className="muted">Yuklanmoqda...</p> : (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Nomi</th><th>SKU</th><th>Narx</th><th>Qoldiq</th><th></th></tr></thead>
+                <tbody>
+                  {visible.map(p => {
+                    const total = p.stocks.reduce((n, s) => n + s.onHand - s.reserved, 0);
+                    return (
+                      <tr key={p.id}>
+                        <td>{p.name}{p.brand && <small>{p.brand}</small>}</td>
+                        <td style={{ fontSize: 12 }}>{p.sku}{p.barcode && <small>{p.barcode}</small>}</td>
+                        <td>{Number(p.salePrice).toLocaleString('uz-UZ')}</td>
+                        <td>{total}</td>
+                        <td><Link href={'/inventory/' + p.id}><Button variant="ghost" size="sm">Ko'rish</Button></Link></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {visible.length === 0 && <p className="muted">Detal topilmadi.</p>}
+            </div>
+          )}
+        </section>
+
+        {canManage && (
+          <div className="grid gap-4">
+            <Card>
+              <CardHeader><CardTitle>Yangi detal</CardTitle></CardHeader>
+              <CardContent>
+                <form onSubmit={partForm.handleSubmit(d => createPart.mutate(d))} className="grid gap-3">
+                  <FormField label="Nomi" error={partForm.formState.errors.name?.message} required>
+                    <Input {...partForm.register('name')} placeholder="OLED Panel" />
+                  </FormField>
+                  <FormField label="SKU" error={partForm.formState.errors.sku?.message} required>
+                    <Input {...partForm.register('sku')} placeholder="OLED-IP15-001" />
+                  </FormField>
+                  <FormField label="Barcode"><Input {...partForm.register('barcode')} /></FormField>
+                  <FormField label="Brend"><Input {...partForm.register('brand')} /></FormField>
+                  <FormField label="Sotish narxi" error={partForm.formState.errors.salePrice?.message} required>
+                    <Input {...partForm.register('salePrice')} placeholder="700000" />
+                  </FormField>
+                  <FormField label="Tannarx" error={partForm.formState.errors.purchasePrice?.message} required>
+                    <Input {...partForm.register('purchasePrice')} placeholder="550000" />
+                  </FormField>
+                  <FormField label="Minimal miqdor"><Input {...partForm.register('minimumQuantity')} type="number" min="0" defaultValue="0" /></FormField>
+                  <FormField label="Mos modellar"><Input {...partForm.register('compatibleModels')} placeholder="iPhone 15, iPhone 15 Pro" /></FormField>
+                  <FormField label="Saqlash joyi"><Input {...partForm.register('storageLocation')} /></FormField>
+                  <FormField label="Yetkazib beruvchi">
+                    <Select {...partForm.register('supplierId')}>
+                      <option value="">Tanlang</option>
+                      {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </Select>
+                  </FormField>
+                  {createPart.error && <p className="error">{(createPart.error as Error).message}</p>}
+                  <Button type="submit" disabled={createPart.isPending}>{createPart.isPending ? 'Saqlanmoqda...' : 'Detal qo\'shish'}</Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle>Kirim qilish</CardTitle></CardHeader>
+              <CardContent>
+                <form onSubmit={receiveForm.handleSubmit(d => receivePart.mutate(d))} className="grid gap-3">
+                  <FormField label="Detal" error={receiveForm.formState.errors.partId?.message} required>
+                    <Select {...receiveForm.register('partId')}>
+                      <option value="">Tanlang</option>
+                      {parts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </Select>
+                  </FormField>
+                  <FormField label="Filial" error={receiveForm.formState.errors.branchId?.message} required>
+                    <Select {...receiveForm.register('branchId')}>
+                      <option value="">Tanlang</option>
+                      {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </Select>
+                  </FormField>
+                  <FormField label="Miqdor" error={receiveForm.formState.errors.quantity?.message} required>
+                    <Input {...receiveForm.register('quantity')} type="number" min="1" defaultValue="1" />
+                  </FormField>
+                  {receivePart.error && <p className="error">{(receivePart.error as Error).message}</p>}
+                  <Button type="submit" disabled={receivePart.isPending}>{receivePart.isPending ? 'Kirim qilinmoqda...' : 'Kirim'}</Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
+    </main>
+  );
 }

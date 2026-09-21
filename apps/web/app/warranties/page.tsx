@@ -1,4 +1,83 @@
 'use client';
-import Link from 'next/link';import{FormEvent,useEffect,useState}from'react';import{useRouter}from'next/navigation';import{api}from'../lib/api';
-type Warranty={id:string;startDate:string;endDate:string;terms:string;order:{id:string;number:string;status:string;customer:{firstName:string;phone:string};device:{brand:string;model:string}}};
-export default function Warranties(){const router=useRouter();const[x,setX]=useState<Warranty[]>([]);const[e,setE]=useState('');const[claim,setClaim]=useState<string|null>(null);async function load(){setX(await api<Warranty[]>('/warranties'))}useEffect(()=>{load().catch(v=>v instanceof Error&&v.message==='SESSION_EXPIRED'?router.replace('/login'):setE(v instanceof Error?v.message:'Xato'));},[]);async function submit(ev:FormEvent<HTMLFormElement>){ev.preventDefault();if(!claim)return;const d=new FormData(ev.currentTarget);try{const o=await api<{id:string}>('/warranties/'+claim+'/claim',{method:'POST',body:JSON.stringify({reason:d.get('reason')})});router.push('/orders/'+o.id)}catch(v){setE(v instanceof Error?v.message:'Xato')}}return <main className="page"><header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/orders">Buyurtmalar</Link></header><p className="eyebrow">KAFOLAT</p><h1>Kafolatlar</h1>{e&&<p className="error">{e}</p>}<section><div className="table-scroll"><table><thead><tr><th>Buyurtma</th><th>Qurilma</th><th>Mijoz</th><th>Tugash</th><th>Holat</th><th></th></tr></thead><tbody>{x.map(v=>{const active=new Date(v.endDate)>new Date();return <tr key={v.id}><td><Link href={'/orders/'+v.order.id}>{v.order.number}</Link></td><td>{v.order.device.brand} {v.order.device.model}</td><td>{v.order.customer.firstName}</td><td>{new Date(v.endDate).toLocaleDateString('uz-UZ')}</td><td>{active?'ACTIVE':'EXPIRED'}</td><td>{active&&<button className="secondary" onClick={()=>setClaim(v.id)}>Kafolat qabuli</button>}</td></tr>})}</tbody></table></div></section>{claim&&<section><h2>Kafolat bo‘yicha yangi order</h2><form onSubmit={submit}><label>Sabab<textarea name="reason" required minLength={3}/></label><div className="actions"><button>Yaratish</button><button type="button" className="secondary" onClick={()=>setClaim(null)}>Bekor qilish</button></div></form></section>}</main>}
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { useMutation } from '@tanstack/react-query';
+import { useWarranties } from '../../lib/queries';
+import { api } from '../../lib/api';
+import { Button } from '../../components/ui/button';
+import { Textarea } from '../../components/ui/textarea';
+import { FormField } from '../../components/ui/form-field';
+import { Badge } from '../../components/ui/badge';
+import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
+import { useState } from 'react';
+
+const claimSchema = z.object({ reason: z.string().min(3, 'Sabab majburiy') });
+type ClaimInput = z.infer<typeof claimSchema>;
+
+export default function Warranties() {
+  const router = useRouter();
+  const { data: warranties = [], isLoading } = useWarranties();
+  const [claimId, setClaimId] = useState<string | null>(null);
+
+  const claim = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api<{ id: string }>('/warranties/' + id + '/claim', { method: 'POST', body: JSON.stringify({ reason }) }),
+    onSuccess: o => router.push('/orders/' + o.id),
+  });
+
+  const { register, handleSubmit, formState: { errors } } = useForm<ClaimInput>({ resolver: zodResolver(claimSchema) });
+
+  return (
+    <main className="page">
+      <header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/orders">Buyurtmalar</Link></header>
+      <div className="title-row"><div><p className="eyebrow">KAFOLAT</p><h1>Kafolatlar</h1></div></div>
+
+      <section>
+        {isLoading ? <p className="muted">Yuklanmoqda...</p> : (
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Buyurtma</th><th>Qurilma</th><th>Mijoz</th><th>Tugash</th><th>Holat</th><th></th></tr></thead>
+              <tbody>
+                {warranties.map(w => {
+                  const active = new Date(w.endDate) > new Date();
+                  return (
+                    <tr key={w.id}>
+                      <td><Link href={'/orders/' + w.order.id}>{w.order.number}</Link></td>
+                      <td>{w.order.device.brand} {w.order.device.model}</td>
+                      <td>{w.order.customer.firstName}<small>{w.order.customer.phone}</small></td>
+                      <td>{new Date(w.endDate).toLocaleDateString('uz-UZ')}</td>
+                      <td><Badge variant={active ? 'success' : 'default'}>{active ? 'FAOL' : 'TUGAGAN'}</Badge></td>
+                      <td>{active && <Button variant="secondary" size="sm" onClick={() => setClaimId(w.id)}>Kafolat qabuli</Button>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {warranties.length === 0 && <p className="muted">Kafolatlar yo'q.</p>}
+          </div>
+        )}
+      </section>
+
+      {claimId && (
+        <Card style={{ marginTop: 24, maxWidth: 480 }}>
+          <CardHeader><CardTitle>Kafolat bo'yicha yangi buyurtma</CardTitle></CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit(d => claim.mutate({ id: claimId, reason: d.reason }))} className="grid gap-4">
+              <FormField label="Muammo sababi" error={errors.reason?.message} required>
+                <Textarea {...register('reason')} />
+              </FormField>
+              {claim.error && <p className="error">{(claim.error as Error).message}</p>}
+              <div className="actions">
+                <Button type="submit" disabled={claim.isPending}>{claim.isPending ? 'Yaratilmoqda...' : 'Yaratish'}</Button>
+                <Button type="button" variant="secondary" onClick={() => setClaimId(null)}>Bekor qilish</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+    </main>
+  );
+}

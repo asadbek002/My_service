@@ -1,12 +1,110 @@
 'use client';
-import{useEffect,useState,type FormEvent}from'react';import Link from'next/link';import{useRouter}from'next/navigation';import{api,apiBlob}from'../lib/api';
-type Finance={revenue:string;received:string;refunds:string;netCash:string;partCost:string;operatingExpenses:string;contributionAfterExpenses:string;basis:string};
-export default function Reports(){const router=useRouter();const[finance,setFinance]=useState<Finance|null>(null);const[tech,setTech]=useState<{id:string;firstName:string;assigned:number;completed:number;repairSeconds:number}[]>([]);const[error,setError]=useState('');const[query,setQuery]=useState('');
-function fail(e:unknown){if(e instanceof Error&&e.message==='SESSION_EXPIRED')router.replace('/login');else setError(e instanceof Error?e.message:'Xato')}
-async function load(from?:string,to?:string){const q=from&&to?'?from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to):'';setQuery(q);setFinance(await api('/reports/finance'+q));setTech(await api('/reports/technicians'))}
-useEffect(()=>{load().catch(fail)},[]);
-function preset(days:number){const to=new Date(),from=new Date();from.setDate(to.getDate()-days+1);load(from.toISOString().slice(0,10),to.toISOString().slice(0,10)).catch(fail)}
-async function download(){try{const blob=await apiBlob('/reports/export'+query);const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='myservice-orders.csv';a.click();URL.revokeObjectURL(url)}catch(e){fail(e)}}
-return <main className="page"><header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/orders">Buyurtmalar</Link></header><div className="title-row"><div><p className="eyebrow">NATIJALAR</p><h1>Hisobotlar</h1><div className="inline-form"><button className="secondary" onClick={()=>preset(1)}>Bugun</button><button className="secondary" onClick={()=>preset(7)}>7 kun</button><button className="secondary" onClick={()=>preset(30)}>30 kun</button><button className="secondary" onClick={download}>CSV eksport</button></div></div><form className="inline-form" onSubmit={(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();const d=new FormData(e.currentTarget);load(String(d.get('from')),String(d.get('to'))).catch(fail)}}><input name="from" type="date" required/><input name="to" type="date" required/><button>Ko‘rsatish</button></form></div>{error&&<p className="error">{error}</p>}
-{finance&&<><div className="cards">{[['Tushum',finance.revenue],['Kelgan pul',finance.received],['Refund',finance.refunds],['Sof pul oqimi',finance.netCash],['Detal tannarxi',finance.partCost],['Operatsion xarajat',finance.operatingExpenses],['Hissa',finance.contributionAfterExpenses]].map(([k,v])=><section key={k}><span className="muted">{k}</span><strong>{Number(v).toLocaleString('uz-UZ')}</strong></section>)}</div><p className="muted">{finance.basis}</p></>}
-<section><h2>Ustalar</h2><div className="table-scroll"><table><thead><tr><th>Usta</th><th>Biriktirilgan</th><th>Topshirilgan</th><th>Ish vaqti</th></tr></thead><tbody>{tech.map(t=><tr key={t.id}><td>{t.firstName}</td><td>{t.assigned}</td><td>{t.completed}</td><td>{Math.round(t.repairSeconds/60)} min</td></tr>)}</tbody></table></div></section></main>}
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
+import { api, apiBlob } from '../../lib/api';
+import { Button } from '../../components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
+import { useState } from 'react';
+
+type Finance = { revenue: string; received: string; refunds: string; netCash: string; partCost: string; operatingExpenses: string; contributionAfterExpenses: string; basis: string };
+type Tech = { id: string; firstName: string; assigned: number; completed: number; repairSeconds: number };
+
+export default function Reports() {
+  const router = useRouter();
+  const [range, setRange] = useState('');
+
+  const { data: finance, refetch: refetchFinance } = useQuery<Finance>({
+    queryKey: ['reports', 'finance', range],
+    queryFn: () => api('/reports/finance' + range),
+  });
+  const { data: tech = [] } = useQuery<Tech[]>({
+    queryKey: ['reports', 'technicians'],
+    queryFn: () => api('/reports/technicians'),
+  });
+
+  function preset(days: number) {
+    const to = new Date(), from = new Date();
+    from.setDate(to.getDate() - days + 1);
+    setRange('?from=' + from.toISOString().slice(0, 10) + '&to=' + to.toISOString().slice(0, 10));
+  }
+
+  async function download() {
+    try {
+      const blob = await apiBlob('/reports/export' + range);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'myservice-orders.csv'; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { console.error(e); }
+  }
+
+  const METRICS: [string, keyof Finance][] = [
+    ['Tushum', 'revenue'], ['Kelgan pul', 'received'], ['Refund', 'refunds'],
+    ['Sof pul oqimi', 'netCash'], ['Detal tannarxi', 'partCost'],
+    ['Operatsion xarajat', 'operatingExpenses'], ['Hissa', 'contributionAfterExpenses'],
+  ];
+
+  return (
+    <main className="page">
+      <header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/orders">Buyurtmalar</Link></header>
+      <div className="title-row">
+        <div><p className="eyebrow">NATIJALAR</p><h1>Hisobotlar</h1></div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Button variant="secondary" size="sm" onClick={() => preset(1)}>Bugun</Button>
+          <Button variant="secondary" size="sm" onClick={() => preset(7)}>7 kun</Button>
+          <Button variant="secondary" size="sm" onClick={() => preset(30)}>30 kun</Button>
+          <Button variant="secondary" size="sm" onClick={download}>CSV eksport</Button>
+        </div>
+      </div>
+
+      <form className="inline-form" style={{ marginBottom: 24 }} onSubmit={e => {
+        e.preventDefault();
+        const d = new FormData(e.currentTarget as HTMLFormElement);
+        setRange('?from=' + d.get('from') + '&to=' + d.get('to'));
+      }}>
+        <input name="from" type="date" required style={{ padding: '8px 12px', border: '1px solid #ccc', borderRadius: 8 }} />
+        <input name="to" type="date" required style={{ padding: '8px 12px', border: '1px solid #ccc', borderRadius: 8 }} />
+        <Button type="submit" variant="secondary" size="sm">Ko'rsatish</Button>
+      </form>
+
+      {finance && (
+        <>
+          <div className="cards" style={{ marginBottom: 24 }}>
+            {METRICS.map(([label, key]) => (
+              <Card key={key}>
+                <p className="muted" style={{ fontSize: 12 }}>{label}</p>
+                <strong style={{ fontSize: 26, display: 'block', marginTop: 8 }}>
+                  {Number(finance[key]).toLocaleString('uz-UZ')}
+                </strong>
+              </Card>
+            ))}
+          </div>
+          <p className="muted" style={{ marginBottom: 24, fontSize: 13 }}>{finance.basis}</p>
+        </>
+      )}
+
+      <Card>
+        <CardHeader><CardTitle>Ustalar</CardTitle></CardHeader>
+        <CardContent>
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Usta</th><th>Biriktirilgan</th><th>Topshirilgan</th><th>Ish vaqti</th></tr></thead>
+              <tbody>
+                {tech.map(t => (
+                  <tr key={t.id}>
+                    <td><Link href={'/staff/' + t.id}>{t.firstName}</Link></td>
+                    <td>{t.assigned}</td>
+                    <td>{t.completed}</td>
+                    <td>{Math.round(t.repairSeconds / 60)} min</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {tech.length === 0 && <p className="muted">Ma'lumot yo'q.</p>}
+          </div>
+        </CardContent>
+      </Card>
+    </main>
+  );
+}

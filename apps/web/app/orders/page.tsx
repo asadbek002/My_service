@@ -1,55 +1,225 @@
 'use client';
-import { useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { api, uploadAttachment } from '../lib/api';
-type Order = { id: string; number: string; status: string; total: string; customer: { firstName: string; phone: string }; device: { brand: string; model: string } };
-type Customer = { id: string; firstName: string; phone: string };
-type Branch = { id: string; name: string };
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { useOrders, useCustomers, useBranches, useMe, useCreateCustomer, useCreateOrder } from '../../lib/queries';
+import { customerSchema, deviceSchema, type CustomerInput, type DeviceInput } from '../../lib/schemas';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Select } from '../../components/ui/select';
+import { Textarea } from '../../components/ui/textarea';
+import { FormField } from '../../components/ui/form-field';
+import { StatusBadge } from '../../components/ui/status-badge';
+import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
+import { useState } from 'react';
+import { api } from '../../lib/api';
+import { useQueryClient } from '@tanstack/react-query';
+
+const receiveSchema = z.object({
+  branchId: z.string().min(1, 'Filial tanlang'),
+  complaint: z.string().min(3, 'Shikoyat majburiy'),
+  accessories: z.string().optional(),
+  condition: z.string().optional(),
+});
+type ReceiveInput = z.infer<typeof receiveSchema>;
+
 export default function Orders() {
   const router = useRouter();
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [permissions, setPermissions] = useState<string[]>([]);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [showNew, setShowNew] = useState(false);
+  const qc = useQueryClient();
+  const { data: me, error: meError } = useMe();
+  const { data: orders = [], isLoading } = useOrders();
+  const { data: customers = [] } = useCustomers();
+  const { data: branches = [] } = useBranches();
+  const createCustomer = useCreateCustomer();
+  const createOrder = useCreateOrder();
+
+  const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
   const [customerId, setCustomerId] = useState('');
   const [deviceId, setDeviceId] = useState('');
   const [photos, setPhotos] = useState<File[]>([]);
-  function fail(e: unknown) { if (e instanceof Error && e.message === 'SESSION_EXPIRED') router.replace('/login'); else setError(e instanceof Error ? e.message : 'Ulanishda xato'); }
-  async function load() {
-    const me = await api<{ permissions: string[] }>('/auth/me'); setPermissions(me.permissions);
-    setOrders(await api<Order[]>('/orders')); setBranches(await api<Branch[]>('/branches'));
-    if (me.permissions.includes('customers.view')) setCustomers(await api<Customer[]>('/customers'));
+  const [showNew, setShowNew] = useState(false);
+
+  const customerForm = useForm<CustomerInput>({ resolver: zodResolver(customerSchema), defaultValues: { notificationPreference: 'AUTO' } });
+  const deviceForm = useForm<DeviceInput>({ resolver: zodResolver(deviceSchema), defaultValues: { category: 'Telefon' } });
+  const receiveForm = useForm<ReceiveInput>({ resolver: zodResolver(receiveSchema) });
+
+  if (meError?.message === 'SESSION_EXPIRED') { router.replace('/login'); return null; }
+
+  async function onCustomer(data: CustomerInput) {
+    const c = await createCustomer.mutateAsync(data);
+    setCustomerId(c.id);
+    setStep(1);
+    customerForm.reset();
   }
-  useEffect(() => { if(new URLSearchParams(window.location.search).get('new')==='1')setShowNew(true);load().catch(fail); }, []);
-  async function customer(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError(''); const data = new FormData(event.currentTarget);
-    try { const c = await api<Customer>('/customers', { method: 'POST', body: JSON.stringify({ firstName: data.get('firstName'), ...(data.get('lastName') ? { lastName: data.get('lastName') } : {}), phone: data.get('phone'), ...(data.get('telegramUsername') ? { telegramUsername: data.get('telegramUsername') } : {}), notificationPreference: data.get('notificationPreference') }) }); setCustomers(old => [c, ...old]); setCustomerId(c.id); }
-    catch(e) { fail(e); } finally { setBusy(false); }
+
+  async function onDevice(data: DeviceInput) {
+    const d = await api<{ id: string }>('/devices', { method: 'POST', body: JSON.stringify({ customerId, ...data, compatibleModels: [] }) });
+    setDeviceId(d.id);
+    setStep(2);
+    deviceForm.reset();
   }
-  async function device(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError(''); const data = new FormData(event.currentTarget);
-    try { const d = await api<{ id: string }>('/devices', { method: 'POST', body: JSON.stringify({ customerId, category: data.get('category'), brand: data.get('brand'), model: data.get('model'), ...(data.get('imei') ? { imei: data.get('imei') } : {}), ...(data.get('serialNumber') ? { serialNumber: data.get('serialNumber') } : {}), ...(data.get('color') ? { color: data.get('color') } : {}) }) }); setDeviceId(d.id); }
-    catch(e) { fail(e); } finally { setBusy(false); }
+
+  async function onReceive(data: ReceiveInput) {
+    if (!navigator.onLine) { receiveForm.setError('root', { message: "Internet yo'q. Qabul saqlanmadi." }); return; }
+    const order = await createOrder.mutateAsync({
+      data: { customerId, deviceId, ...data, accessories: data.accessories?.split(',').map(s => s.trim()).filter(Boolean) ?? [], condition: data.condition?.split(',').map(s => s.trim()).filter(Boolean) ?? [] },
+      photos,
+    });
+    setShowNew(false); setStep(0); setCustomerId(''); setDeviceId(''); setPhotos([]);
+    router.push('/orders/' + order.id);
   }
-  async function receive(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError(''); const data = new FormData(event.currentTarget);
-    if (!navigator.onLine) { setError('Internet yo‘q. Qabul saqlanmadi.'); setBusy(false); return; }
-    try { const o = await api<{ id: string }>('/orders', { method: 'POST', body: JSON.stringify({ customerId, deviceId, branchId: data.get('branchId'), complaint: data.get('complaint'), accessories: String(data.get('accessories')).split(',').map(s => s.trim()).filter(Boolean), condition: String(data.get('condition')).split(',').map(s => s.trim()).filter(Boolean) }) }); const kinds=['FRONT','BACK','LEFT','RIGHT','DAMAGE','OTHER']; for(let i=0;i<photos.length;i++){const file=photos[i],kind=kinds[Math.min(i,kinds.length-1)]??'OTHER';if(file)await uploadAttachment(o.id,file,kind);} router.push('/orders/' + o.id); }
-    catch(e) { fail(e); } finally { setBusy(false); }
-  }
-  return <main className="page"><header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/dashboard">Bosh sahifa</Link></header>
-    <div className="title-row"><div><p className="eyebrow">SERVIS JARAYONI</p><h1>Buyurtmalar</h1></div>{permissions.includes('orders.create') && <button onClick={() => setShowNew(!showNew)}>+ Yangi qabul</button>}</div>
-    {error && <p role="alert" className="error">{error}</p>}
-    {showNew && <div className="intake-grid">
-      <section><h2>1. Mijoz</h2><label>Mavjud mijoz<select value={customerId} onChange={e => { setCustomerId(e.target.value); setDeviceId(''); }}><option value="">Tanlang</option>{customers.map(c => <option key={c.id} value={c.id}>{c.firstName} — {c.phone}</option>)}</select></label>
-      <hr/><form onSubmit={customer}><label>Ism<input name="firstName" required /></label><label>Familiya<input name="lastName" /></label><label>Telefon<input name="phone" type="tel" required placeholder="+998901234567" /></label><label>Telegram username<input name="telegramUsername" placeholder="@username" /></label><label>Xabar kanali<select name="notificationPreference"><option value="AUTO">Avtomatik</option><option value="TELEGRAM">Telegram</option><option value="SMS">SMS</option></select></label><button disabled={busy}>Yangi mijoz yaratish</button></form></section>
-      <section><h2>2. Qurilma</h2>{deviceId ? <p className="success">Qurilma saqlandi.</p> : <form onSubmit={device}><label>Kategoriya<input name="category" defaultValue="Telefon" required /></label><label>Brend<input name="brand" required /></label><label>Model<input name="model" required /></label><label>IMEI<input name="imei" /></label><label>Serial raqam<input name="serialNumber" /></label><label>Rang<input name="color" /></label><button disabled={busy || !customerId}>Qurilmani saqlash</button></form>}</section>
-      <section><h2>3. Qabul tafsilotlari</h2><form onSubmit={receive}><label>Filial<select name="branchId" required>{branches.map(b => <option value={b.id} key={b.id}>{b.name}</option>)}</select></label><label>Mijoz shikoyati<textarea name="complaint" required maxLength={4000}/></label><label>Komplektatsiya<input name="accessories" placeholder="Telefon, kabel, chexol" /></label><label>Tashqi holat<input name="condition" placeholder="Ekran singan, tirnalgan" /></label><label>Holat rasmlari<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e=>setPhotos(Array.from(e.target.files??[]).slice(0,6))}/><small>{photos.length} ta rasm tanlandi; qabuldan keyin private storage’ga yuklanadi.</small></label><button disabled={busy || !deviceId}>Qabul qilish</button></form></section>
-    </div>}
-    <section><div className="table-scroll"><table><thead><tr><th>Raqam</th><th>Mijoz</th><th>Qurilma</th><th>Holat</th><th>Jami</th></tr></thead><tbody>{orders.map(o => <tr key={o.id}><td><Link href={'/orders/' + o.id}>{o.number}</Link></td><td>{o.customer.firstName}<small>{o.customer.phone}</small></td><td>{o.device.brand} {o.device.model}</td><td>{o.status}</td><td>{Number(o.total).toLocaleString('uz-UZ')} so‘m</td></tr>)}</tbody></table>{orders.length === 0 && <p className="muted">Hozircha buyurtmalar yo‘q.</p>}</div></section>
-  </main>;
+
+  return (
+    <main className="page">
+      <header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/dashboard">Bosh sahifa</Link></header>
+      <div className="title-row">
+        <div><p className="eyebrow">SERVIS JARAYONI</p><h1>Buyurtmalar</h1></div>
+        {me?.permissions.includes('orders.create') && (
+          <Button onClick={() => { setShowNew(v => !v); setStep(0); setCustomerId(''); setDeviceId(''); }}>
+            {showNew ? 'Yopish' : '+ Yangi qabul'}
+          </Button>
+        )}
+      </div>
+
+      {showNew && (
+        <div className="intake-grid" style={{ marginBottom: 32 }}>
+          {/* Step 1 — Mijoz */}
+          <Card>
+            <CardHeader><CardTitle>1. Mijoz</CardTitle></CardHeader>
+            <CardContent>
+              {customerId ? (
+                <div>
+                  <p className="success">✓ Mijoz tanlandi</p>
+                  <Button variant="ghost" size="sm" onClick={() => { setCustomerId(''); setDeviceId(''); setStep(0); }}>O'zgartirish</Button>
+                </div>
+              ) : (
+                <>
+                  <FormField label="Mavjud mijoz">
+                    <Select onChange={e => { if (e.target.value) { setCustomerId(e.target.value); setStep(1); } }}>
+                      <option value="">Qidirish...</option>
+                      {customers.map(c => <option key={c.id} value={c.id}>{c.firstName} — {c.phone}</option>)}
+                    </Select>
+                  </FormField>
+                  <hr />
+                  <p className="eyebrow" style={{ marginBottom: 12 }}>YANGI MIJOZ</p>
+                  <form onSubmit={customerForm.handleSubmit(onCustomer)} className="grid gap-3">
+                    <FormField label="Ism" error={customerForm.formState.errors.firstName?.message} required>
+                      <Input {...customerForm.register('firstName')} placeholder="Aziz" />
+                    </FormField>
+                    <FormField label="Telefon" error={customerForm.formState.errors.phone?.message} required>
+                      <Input {...customerForm.register('phone')} placeholder="+998901234567" />
+                    </FormField>
+                    <FormField label="Telegram">
+                      <Input {...customerForm.register('telegramUsername')} placeholder="@username" />
+                    </FormField>
+                    <FormField label="Xabar kanali">
+                      <Select {...customerForm.register('notificationPreference')}>
+                        <option value="AUTO">Avtomatik</option>
+                        <option value="TELEGRAM">Telegram</option>
+                        <option value="SMS">SMS</option>
+                      </Select>
+                    </FormField>
+                    {createCustomer.error && <p className="error">{createCustomer.error.message}</p>}
+                    <Button type="submit" disabled={createCustomer.isPending}>
+                      {createCustomer.isPending ? 'Saqlanmoqda...' : 'Mijoz yaratish'}
+                    </Button>
+                  </form>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Step 2 — Qurilma */}
+          <Card>
+            <CardHeader><CardTitle>2. Qurilma</CardTitle></CardHeader>
+            <CardContent>
+              {!customerId ? <p className="muted">Avval mijoz tanlang</p> :
+               deviceId ? (
+                <div>
+                  <p className="success">✓ Qurilma saqlandi</p>
+                  <Button variant="ghost" size="sm" onClick={() => { setDeviceId(''); setStep(1); }}>O'zgartirish</Button>
+                </div>
+               ) : (
+                <form onSubmit={deviceForm.handleSubmit(onDevice)} className="grid gap-3">
+                  <FormField label="Kategoriya" error={deviceForm.formState.errors.category?.message} required>
+                    <Input {...deviceForm.register('category')} placeholder="Telefon" />
+                  </FormField>
+                  <FormField label="Brend" error={deviceForm.formState.errors.brand?.message} required>
+                    <Input {...deviceForm.register('brand')} placeholder="Apple" />
+                  </FormField>
+                  <FormField label="Model" error={deviceForm.formState.errors.model?.message} required>
+                    <Input {...deviceForm.register('model')} placeholder="iPhone 15 Pro" />
+                  </FormField>
+                  <FormField label="IMEI"><Input {...deviceForm.register('imei')} /></FormField>
+                  <FormField label="Serial"><Input {...deviceForm.register('serialNumber')} /></FormField>
+                  <FormField label="Rang"><Input {...deviceForm.register('color')} /></FormField>
+                  <Button type="submit" disabled={deviceForm.formState.isSubmitting}>Qurilmani saqlash</Button>
+                </form>
+               )}
+            </CardContent>
+          </Card>
+
+          {/* Step 3 — Qabul */}
+          <Card>
+            <CardHeader><CardTitle>3. Qabul tafsilotlari</CardTitle></CardHeader>
+            <CardContent>
+              {!deviceId ? <p className="muted">Avval qurilmani saqlang</p> : (
+                <form onSubmit={receiveForm.handleSubmit(onReceive)} className="grid gap-3">
+                  <FormField label="Filial" error={receiveForm.formState.errors.branchId?.message} required>
+                    <Select {...receiveForm.register('branchId')}>
+                      <option value="">Tanlang</option>
+                      {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </Select>
+                  </FormField>
+                  <FormField label="Mijoz shikoyati" error={receiveForm.formState.errors.complaint?.message} required>
+                    <Textarea {...receiveForm.register('complaint')} />
+                  </FormField>
+                  <FormField label="Komplektatsiya">
+                    <Input {...receiveForm.register('accessories')} placeholder="Telefon, kabel, chexol" />
+                  </FormField>
+                  <FormField label="Tashqi holat">
+                    <Input {...receiveForm.register('condition')} placeholder="Ekran singan, tirnalgan" />
+                  </FormField>
+                  <FormField label="Holat rasmlari">
+                    <input type="file" accept="image/jpeg,image/png,image/webp" multiple
+                      onChange={e => setPhotos(Array.from(e.target.files ?? []).slice(0, 6))} />
+                    <small>{photos.length} ta rasm tanlandi</small>
+                  </FormField>
+                  {receiveForm.formState.errors.root && <p className="error">{receiveForm.formState.errors.root.message}</p>}
+                  {createOrder.error && <p className="error">{createOrder.error.message}</p>}
+                  <Button type="submit" disabled={createOrder.isPending}>
+                    {createOrder.isPending ? 'Saqlanmoqda...' : 'Qabul qilish'}
+                  </Button>
+                </form>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <section>
+        {isLoading ? <p className="muted">Yuklanmoqda...</p> : (
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Raqam</th><th>Mijoz</th><th>Qurilma</th><th>Holat</th><th>Jami</th></tr></thead>
+              <tbody>
+                {orders.map(o => (
+                  <tr key={o.id}>
+                    <td><Link href={'/orders/' + o.id}>{o.number}</Link></td>
+                    <td>{o.customer.firstName}<small>{o.customer.phone}</small></td>
+                    <td>{o.device.brand} {o.device.model}</td>
+                    <td><StatusBadge status={o.status} /></td>
+                    <td>{Number(o.total).toLocaleString('uz-UZ')} so'm</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {orders.length === 0 && <p className="muted">Hozircha buyurtmalar yo'q.</p>}
+          </div>
+        )}
+      </section>
+    </main>
+  );
 }

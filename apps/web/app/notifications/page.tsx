@@ -1,4 +1,42 @@
 'use client';
-import Link from 'next/link';import{useEffect,useState}from'react';import{useRouter}from'next/navigation';import{api}from'../lib/api';
-type Notice={id:string;orderId:string;type:string;channel?:string;status:string;providerId?:string;errorCode?:string;createdAt:string;sentAt?:string};
-export default function Notifications(){const router=useRouter();const[x,setX]=useState<Notice[]>([]);const[e,setE]=useState('');useEffect(()=>{api<Notice[]>('/notifications').then(setX).catch(v=>v instanceof Error&&v.message==='SESSION_EXPIRED'?router.replace('/login'):setE(v instanceof Error?v.message:'Xato'));},[]);return <main className="page"><header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/settings">Shablonlar</Link></header><p className="eyebrow">YETKAZIB BERISH TARIXI</p><h1>Xabarnomalar</h1>{e&&<p className="error">{e}</p>}<section><div className="table-scroll"><table><thead><tr><th>Vaqt</th><th>Turi</th><th>Kanal</th><th>Holat</th><th>Buyurtma</th><th>Xato</th></tr></thead><tbody>{x.map(v=><tr key={v.id}><td>{new Date(v.sentAt||v.createdAt).toLocaleString('uz-UZ')}</td><td>{v.type}</td><td>{v.channel||'—'}</td><td>{v.status}</td><td><Link href={'/orders/'+v.orderId}>Ochish</Link></td><td>{v.errorCode||'—'}</td></tr>)}</tbody></table></div>{!x.length&&<p className="muted">Xabarnomalar hali yaratilmagan.</p>}</section></main>}
+import Link from 'next/link';
+import { useNotifications } from '../../lib/queries';
+import { Badge } from '../../components/ui/badge';
+
+export default function Notifications() {
+  const { data: notifications = [], isLoading } = useNotifications();
+
+  return (
+    <main className="page">
+      <header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/settings">Shablonlar</Link></header>
+      <div className="title-row"><div><p className="eyebrow">YETKAZIB BERISH TARIXI</p><h1>Xabarnomalar</h1></div></div>
+
+      <section>
+        {isLoading ? <p className="muted">Yuklanmoqda...</p> : (
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Vaqt</th><th>Turi</th><th>Kanal</th><th>Holat</th><th>Buyurtma</th><th>Xato</th></tr></thead>
+              <tbody>
+                {notifications.map(n => (
+                  <tr key={n.id}>
+                    <td style={{ fontSize: 13 }}>{new Date(n.sentAt ?? n.createdAt).toLocaleString('uz-UZ')}</td>
+                    <td style={{ fontSize: 13 }}>{n.type}</td>
+                    <td><Badge variant="default">{n.channel ?? '—'}</Badge></td>
+                    <td>
+                      <Badge variant={n.status === 'SENT' ? 'success' : n.status === 'FAILED' ? 'danger' : 'warning'}>
+                        {n.status}
+                      </Badge>
+                    </td>
+                    <td><Link href={'/orders/' + (n as any).orderId}>Ochish</Link></td>
+                    <td style={{ fontSize: 12, color: '#999' }}>{(n as any).errorCode ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {notifications.length === 0 && <p className="muted">Xabarnomalar hali yaratilmagan.</p>}
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}

@@ -1,3 +1,67 @@
 'use client';
-import Link from'next/link';import{FormEvent,useEffect,useState}from'react';import{useRouter}from'next/navigation';import{api}from'../lib/api';
-type Branch={id:string;name:string};export default function Branches(){const router=useRouter();const[x,setX]=useState<Branch[]>([]);const[e,setE]=useState('');async function load(){setX(await api<Branch[]>('/branches'))}useEffect(()=>{load().catch(v=>v instanceof Error&&v.message==='SESSION_EXPIRED'?router.replace('/login'):setE(v instanceof Error?v.message:'Xato'))},[]);async function add(ev:FormEvent<HTMLFormElement>){ev.preventDefault();const form=ev.currentTarget,d=new FormData(form);try{await api('/branches',{method:'POST',body:JSON.stringify({name:d.get('name')})});form.reset();await load()}catch(v){setE(v instanceof Error?v.message:'Xato')}}return <main className="page"><header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/settings">Sozlamalar</Link></header><p className="eyebrow">ORGANIZATION</p><h1>Filiallar</h1>{e&&<p className="error">{e}</p>}<div className="detail-grid"><section><h2>Faol filiallar</h2>{x.map(v=><p key={v.id}>{v.name}<small>{v.id}</small></p>)}</section><section><h2>Yangi filial</h2><form onSubmit={add}><label>Nomi<input name="name" required maxLength={100}/></label><button>Filial yaratish</button></form></section></div></main>}
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useBranches, useMe } from '../../lib/queries';
+import { api } from '../../lib/api';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { FormField } from '../../components/ui/form-field';
+import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
+
+const branchSchema = z.object({ name: z.string().min(1, 'Nom majburiy').max(100) });
+type BranchInput = z.infer<typeof branchSchema>;
+
+export default function Branches() {
+  const router = useRouter();
+  const qc = useQueryClient();
+  const { data: branches = [], isLoading } = useBranches();
+  const { data: me } = useMe();
+  const create = useMutation({
+    mutationFn: (data: BranchInput) => api('/branches', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['branches'] }); reset(); },
+  });
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<BranchInput>({ resolver: zodResolver(branchSchema) });
+
+  return (
+    <main className="page">
+      <header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/settings">Sozlamalar</Link></header>
+      <div className="title-row"><div><p className="eyebrow">ORGANIZATION</p><h1>Filiallar</h1></div></div>
+
+      <div className="detail-grid">
+        <Card>
+          <CardHeader><CardTitle>Faol filiallar</CardTitle></CardHeader>
+          <CardContent>
+            {isLoading ? <p className="muted">Yuklanmoqda...</p> : branches.map(b => (
+              <div key={b.id} style={{ padding: '10px 0', borderBottom: '1px solid #eee' }}>
+                <strong style={{ fontSize: 14 }}>{b.name}</strong>
+                <small style={{ display: 'block', color: '#999', fontSize: 11 }}>{b.id}</small>
+              </div>
+            ))}
+            {!isLoading && branches.length === 0 && <p className="muted">Filiallar yo'q.</p>}
+          </CardContent>
+        </Card>
+
+        {me?.permissions.includes('settings.manage') && (
+          <Card>
+            <CardHeader><CardTitle>Yangi filial</CardTitle></CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit(d => create.mutate(d))} className="grid gap-4">
+                <FormField label="Filial nomi" error={errors.name?.message} required>
+                  <Input {...register('name')} placeholder="Chilonzor filiali" />
+                </FormField>
+                {create.error && <p className="error">{(create.error as Error).message}</p>}
+                <Button type="submit" disabled={create.isPending}>
+                  {create.isPending ? 'Yaratilmoqda...' : 'Filial yaratish'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </main>
+  );
+}
