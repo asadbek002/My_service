@@ -1,10 +1,85 @@
 'use client';
-import Link from 'next/link';import{FormEvent,useEffect,useState}from'react';import{useParams,useRouter}from'next/navigation';import{api}from'../../lib/api';
-type Staff={id:string;firstName:string;lastName?:string;login:string;phone:string;email?:string;status:string;roles:{role:{name:string}}[];branches:{branch:{name:string}}[]};
-type Stats={assigned:number;completed:number;active:number;averageRepairSeconds:number;warrantyReturns:number;workRevenue:string;repairActions:number;commission:string};type Activity={id:string;action:string;entityId?:string;createdAt:string;ip?:string};
-export default function StaffProfile(){const{id}=useParams<{id:string}>();const router=useRouter();const[x,setX]=useState<Staff|null>(null);const[stats,setStats]=useState<Stats|null>(null);const[activity,setActivity]=useState<Activity[]>([]);const[e,setE]=useState('');const[ok,setOk]=useState('');
-function fail(v:unknown){v instanceof Error&&v.message==='SESSION_EXPIRED'?router.replace('/login'):setE(v instanceof Error?v.message:'Xato')}async function metrics(from?:string,to?:string){const q=new URLSearchParams();if(from)q.set('from',from);if(to)q.set('to',to);setStats(await api<Stats>('/staff/'+id+'/statistics?'+q));}
-useEffect(()=>{Promise.all([api<Staff>('/staff/'+id),api<Activity[]>('/staff/'+id+'/activity'),api<Stats>('/staff/'+id+'/statistics')]).then(([user,events,data])=>{setX(user);setActivity(events);setStats(data)}).catch(fail)},[id]);
-async function save(ev:FormEvent<HTMLFormElement>){ev.preventDefault();const d=new FormData(ev.currentTarget);try{await api('/staff/'+id+'/compensation',{method:'POST',body:JSON.stringify({type:d.get('type'),salary:String(d.get('salary')||'0'),percentage:String(d.get('percentage')||'0'),fixedPerJob:String(d.get('fixedPerJob')||'0')})});setOk('Yangi qoida saqlandi.');setE('')}catch(v){fail(v)}}
-async function period(ev:FormEvent<HTMLFormElement>){ev.preventDefault();const d=new FormData(ev.currentTarget);try{await metrics(String(d.get('from')||''),String(d.get('to')||''))}catch(v){fail(v)}}
-if(!x)return <main className="page"><p>{e||'Yuklanmoqda…'}</p></main>;return <main className="page"><header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/staff">Xodimlar</Link></header><p className="eyebrow">XODIM PROFILI</p><h1>{x.firstName} {x.lastName}</h1>{e&&<p className="error">{e}</p>}<div className="cards"><section><span className="muted">Biriktirilgan</span><strong>{stats?.assigned??'—'}</strong></section><section><span className="muted">Tugallangan</span><strong>{stats?.completed??'—'}</strong></section><section><span className="muted">Faol</span><strong>{stats?.active??'—'}</strong></section><section><span className="muted">O‘rtacha vaqt</span><strong>{stats?Math.round(stats.averageRepairSeconds/60)+'m':'—'}</strong></section><section><span className="muted">Kafolat qaytishi</span><strong>{stats?.warrantyReturns??'—'}</strong></section><section><span className="muted">Komissiya</span><strong>{stats?Number(stats.commission).toLocaleString('uz-UZ'):'—'}</strong></section></div><form className="inline-form" onSubmit={period}><label>Boshlanish<input name="from" type="date"/></label><label>Tugash<input name="to" type="date"/></label><button>Davrni qo‘llash</button></form><div className="detail-grid" style={{marginTop:24}}><section><h2>Ma’lumot</h2><p>{x.phone}</p><p>{x.email||'Email yo‘q'}</p><p>{x.login} · {x.status}</p><p>{x.roles.map(r=>r.role.name).join(', ')}</p><p>{x.branches.map(b=>b.branch.name).join(', ')}</p></section><section><h2>Kompensatsiya qoidasi</h2>{ok&&<p className="success">{ok}</p>}<form onSubmit={save}><label>Turi<select name="type"><option>SALARY</option><option>PERCENTAGE</option><option>FIXED_PER_JOB</option><option>SALARY_PLUS_PERCENTAGE</option></select></label><label>Oylik<input name="salary" type="number" min="0" defaultValue="0"/></label><label>Foiz<input name="percentage" type="number" min="0" max="100" defaultValue="0"/></label><label>Har ish uchun<input name="fixedPerJob" type="number" min="0" defaultValue="0"/></label><button>Saqlash</button></form></section><section><h2>Faollik</h2><div className="audit-list">{activity.map(a=><p key={a.id}><b>{a.action}</b><small>{new Date(a.createdAt).toLocaleString('uz-UZ')} · {a.entityId||'—'}{a.ip?' · '+a.ip:''}</small></p>)}</div></section><section><h2>Ish natijasi</h2><p>Repair action: <b>{stats?.repairActions??0}</b></p><p>Mehnat tushumi: <b>{Number(stats?.workRevenue??0).toLocaleString('uz-UZ')}</b></p></section></div></main>}
+import Link from 'next/link';
+import { use } from 'react';
+import { useStaff, useStaffActivity, useStaffActive } from '../../../lib/queries';
+import { StatusBadge } from '../../../components/ui/status-badge';
+import { Badge } from '../../../components/ui/badge';
+import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/card';
+
+export default function StaffDetail({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const { data: staffList = [] } = useStaff();
+  const { data: activity = [], isLoading: actLoading } = useStaffActivity(id);
+  const { data: activeData } = useStaffActive(id, 5);
+
+  const user = staffList.find(u => u.id === id);
+
+  return (
+    <main className="page">
+      <header>
+        <Link href="/dashboard" className="brand">MY SERVICE</Link>
+        <Link href="/staff">← Xodimlar</Link>
+      </header>
+
+      {user && (
+        <div className="title-row">
+          <div>
+            <p className="eyebrow">XODIM</p>
+            <h1>{user.firstName}</h1>
+          </div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <StatusBadge status={user.status} />
+            {activeData && (
+              <Badge variant={activeData.active ? 'success' : 'warning'}>
+                {activeData.active ? '🟢 Faol (5 kun)' : '🟡 Faol emas (5 kun)'}
+              </Badge>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="detail-grid">
+        {user && (
+          <Card>
+            <CardHeader><CardTitle>Ma'lumotlar</CardTitle></CardHeader>
+            <CardContent>
+              <table style={{ width: '100%', fontSize: 14 }}>
+                <tbody>
+                  <tr><td className="muted" style={{ padding: '8px 0' }}>Login</td><td>{user.login}</td></tr>
+                  <tr><td className="muted" style={{ padding: '8px 0' }}>Telefon</td><td>{user.phone}</td></tr>
+                  <tr><td className="muted" style={{ padding: '8px 0' }}>Lavozim</td><td>{user.roles.map(r => r.role.name).join(', ')}</td></tr>
+                  <tr><td className="muted" style={{ padding: '8px 0' }}>Filiallar</td><td>{user.branches.map(b => b.branch.name).join(', ')}</td></tr>
+                </tbody>
+              </table>
+              {activeData && (
+                <div style={{ marginTop: 16, padding: 12, background: '#f9f9f7', borderRadius: 8, fontSize: 13 }}>
+                  <strong>So'nggi 5 kun faollik:</strong>
+                  <div style={{ marginTop: 4, color: '#555' }}>
+                    Audit hodisalar: {activeData.auditEvents} | Buyurtma hodisalar: {activeData.orderEvents}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        <Card>
+          <CardHeader><CardTitle>Faollik tarixi</CardTitle></CardHeader>
+          <CardContent>
+            {actLoading ? <p className="muted">Yuklanmoqda...</p> : (
+              <ul className="timeline" style={{ maxHeight: 400, overflowY: 'auto' }}>
+                {activity.slice(0, 50).map(a => (
+                  <li key={a.entityId + a.action}>
+                    <p style={{ fontSize: 12, color: '#777' }}>{new Date(a.createdAt).toLocaleString('uz-UZ')}</p>
+                    <p style={{ fontSize: 13 }}>{a.action}{a.entityId ? ` — ${a.entityId.slice(0, 8)}` : ''}</p>
+                  </li>
+                ))}
+                {activity.length === 0 && <li><p className="muted">Hozircha faollik yo'q.</p></li>}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </main>
+  );
+}

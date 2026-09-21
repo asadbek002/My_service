@@ -5,10 +5,12 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { SecurityGuard } from './security';
 import { LoginRateGuard } from './rate-limit';
+import { SubscriptionCache } from './subscription-cache';
 
 @Module({
   imports: [JwtModule.registerAsync({ useFactory: () => ({ secret: process.env.JWT_ACCESS_SECRET! }) })],
-  providers: [AuthService, LoginRateGuard, { provide: APP_GUARD, useClass: SecurityGuard }],
+  providers: [AuthService, LoginRateGuard, SubscriptionCache, { provide: APP_GUARD, useClass: SecurityGuard }],
   controllers: [AuthController],
+  exports: [SubscriptionCache],
 })
 export class AuthModule {}

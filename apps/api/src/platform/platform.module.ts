@@ -8,6 +8,7 @@ import { Database } from '../database';
 import { Public } from '../auth/security';
 import { LoginRateGuard } from '../auth/rate-limit';
 import { LoginDto } from '../auth/auth.dto';
+import { SubscriptionCache } from '../auth/subscription-cache';
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 type AdminRequest = Request & { adminId: string; platformSessionId: string };
 @Injectable()
@@ -71,7 +72,7 @@ class PlatformAuthController {
 }
 @Controller('platform') @Public() @UseGuards(PlatformGuard)
 class PlatformController {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: Database, private readonly subCache: SubscriptionCache) {}
   @Get('organizations')
   organizations() {
     return this.db.organization.findMany({ select: { id:true,name:true,slug:true,createdAt:true,subscription:{include:{plan:true}},_count:{select:{users:true,branches:true,orders:true}} }, take:100, orderBy:{createdAt:'desc'} });
@@ -120,6 +121,7 @@ class PlatformController {
     return this.db.$transaction(async tx=>{
       const sub=await tx.subscription.upsert({where:{organizationId:id},create:{organizationId:id,planId:d.planId,status:d.status,expiresAt:new Date(d.expiresAt)},update:{planId:d.planId,status:d.status,expiresAt:new Date(d.expiresAt),graceUntil:null}});
       await tx.auditLog.create({data:{organizationId:id,actorId:req.adminId,action:'SUBSCRIPTION_CHANGED',entityId:sub.id}});
+      await this.subCache.invalidate(id);
       return sub;
     });
   }
@@ -142,5 +144,5 @@ class PlatformController {
   @Get('system')
   async system() { await this.db.$queryRaw`SELECT 1`; return {database:'ok',organizations:await this.db.organization.count(),activeSubscriptions:await this.db.subscription.count({where:{status:'ACTIVE',expiresAt:{gt:new Date()}}}),pendingOutbox:await this.db.outboxEvent.count({where:{publishedAt:null}}),failedNotifications:await this.db.notification.count({where:{status:'FAILED'}})}; }
 }
-@Module({controllers:[PlatformAuthController,PlatformController],providers:[PlatformGuard,LoginRateGuard]})
+@Module({controllers:[PlatformAuthController,PlatformController],providers:[PlatformGuard,LoginRateGuard,SubscriptionCache]})
 export class PlatformModule {}

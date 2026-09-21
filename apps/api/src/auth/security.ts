@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 import { Database } from '../database';
+import { SubscriptionCache } from './subscription-cache';
 
 export const Public = () => SetMetadata('public', true);
 export const Permissions = (...permissions: string[]) => SetMetadata('permissions', permissions);
@@ -21,7 +22,12 @@ export const CurrentActor = createParamDecorator((_data: unknown, ctx: Execution
 
 @Injectable()
 export class SecurityGuard implements CanActivate {
-  constructor(private readonly db: Database, private readonly jwt: JwtService, private readonly reflector: Reflector) {}
+  constructor(
+    private readonly db: Database,
+    private readonly jwt: JwtService,
+    private readonly reflector: Reflector,
+    private readonly subCache: SubscriptionCache,
+  ) {}
 
   async canActivate(ctx: ExecutionContext) {
     const targets = [ctx.getHandler(), ctx.getClass()];
@@ -55,7 +61,8 @@ export class SecurityGuard implements CanActivate {
     const required = this.reflector.getAllAndOverride<string[]>('permissions', targets) ?? [];
     if (!required.every(p => permissions.includes(p))) throw new ForbiddenException();
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !req.path.startsWith('/api/auth/')) {
-      const sub = await this.db.subscription.findUnique({ where: { organizationId: user.organizationId } });
+      // Redis cache — har write requestda DB query emas
+      const sub = await this.subCache.get(user.organizationId);
       if (!sub || !['ACTIVE', 'TRIAL'].includes(sub.status) ||
           (sub.graceUntil ?? sub.expiresAt) <= new Date()) throw new ForbiddenException('SUBSCRIPTION_READ_ONLY');
     }
