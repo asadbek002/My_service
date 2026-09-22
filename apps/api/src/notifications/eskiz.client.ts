@@ -3,17 +3,30 @@ import Redis from 'ioredis';
 
 const ESKIZ_BASE = 'https://notify.eskiz.uz/api';
 const TOKEN_CACHE_KEY = 'eskiz:token';
-const TOKEN_TTL = 3300; // 55 daqiqa (token 1 soat, buffer 5 daqiqa)
+const TOKEN_TTL = 86400; // 24 soat (Eskiz JWT 30 kun amal qiladi, 24 soat kesh yetarli)
 
 export interface EskizSendResult {
-  id: string;       // SMS ID (status tekshirishda ishlatiladi)
-  status: string;   // 'waiting' | 'error' | ...
+  id: string; // SMS ID (status tekshirishda yoki request_id)
+  status: string; // 'waiting' | 'DELIVERED' | 'TRANSMTD' | 'FAILED' ...
+  message?: string;
+}
+
+export interface EskizUserLimit {
+  balance: number;
+  smsCount: number;
+}
+
+export interface EskizPrice {
+  country_id: number;
+  country: string;
+  price: number;
+  net_price: number;
 }
 
 @Injectable()
 export class EskizClient implements OnModuleInit, OnModuleDestroy {
   private redis?: Redis;
-  private inMemoryToken: string | undefined = undefined; // Redis yo'q bo'lganda fallback
+  private inMemoryToken: string | undefined = undefined;
   private inMemoryExpiry = 0;
   private readonly logger = new Logger('EskizClient');
 
@@ -21,11 +34,13 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
     if (!process.env.REDIS_URL) return;
     try {
       this.redis = new Redis(process.env.REDIS_URL, {
-        lazyConnect: true, maxRetriesPerRequest: 1, enableOfflineQueue: false,
+        lazyConnect: true,
+        maxRetriesPerRequest: 1,
+        enableOfflineQueue: false,
       });
       await this.redis.connect();
     } catch {
-
+      // Redis ulanmasa in-memory fallback ishlaydi
     }
   }
 
@@ -33,70 +48,109 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
     await this.redis?.quit();
   }
 
-  // Token olish (cache dan yoki yangi)
+  /**
+   * Eskiz Bearer token olish (Keshdan yoki yangi login orqali)
+   */
   async getToken(): Promise<string> {
-    // 1. Redis cache
+    // 1. Redis keshini tekshirish
     if (this.redis) {
       try {
         const cached = await this.redis.get(TOKEN_CACHE_KEY);
         if (cached) return cached;
-      } catch { /* Redis xatosi — keyinga */ }
+      } catch {
+        // Redis xatosi yuz bersa in-memoryga o'tadi
+      }
     }
 
-    // 2. In-memory cache (Redis yo'q bo'lganda)
+    // 2. In-memory kesh
     if (this.inMemoryToken && Date.now() < this.inMemoryExpiry) {
       return this.inMemoryToken;
     }
 
-    // 3. Token refresh (avval sinab ko'ramiz)
+    // 3. Mavjud tokenni yangilashga urinib ko'rish
     if (this.inMemoryToken) {
       try {
-        const token = await this.refreshToken(this.inMemoryToken);
-        await this.cacheToken(token);
-        return token;
-      } catch { /* Refresh ishlamasa yangi login */ }
+        const refreshed = await this.refreshToken(this.inMemoryToken);
+        await this.cacheToken(refreshed);
+        return refreshed;
+      } catch {
+        // Refresh ishlamasa, yangi login qiladi
+      }
     }
 
-    // 4. Yangi login
+    // 4. Yangi login qilish
     const token = await this.loginToken();
     await this.cacheToken(token);
     return token;
   }
 
+  /**
+   * POST /api/auth/login — Yangi Bearer token olish
+   */
   private async loginToken(): Promise<string> {
-    const email = process.env.SMS_API_KEY;
-    const password = process.env.SMS_API_SECRET;
-    if (!email || !password) throw new Error('ESKIZ_CREDENTIALS_MISSING');
+    const email = process.env.SMS_API_KEY || process.env.ESKIZ_EMAIL;
+    const password = process.env.SMS_API_SECRET || process.env.ESKIZ_PASSWORD;
 
-    const res = await fetch(ESKIZ_BASE + '/auth/login', {
+    if (!email || !password) {
+      throw new Error('ESKIZ_CREDENTIALS_MISSING');
+    }
+
+    const formData = new URLSearchParams();
+    formData.append('email', email);
+    formData.append('password', password);
+
+    const res = await fetch(`${ESKIZ_BASE}/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       signal: AbortSignal.timeout(10000),
-      body: JSON.stringify({ email, password }),
+      body: formData.toString(),
     });
 
     if (!res.ok) {
-      this.logger.error(`Eskiz login failed: ${res.status}`);
+      const errorText = await res.text().catch(() => '');
+      this.logger.error(`Eskiz login failed (${res.status}): ${errorText}`);
       throw new Error('ESKIZ_AUTH_FAILED');
     }
 
-    const data = await res.json() as { data?: { token?: string }; status?: string };
+    const data = (await res.json()) as {
+      message?: string;
+      data?: { token?: string };
+      token_type?: string;
+    };
+
     const token = data.data?.token;
-    if (!token) throw new Error('ESKIZ_AUTH_FAILED');
+    if (!token) {
+      throw new Error('ESKIZ_AUTH_FAILED');
+    }
+
     return token;
   }
 
+  /**
+   * PATCH /api/auth/refresh — Tokenni yangilash
+   */
   private async refreshToken(oldToken: string): Promise<string> {
-    const res = await fetch(ESKIZ_BASE + '/auth/refresh', {
+    const res = await fetch(`${ESKIZ_BASE}/auth/refresh`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + oldToken },
+      headers: {
+        Authorization: `Bearer ${oldToken}`,
+      },
       signal: AbortSignal.timeout(10000),
     });
 
-    if (!res.ok) throw new Error('ESKIZ_REFRESH_FAILED');
-    const data = await res.json() as { data?: { token?: string } };
+    if (!res.ok) {
+      throw new Error('ESKIZ_REFRESH_FAILED');
+    }
+
+    const data = (await res.json()) as {
+      data?: { token?: string };
+    };
+
     const token = data.data?.token;
-    if (!token) throw new Error('ESKIZ_REFRESH_FAILED');
+    if (!token) {
+      throw new Error('ESKIZ_REFRESH_FAILED');
+    }
+
     return token;
   }
 
@@ -107,77 +161,205 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
     if (this.redis) {
       try {
         await this.redis.set(TOKEN_CACHE_KEY, token, 'EX', TOKEN_TTL);
-      } catch { /* ignore */ }
+      } catch {
+        // ignore redis caching errors
+      }
     }
   }
 
-  // SMS yuborish
+  /**
+   * POST /api/message/sms/send — SMS yuborish
+   * @param phone - Mijoz telefon raqami (+998901234567 yoki 998901234567)
+   * @param message - SMS matni
+   */
   async send(phone: string, message: string): Promise<EskizSendResult> {
-    // Telefon formatini tekshirish: +998901234567 → 998901234567
-    const mobile = phone.replace(/^\+/, '');
-    if (!/^\d{9,15}$/.test(mobile)) throw new Error('ESKIZ_INVALID_PHONE');
+    // Telefon raqamini tozalash: +998901234567 -> 998901234567
+    const mobile = phone.replace(/\D/g, '');
+    if (!/^\d{9,15}$/.test(mobile)) {
+      throw new Error('ESKIZ_INVALID_PHONE');
+    }
 
-    const from = process.env.SMS_FROM ?? '4546';
+    const from = process.env.SMS_FROM || process.env.ESKIZ_FROM || '4546';
+    const callbackUrl = process.env.ESKIZ_CALLBACK_URL || '';
+
+    // Test rejimida bo'lsa, Eskiz talabiga binoan test matnidan foydalanish mumkin
+    let finalMessage = message;
+    if (process.env.ESKIZ_TEST_MODE === 'true' && !message.includes('Eskiz')) {
+      finalMessage = `Bu Eskiz dan test: ${message}`;
+    }
+
     const token = await this.getToken();
 
-    const res = await fetch(ESKIZ_BASE + '/message/sms/send', {
+    const formData = new URLSearchParams();
+    formData.append('mobile_phone', mobile);
+    formData.append('message', finalMessage);
+    formData.append('from', from);
+    if (callbackUrl) {
+      formData.append('callback_url', callbackUrl);
+    }
+
+    let res = await fetch(`${ESKIZ_BASE}/message/sms/send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
       signal: AbortSignal.timeout(15000),
-      body: JSON.stringify({
-        mobile_phone: mobile,
-        message,
-        from,
-        callback_url: '',
-      }),
+      body: formData.toString(),
     });
 
-    // Token muddati tugagan bo'lsa — yangi login, qayta urinish
+    // 401 Unauthorized bo'lsa — keshni tozalab, qayta login qilib urinish
     if (res.status === 401) {
       this.inMemoryToken = undefined;
       this.inMemoryExpiry = 0;
       if (this.redis) {
-        try { await this.redis.del(TOKEN_CACHE_KEY); } catch { /* ignore */ }
+        try {
+          await this.redis.del(TOKEN_CACHE_KEY);
+        } catch {
+          // ignore
+        }
       }
+
       const newToken = await this.loginToken();
       await this.cacheToken(newToken);
 
-      const retry = await fetch(ESKIZ_BASE + '/message/sms/send', {
+      res = await fetch(`${ESKIZ_BASE}/message/sms/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + newToken },
+        headers: {
+          Authorization: `Bearer ${newToken}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
         signal: AbortSignal.timeout(15000),
-        body: JSON.stringify({ mobile_phone: mobile, message, from, callback_url: '' }),
+        body: formData.toString(),
       });
-
-      if (!retry.ok) throw new Error('ESKIZ_SEND_FAILED');
-      return this.parseSendResponse(await retry.json());
     }
 
     if (!res.ok) {
-      this.logger.error(`Eskiz SMS failed: ${res.status}`);
+      const errorBody = await res.text().catch(() => '');
+      this.logger.error(`Eskiz SMS send failed (${res.status}): ${errorBody}`);
       throw new Error('ESKIZ_SEND_FAILED');
     }
 
-    return this.parseSendResponse(await res.json());
+    const responseJson = await res.json();
+    return this.parseSendResponse(responseJson);
   }
 
-  // SMS status tekshirish (notification delivery confirmation uchun)
+  /**
+   * GET /api/message/sms/status_by_id/:id — SMS holatini tekshirish
+   * @param smsId - Eskiz SMS ID yoki UUID request_id
+   */
   async getStatus(smsId: string): Promise<string> {
     const token = await this.getToken();
-    const res = await fetch(ESKIZ_BASE + '/message/sms/status_by_id/' + smsId, {
-      headers: { Authorization: 'Bearer ' + token },
+    const res = await fetch(`${ESKIZ_BASE}/message/sms/status_by_id/${encodeURIComponent(smsId)}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
       signal: AbortSignal.timeout(10000),
     });
+
     if (!res.ok) return 'UNKNOWN';
-    const data = await res.json() as { data?: { status?: string } };
-    return data.data?.status ?? 'UNKNOWN';
+
+    const json = (await res.json()) as {
+      status?: string;
+      data?: {
+        id?: number;
+        status?: string; // 'DELIVERED' | 'DELIVRD' | 'TRANSMTD' | 'EXPIRED' | 'REJECTD' ...
+      };
+    };
+
+    return json.data?.status ?? json.status ?? 'UNKNOWN';
+  }
+
+  /**
+   * GET /api/user/get-limit — Foydalanuvchi hisobidagi qolgan SMS miqdorini olish
+   */
+  async getUserLimit(): Promise<{ balance: number; smsCount: number }> {
+    const token = await this.getToken();
+    const res = await fetch(`${ESKIZ_BASE}/user/get-limit`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!res.ok) {
+      return { balance: 0, smsCount: 0 };
+    }
+
+    const json = (await res.json()) as {
+      data?: {
+        balance?: number;
+        sms_count?: number;
+      };
+    };
+
+    return {
+      balance: json.data?.balance ?? 0,
+      smsCount: json.data?.sms_count ?? 0,
+    };
+  }
+
+  /**
+   * GET /api/user/prices — SMS narxlari tariflarini olish
+   */
+  async getPrices(): Promise<EskizPrice[]> {
+    const token = await this.getToken();
+    const res = await fetch(`${ESKIZ_BASE}/user/prices`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!res.ok) return [];
+
+    const json = (await res.json()) as {
+      data?: EskizPrice[];
+    };
+
+    return json.data ?? [];
+  }
+
+  /**
+   * POST /api/report/total-by-dispatch?status — Rassilka bo'yicha xarajatlar hisoboti
+   */
+  async getDispatchReport(dispatchId: string, isAd = '', status = ''): Promise<any> {
+    const token = await this.getToken();
+    const query = status ? `?status=${encodeURIComponent(status)}` : '';
+
+    const formData = new URLSearchParams();
+    formData.append('dispatch_id', dispatchId);
+    formData.append('is_ad', isAd);
+
+    const res = await fetch(`${ESKIZ_BASE}/report/total-by-dispatch${query}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      signal: AbortSignal.timeout(10000),
+      body: formData.toString(),
+    });
+
+    if (!res.ok) return null;
+    return res.json();
   }
 
   private parseSendResponse(data: unknown): EskizSendResult {
-    const d = data as { id?: string | number; data?: { id?: string | number }; status?: string; message?: string };
+    const d = data as {
+      id?: string | number;
+      data?: { id?: string | number };
+      status?: string;
+      message?: string;
+    };
+
     const id = String(d.id ?? d.data?.id ?? '');
     const status = d.status ?? d.message ?? 'waiting';
-    if (!id) throw new Error('ESKIZ_SEND_FAILED');
-    return { id, status };
+
+    if (!id) {
+      throw new Error('ESKIZ_SEND_FAILED');
+    }
+
+    return { id, status, message: d.message };
   }
 }
