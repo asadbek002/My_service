@@ -205,13 +205,15 @@ class RepairsController {
       if (order.status !== 'IN_REPAIR') throw new ConflictException('Repair not in progress');
       const setting = await tx.organizationSetting.findUnique({ where: { organizationId_key: { organizationId: actor.organizationId, key: 'final_test_checklist' } } });
       const required = finalChecklist(setting?.value);
-      if (!required.every(check => dto.passedChecks.includes(check))) throw new ConflictException('Final checklist incomplete');
+      const passedNormalized = dto.passedChecks.map(c => c.trim().toLowerCase());
+      const missing = required.filter(check => !passedNormalized.includes(check.trim().toLowerCase()) && !dto.passedChecks.includes(check));
+      if (missing.length > 0) throw new ConflictException(`Final checklist incomplete: missing ${missing.join(', ')}`);
       const parts = await tx.orderPart.findMany({ where: { organizationId: actor.organizationId, orderId: id } });
       if (parts.some(p => p.status === 'RESERVED')) throw new ConflictException('Reserved parts must be used or released');
       const usedTotal = parts.filter(p => p.status === 'USED').reduce((s, p) => s.plus(p.unitPrice.mul(p.quantity)), new Prisma.Decimal(0));
-      if (!usedTotal.equals(order.partsTotal)) throw new ConflictException('Used parts must match approved quote');
+      if (parts.length > 0 && !usedTotal.equals(order.partsTotal)) throw new ConflictException('Used parts must match approved quote');
       const actions = await tx.repairAction.findMany({ where: { organizationId: actor.organizationId, orderId: id } });
-      if (actions.length) {
+      if (actions.length > 0) {
         const actionLabor = actions.reduce((sum, action) => sum.plus(action.laborAmount), new Prisma.Decimal(0));
         if (!actionLabor.equals(order.labor)) throw new ConflictException('Repair action labor must match approved labor');
       }

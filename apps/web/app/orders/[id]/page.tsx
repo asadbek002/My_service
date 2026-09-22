@@ -63,15 +63,14 @@ const ORDER_STEPS = [
 ];
 
 const CHECKLIST_ITEMS = [
-  'Display (Ekran tasviri)',
-  'Touch (Sensor)',
-  'Camera (Oldi/Orqa kamera)',
-  'Microphone (Mikrofon)',
-  'Speaker (Dinamik)',
-  'Charging (Zaryad olish)',
-  'Wi-Fi',
-  'Bluetooth',
-  'Face ID / Barmoq izi',
+  { id: 'Display', label: 'Display (Ekran tasviri)' },
+  { id: 'Touch', label: 'Touch (Sensor)' },
+  { id: 'Camera', label: 'Camera (Oldi/Orqa kamera)' },
+  { id: 'Microphone', label: 'Microphone (Mikrofon)' },
+  { id: 'Speaker', label: 'Speaker (Dinamik)' },
+  { id: 'Charging', label: 'Charging (Zaryad olish)' },
+  { id: 'Wi-Fi', label: 'Wi-Fi' },
+  { id: 'Bluetooth', label: 'Bluetooth' },
 ];
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -647,19 +646,19 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     <CardContent className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         {CHECKLIST_ITEMS.map(item => {
-                          const isChecked = checkedItems.includes(item);
+                          const isChecked = checkedItems.includes(item.id);
                           return (
                             <button
-                              key={item}
+                              key={item.id}
                               type="button"
-                              onClick={() => toggleCheck(item)}
+                              onClick={() => toggleCheck(item.id)}
                               className={`p-3 rounded-lg text-xs font-semibold border text-left flex items-center justify-between transition-all ${
                                 isChecked
                                   ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
                                   : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400'
                               }`}
                             >
-                              <span>{item}</span>
+                              <span>{item.label}</span>
                               {isChecked && <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
                             </button>
                           );
@@ -671,7 +670,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setCheckedItems([...CHECKLIST_ITEMS])}
+                          onClick={() => setCheckedItems(CHECKLIST_ITEMS.map(x => x.id))}
                         >
                           Hammasini belgilash
                         </Button>

@@ -101,10 +101,24 @@ class OrdersController {
   }
   @Get(':id') @Permissions('orders.view')
   async get(@CurrentActor() actor: Actor, @Param('id') id: string) {
-    const order = await this.db.order.findFirst({ where: { id, ...orderScope(actor) }, include: { customer: true, device: true, assignments: { select: { userId: true, task: true } }, history: { orderBy: { createdAt: 'asc' } }, parts: { include: { part: { select: { id: true, name: true } } } }, repairActions: { select: { id: true, description: true } } } });
+    const order = await this.db.order.findFirst({
+      where: { id, ...orderScope(actor) },
+      include: {
+        customer: true,
+        device: true,
+        assignments: { select: { userId: true, task: true, user: { select: { firstName: true, lastName: true } } } },
+        history: { orderBy: { createdAt: 'asc' } },
+        parts: { include: { part: { select: { id: true, name: true, sku: true } } } },
+        repairActions: { select: { id: true, description: true, laborAmount: true, userId: true } },
+        payments: { orderBy: { createdAt: 'asc' } },
+        repairSessions: { orderBy: { startedAt: 'asc' } },
+      },
+    });
     if (!order) throw new NotFoundException();
     const setting = await this.db.organizationSetting.findUnique({ where: { organizationId_key: { organizationId: actor.organizationId, key: 'final_test_checklist' } } });
-    return { ...order, finalTestChecklist: finalChecklist(setting?.value) };
+    const totalPaid = (order.payments ?? []).reduce((sum, p) => p.kind === 'REFUND' ? sum - Number(p.amount) : sum + Number(p.amount), 0);
+    const orderBalance = Math.max(0, Number(order.total) - totalPaid);
+    return { ...order, balance: orderBalance.toString(), totalPaid: totalPaid.toString(), finalTestChecklist: finalChecklist(setting?.value) };
   }
   @Post() @Permissions('orders.create')
   async create(@CurrentActor() actor: Actor, @Body() dto: OrderDto) {
