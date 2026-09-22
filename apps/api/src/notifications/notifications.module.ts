@@ -1,4 +1,5 @@
-import { Controller, Get, Injectable, Module, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Injectable, Module, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { EskizClient } from './eskiz.client';
 import { Queue, Worker } from 'bullmq';
 import { Database } from '../database';
@@ -111,13 +112,34 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
     }
   }
 }
+@ApiTags('notifications') @ApiBearerAuth()
 @Controller('notifications')
 class NotificationsController {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: Database, private readonly eskiz: EskizClient) {}
   @Get() @Permissions('orders.view')
   async list(@CurrentActor() actor: Actor) {
     const orders = await this.db.order.findMany({ where: orderScope(actor), select: { id: true } });
     return this.db.notification.findMany({ where: { organizationId: actor.organizationId, orderId: { in: orders.map(order => order.id) } }, orderBy: { createdAt: 'desc' }, take: 200 });
+  }
+
+  @Get('eskiz-status') @Permissions('settings.manage')
+  async eskizStatus() {
+    const limits = await this.eskiz.getUserLimit();
+    return {
+      provider: process.env.SMS_PROVIDER || 'eskiz',
+      sender: process.env.SMS_FROM || '4546',
+      testMode: process.env.ESKIZ_TEST_MODE === 'true',
+      balance: limits.balance,
+      smsCount: limits.smsCount,
+      configured: !!process.env.SMS_API_KEY && !!process.env.SMS_API_SECRET,
+    };
+  }
+
+  @Post('test-sms') @Permissions('settings.manage')
+  async testSms(@Body() dto: { phone: string; message?: string }) {
+    const message = dto.message?.trim() || (process.env.ESKIZ_TEST_MODE === 'true' ? 'Bu Eskiz dan test' : 'MyService: SMS xizmati muvaffaqiyatli ulandi!');
+    const result = await this.eskiz.send(dto.phone, message);
+    return { ok: true, result, message };
   }
 }
 @Module({ controllers: [NotificationsController], providers: [Notifications, EskizClient], exports: [EskizClient] })
