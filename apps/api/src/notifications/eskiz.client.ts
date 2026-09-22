@@ -8,7 +8,7 @@ const TOKEN_TTL = 86400; // 24 soat (Eskiz JWT 30 kun amal qiladi, 24 soat kesh 
 export interface EskizSendResult {
   id: string; // SMS ID (status tekshirishda yoki request_id)
   status: string; // 'waiting' | 'DELIVERED' | 'TRANSMTD' | 'FAILED' ...
-  message?: string;
+  message?: string | undefined;
 }
 
 export interface EskizUserLimit {

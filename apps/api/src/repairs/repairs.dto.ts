@@ -64,6 +64,7 @@ export class DeliverDto {
 }
 
 export class RepairActionDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 100) userId?: string;
   @ApiProperty() @IsString() @Length(3,1000) description!: string;
   @ApiProperty() @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) laborAmount!: string;
 }

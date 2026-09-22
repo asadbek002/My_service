@@ -75,7 +75,7 @@ export default function Settings() {
           <CardHeader><CardTitle>Sahifalar</CardTitle></CardHeader>
           <CardContent>
             <div className="grid gap-2">
-              {[
+              {([
                 ['/settings/general', 'Umumiy sozlamalar'],
                 ['/settings/roles', 'Rollar va ruxsatlar'],
                 ['/settings/notifications', 'Xabarnoma shablonlar'],
@@ -83,7 +83,7 @@ export default function Settings() {
                 ['/settings/sms', 'SMS sozlamalari'],
                 ['/settings/subscription', 'Obuna'],
                 ['/branches', 'Filiallar'],
-              ].map(([href, label]) => (
+              ] as const).map(([href, label]) => (
                 <Link key={href} href={href}>
                   <Button variant="secondary" size="sm" className="w-full" style={{ justifyContent: 'flex-start' }}>{label}</Button>
                 </Link>

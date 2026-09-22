@@ -191,9 +191,10 @@ class RepairsController {
     return this.db.$transaction(async tx => {
       const order = await lockedOrder(tx, actor, id);
       if (order.status !== 'IN_REPAIR') throw new ConflictException('Repair not in progress');
-      const assigned = await tx.orderAssignment.findFirst({ where: { organizationId: actor.organizationId, orderId: id, userId: actor.userId } });
+      const targetUserId = dto.userId ?? actor.userId;
+      const assigned = await tx.orderAssignment.findFirst({ where: { organizationId: actor.organizationId, orderId: id, userId: targetUserId } });
       if (!actor.owner && !actor.permissions.includes('orders.assign') && !assigned) throw new ForbiddenException('Not assigned');
-      const action = await tx.repairAction.create({ data: { organizationId: actor.organizationId, orderId: id, userId: actor.userId, description: dto.description, laborAmount: dto.laborAmount } });
+      const action = await tx.repairAction.create({ data: { organizationId: actor.organizationId, orderId: id, userId: targetUserId, description: dto.description, laborAmount: dto.laborAmount } });
       await record(tx, actor, id, 'REPAIR_ACTION_COMPLETED'); return action;
     });
   }

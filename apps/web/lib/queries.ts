@@ -2,11 +2,31 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, apiBlob, uploadAttachment } from './api';
 
 // Types
-export type Order = { id: string; number: string; status: string; total: string; complaint?: string; requiredWork?: string; diagnosis?: string; quoteVersion?: number; customer: { id: string; firstName: string; phone: string; telegramChatId?: string }; device: { brand: string; model: string; imei?: string }; assignments?: { userId: string; user: { firstName: string }; task?: string }[] };
+export type Order = {
+  id: string;
+  number: string;
+  status: string;
+  total: string;
+  complaint?: string;
+  requiredWork?: string;
+  diagnosis?: string;
+  quoteVersion?: number;
+  accessories?: string[];
+  customer: { id: string; firstName: string; lastName?: string | null; phone: string; telegramChatId?: string; telegramUsername?: string };
+  device: { brand: string; model: string; imei?: string; serial?: string; passcode?: string; appearance?: string };
+  assignments?: { userId?: string; technicianId?: string; user?: { firstName: string; lastName?: string }; task?: string }[];
+  costs?: any[];
+  checklist?: Record<string, boolean>;
+  attachments?: any[];
+  history?: any[];
+  worklogs?: any[];
+  payments?: any[];
+  [key: string]: any;
+};
 export type Customer = { id: string; firstName: string; lastName?: string; phone: string; telegramUsername?: string; telegramChatId?: string; notificationPreference: string };
 export type Branch = { id: string; name: string };
-export type Me = { id: string; firstName: string; login: string; mustChangePassword: boolean; permissions: string[]; organizationId?: string };
-export type Staff = { id: string; login: string; firstName: string; phone: string; status: string; roles: { role: { name: string; systemKey?: string } }[]; branches: { branch: { id: string; name: string } }[] };
+export type Me = { id: string; firstName: string; lastName?: string | null; login: string; mustChangePassword: boolean; permissions: string[]; organizationId?: string; role?: string; branchIds?: string[] };
+export type Staff = { id: string; login: string; firstName: string; lastName?: string | null; phone: string; status: string; roles: { role: { name: string; systemKey?: string } }[]; branches: { branch: { id: string; name: string } }[] };
 export type Part = { id: string; name: string; sku: string; salePrice: string; stocks: { onHand: number; reserved: number; branchId: string }[] };
 export type DashReport = { todayReceived: number; todayCash?: string; debt?: string; statuses: { status: string; count: number }[]; workload: { id: string; name: string; active: number }[]; lowStock: { partId: string; name: string; branch: string; free: number; minimum: number }[]; revenueByDay?: { day: string; revenue: string }[] };
 export type Notification = { id: string; type: string; status: string; channel: string; createdAt: string; sentAt?: string };

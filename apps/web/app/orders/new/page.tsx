@@ -158,7 +158,10 @@ export default function NewOrderWizard() {
 
   const removePhoto = (index: number) => {
     setPhotos(prev => {
-      URL.revokeObjectURL(prev[index].preview);
+      const item = prev[index];
+      if (item?.preview) {
+        URL.revokeObjectURL(item.preview);
+      }
       return prev.filter((_, i) => i !== index);
     });
   };

@@ -3,10 +3,10 @@ import { Label } from './label';
 import { cn } from './utils';
 
 export interface FormFieldProps extends React.HTMLAttributes<HTMLDivElement> {
-  label?: string;
-  error?: string;
-  required?: boolean;
-  description?: string;
+  label?: string | undefined;
+  error?: string | undefined;
+  required?: boolean | undefined;
+  description?: string | undefined;
 }
 
 export function FormField({

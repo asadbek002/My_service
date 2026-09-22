@@ -318,13 +318,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 </div>
 
                 {/* Accessories & Conditions */}
-                {order.accessories?.length > 0 && (
+                {(order.accessories?.length ?? 0) > 0 && (
                   <div className="space-y-1">
                     <span className="font-semibold text-zinc-400 uppercase tracking-wider text-[10px]">
                       Komplektatsiya
                     </span>
                     <div className="flex flex-wrap gap-1">
-                      {order.accessories.map((a: string) => (
+                      {order.accessories?.map((a: string) => (
                         <Badge key={a} variant="secondary" className="text-[10px]">
                           {a}
                         </Badge>

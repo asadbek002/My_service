@@ -1,20 +1,33 @@
+import * as React from 'react';
 import { Badge } from './badge';
-const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'danger' | 'info' }> = {
-  RECEIVED:                   { label: 'Qabul qilindi',    variant: 'default' },
-  DIAGNOSING:                 { label: 'Diagnostika',       variant: 'info' },
-  WAITING_CUSTOMER_APPROVAL:  { label: 'Mijoz tasdig\'i',   variant: 'warning' },
-  WAITING_PART:               { label: 'Detal kutilmoqda',  variant: 'warning' },
-  IN_REPAIR:                  { label: 'Ta\'mirda',          variant: 'info' },
-  READY:                      { label: 'Tayyor',            variant: 'success' },
-  DELIVERED:                  { label: 'Berildi',           variant: 'success' },
-  CANCELLED:                  { label: 'Bekor',             variant: 'danger' },
-  UNREPAIRABLE:               { label: 'Ta\'mirlanmaydi',   variant: 'danger' },
-  ACTIVE:                     { label: 'Faol',              variant: 'success' },
-  SUSPENDED:                  { label: 'To\'xtatilgan',     variant: 'danger' },
-  INVITED:                    { label: 'Taklif yuborildi',  variant: 'warning' },
-  ARCHIVED:                   { label: 'Arxivlangan',       variant: 'default' },
+import { cn } from '../../lib/utils';
+
+const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'info' | 'purple'; dotColor: string }> = {
+  RECEIVED:                   { label: 'Qabul qilindi',    variant: 'secondary',   dotColor: 'bg-zinc-400' },
+  DIAGNOSING:                 { label: 'Diagnostikada',    variant: 'info',        dotColor: 'bg-sky-500' },
+  WAITING_CUSTOMER_APPROVAL:  { label: 'Mijoz tasdig\'i',   variant: 'warning',     dotColor: 'bg-amber-500' },
+  WAITING_PART:               { label: 'Detal kutilmoqda',  variant: 'purple',      dotColor: 'bg-purple-500' },
+  IN_REPAIR:                  { label: 'Ta\'mirda',          variant: 'info',        dotColor: 'bg-blue-600 animate-pulse' },
+  READY:                      { label: 'Tayyor',            variant: 'success',     dotColor: 'bg-emerald-500' },
+  DELIVERED:                  { label: 'Berildi',           variant: 'default',     dotColor: 'bg-zinc-300' },
+  CANCELLED:                  { label: 'Bekor qilindi',     variant: 'destructive', dotColor: 'bg-red-500' },
+  UNREPAIRABLE:               { label: 'Tuzatib bo\'lmadi',  variant: 'destructive', dotColor: 'bg-red-700' },
+  ACTIVE:                     { label: 'Faol',              variant: 'success',     dotColor: 'bg-emerald-500' },
+  SUSPENDED:                  { label: 'To\'xtatilgan',     variant: 'destructive', dotColor: 'bg-red-500' },
+  INVITED:                    { label: 'Taklif yuborildi',  variant: 'warning',     dotColor: 'bg-amber-500' },
+  ARCHIVED:                   { label: 'Arxivlangan',       variant: 'default',     dotColor: 'bg-zinc-400' },
 };
-export function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_MAP[status] ?? { label: status, variant: 'default' as const };
-  return <Badge variant={s.variant}>{s.label}</Badge>;
+
+export interface StatusBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
+  status: string;
+}
+
+export function StatusBadge({ status, className, ...props }: StatusBadgeProps) {
+  const s = STATUS_MAP[status] ?? { label: status, variant: 'secondary' as const, dotColor: 'bg-zinc-400' };
+  return (
+    <Badge variant={s.variant} className={cn('gap-1.5 font-medium px-2.5 py-1', className)} {...props}>
+      <span className={cn('h-1.5 w-1.5 rounded-full inline-block', s.dotColor)} />
+      {s.label}
+    </Badge>
+  );
 }

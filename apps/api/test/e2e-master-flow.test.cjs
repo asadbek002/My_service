@@ -1,6 +1,7 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
+const path = require('node:path');
 const { randomUUID, createHash, randomBytes } = require('node:crypto');
 const { PrismaClient } = require('@prisma/client');
 const { S3Client, CreateBucketCommand } = require('@aws-sdk/client-s3');
@@ -146,7 +147,9 @@ before(async () => {
   tenantA = await setupTenant('TenantA');
   tenantB = await setupTenant('TenantB');
 
-  server = spawn(process.execPath, ['dist/main.js'], { env: process.env });
+  const apiDistPath = path.resolve(__dirname, '..', 'dist', 'main.js');
+  const apiCwd = path.resolve(__dirname, '..');
+  server = spawn(process.execPath, [apiDistPath], { cwd: apiCwd, env: process.env });
   server.stdout.on('data', d => { serverOutput += d; });
   server.stderr.on('data', d => { serverOutput += d; });
 
@@ -338,6 +341,17 @@ test('MYSERVICE MASTER SPECIFICATION §76: Full End-to-End Repair & Multi-Tenant
   });
   assert.equal(usePartRes.status, 201);
 
+  const actionRes = await request(`/orders/${order.id}/repair/actions`, {
+    ...authA,
+    method: 'POST',
+    body: {
+      userId: techUser.id,
+      description: 'Displey modulini almashtirish',
+      laborAmount: '150000',
+    },
+  });
+  assert.equal(actionRes.status, 201);
+
   // 11. PASS FINAL TEST CHECKLIST & COMPLETE REPAIR -> READY
   const finishRepairRes = await request(`/orders/${order.id}/repair/finish`, {
     ...authA,
@@ -401,7 +415,8 @@ test('MYSERVICE MASTER SPECIFICATION §76: Full End-to-End Repair & Multi-Tenant
   // Verify Warranty Record
   const warranty = await db.warranty.findUnique({ where: { orderId: order.id } });
   assert.ok(warranty);
-  assert.equal(warranty.days, 90);
+  const warrantyDays = Math.round((warranty.endDate.getTime() - warranty.startDate.getTime()) / 86400000);
+  assert.equal(warrantyDays, 90);
 
   // 14. MULTI-TENANT ISOLATION CHECK: Tenant B cannot access Tenant A order
   const authB = await login(tenantB.ownerUser);
