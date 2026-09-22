@@ -1,0 +1,12 @@
+{
+  "name": "@myservice/config",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./index.js",
+  "exports": {
+    "./tailwind": "./tailwind.config.js"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0"
+  }
+}

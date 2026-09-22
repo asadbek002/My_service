@@ -9,6 +9,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@myservice/types": "workspace:*",
+    "@myservice/validation": "workspace:*",
+    "@myservice/ui": "workspace:*",
+    "@myservice/config": "workspace:*",
     "next": "^15.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -19,7 +23,7 @@
     "clsx": "^2.0.0",
     "tailwind-merge": "^2.0.0",
     "class-variance-authority": "^0.7.0",
-    "lucide-react": "^0.400.0",
+    "lucide-react": "^0.453.0",
     "@radix-ui/react-dialog": "^1.0.0",
     "@radix-ui/react-select": "^2.0.0",
     "@radix-ui/react-label": "^2.0.0",

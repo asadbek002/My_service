@@ -1,225 +1,221 @@
 'use client';
+
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { useOrders, useCustomers, useBranches, useMe, useCreateCustomer, useCreateOrder } from '../../lib/queries';
-import { customerSchema, deviceSchema, type CustomerInput, type DeviceInput } from '../../lib/schemas';
+import {
+  Search,
+  PlusCircle,
+  Filter,
+  ChevronRight,
+  Smartphone,
+  Calendar,
+  User,
+  SlidersHorizontal,
+} from 'lucide-react';
+import { useOrders, useMe } from '../../lib/queries';
+import { AppShell } from '../../components/layout/app-shell';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Select } from '../../components/ui/select';
-import { Textarea } from '../../components/ui/textarea';
-import { FormField } from '../../components/ui/form-field';
 import { StatusBadge } from '../../components/ui/status-badge';
-import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
-import { useState } from 'react';
-import { api } from '../../lib/api';
-import { useQueryClient } from '@tanstack/react-query';
+import { Card, CardContent } from '../../components/ui/card';
 
-const receiveSchema = z.object({
-  branchId: z.string().min(1, 'Filial tanlang'),
-  complaint: z.string().min(3, 'Shikoyat majburiy'),
-  accessories: z.string().optional(),
-  condition: z.string().optional(),
-});
-type ReceiveInput = z.infer<typeof receiveSchema>;
+const STATUS_TABS = [
+  { id: 'ALL', label: 'Barchasi' },
+  { id: 'DIAGNOSING', label: 'Diagnostikada' },
+  { id: 'WAITING_CUSTOMER_APPROVAL', label: "Mijoz tasdig'i" },
+  { id: 'WAITING_PART', label: 'Detal kutilmoqda' },
+  { id: 'IN_REPAIR', label: "Ta'mirda" },
+  { id: 'READY', label: 'Tayyor' },
+  { id: 'DELIVERED', label: 'Berildi' },
+];
 
-export default function Orders() {
+export default function OrdersPage() {
   const router = useRouter();
-  const qc = useQueryClient();
   const { data: me, error: meError } = useMe();
   const { data: orders = [], isLoading } = useOrders();
-  const { data: customers = [] } = useCustomers();
-  const { data: branches = [] } = useBranches();
-  const createCustomer = useCreateCustomer();
-  const createOrder = useCreateOrder();
 
-  const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
-  const [customerId, setCustomerId] = useState('');
-  const [deviceId, setDeviceId] = useState('');
-  const [photos, setPhotos] = useState<File[]>([]);
-  const [showNew, setShowNew] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>('ALL');
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const customerForm = useForm<CustomerInput>({ resolver: zodResolver(customerSchema), defaultValues: { notificationPreference: 'AUTO' } });
-  const deviceForm = useForm<DeviceInput>({ resolver: zodResolver(deviceSchema), defaultValues: { category: 'Telefon' } });
-  const receiveForm = useForm<ReceiveInput>({ resolver: zodResolver(receiveSchema) });
-
-  if (meError?.message === 'SESSION_EXPIRED') { router.replace('/login'); return null; }
-
-  async function onCustomer(data: CustomerInput) {
-    const c = await createCustomer.mutateAsync(data);
-    setCustomerId(c.id);
-    setStep(1);
-    customerForm.reset();
+  if (meError?.message === 'SESSION_EXPIRED') {
+    router.replace('/login');
+    return null;
   }
 
-  async function onDevice(data: DeviceInput) {
-    const d = await api<{ id: string }>('/devices', { method: 'POST', body: JSON.stringify({ customerId, ...data, compatibleModels: [] }) });
-    setDeviceId(d.id);
-    setStep(2);
-    deviceForm.reset();
-  }
+  const filteredOrders = orders.filter(o => {
+    const matchesTab = activeTab === 'ALL' || o.status === activeTab;
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      !q ||
+      o.number.toLowerCase().includes(q) ||
+      o.customer?.firstName?.toLowerCase().includes(q) ||
+      o.customer?.lastName?.toLowerCase().includes(q) ||
+      o.customer?.phone?.includes(q) ||
+      o.device?.brand?.toLowerCase().includes(q) ||
+      o.device?.model?.toLowerCase().includes(q) ||
+      o.device?.imei?.includes(q);
 
-  async function onReceive(data: ReceiveInput) {
-    if (!navigator.onLine) { receiveForm.setError('root', { message: "Internet yo'q. Qabul saqlanmadi." }); return; }
-    const order = await createOrder.mutateAsync({
-      data: { customerId, deviceId, ...data, accessories: data.accessories?.split(',').map(s => s.trim()).filter(Boolean) ?? [], condition: data.condition?.split(',').map(s => s.trim()).filter(Boolean) ?? [] },
-      photos,
-    });
-    setShowNew(false); setStep(0); setCustomerId(''); setDeviceId(''); setPhotos([]);
-    router.push('/orders/' + order.id);
-  }
+    return matchesTab && matchesSearch;
+  });
 
   return (
-    <main className="page">
-      <header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/dashboard">Bosh sahifa</Link></header>
-      <div className="title-row">
-        <div><p className="eyebrow">SERVIS JARAYONI</p><h1>Buyurtmalar</h1></div>
-        {me?.permissions.includes('orders.create') && (
-          <Button onClick={() => { setShowNew(v => !v); setStep(0); setCustomerId(''); setDeviceId(''); }}>
-            {showNew ? 'Yopish' : '+ Yangi qabul'}
-          </Button>
-        )}
-      </div>
-
-      {showNew && (
-        <div className="intake-grid" style={{ marginBottom: 32 }}>
-          {/* Step 1 — Mijoz */}
-          <Card>
-            <CardHeader><CardTitle>1. Mijoz</CardTitle></CardHeader>
-            <CardContent>
-              {customerId ? (
-                <div>
-                  <p className="success">✓ Mijoz tanlandi</p>
-                  <Button variant="ghost" size="sm" onClick={() => { setCustomerId(''); setDeviceId(''); setStep(0); }}>O'zgartirish</Button>
-                </div>
-              ) : (
-                <>
-                  <FormField label="Mavjud mijoz">
-                    <Select onChange={e => { if (e.target.value) { setCustomerId(e.target.value); setStep(1); } }}>
-                      <option value="">Qidirish...</option>
-                      {customers.map(c => <option key={c.id} value={c.id}>{c.firstName} — {c.phone}</option>)}
-                    </Select>
-                  </FormField>
-                  <hr />
-                  <p className="eyebrow" style={{ marginBottom: 12 }}>YANGI MIJOZ</p>
-                  <form onSubmit={customerForm.handleSubmit(onCustomer)} className="grid gap-3">
-                    <FormField label="Ism" error={customerForm.formState.errors.firstName?.message} required>
-                      <Input {...customerForm.register('firstName')} placeholder="Aziz" />
-                    </FormField>
-                    <FormField label="Telefon" error={customerForm.formState.errors.phone?.message} required>
-                      <Input {...customerForm.register('phone')} placeholder="+998901234567" />
-                    </FormField>
-                    <FormField label="Telegram">
-                      <Input {...customerForm.register('telegramUsername')} placeholder="@username" />
-                    </FormField>
-                    <FormField label="Xabar kanali">
-                      <Select {...customerForm.register('notificationPreference')}>
-                        <option value="AUTO">Avtomatik</option>
-                        <option value="TELEGRAM">Telegram</option>
-                        <option value="SMS">SMS</option>
-                      </Select>
-                    </FormField>
-                    {createCustomer.error && <p className="error">{createCustomer.error.message}</p>}
-                    <Button type="submit" disabled={createCustomer.isPending}>
-                      {createCustomer.isPending ? 'Saqlanmoqda...' : 'Mijoz yaratish'}
-                    </Button>
-                  </form>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Step 2 — Qurilma */}
-          <Card>
-            <CardHeader><CardTitle>2. Qurilma</CardTitle></CardHeader>
-            <CardContent>
-              {!customerId ? <p className="muted">Avval mijoz tanlang</p> :
-               deviceId ? (
-                <div>
-                  <p className="success">✓ Qurilma saqlandi</p>
-                  <Button variant="ghost" size="sm" onClick={() => { setDeviceId(''); setStep(1); }}>O'zgartirish</Button>
-                </div>
-               ) : (
-                <form onSubmit={deviceForm.handleSubmit(onDevice)} className="grid gap-3">
-                  <FormField label="Kategoriya" error={deviceForm.formState.errors.category?.message} required>
-                    <Input {...deviceForm.register('category')} placeholder="Telefon" />
-                  </FormField>
-                  <FormField label="Brend" error={deviceForm.formState.errors.brand?.message} required>
-                    <Input {...deviceForm.register('brand')} placeholder="Apple" />
-                  </FormField>
-                  <FormField label="Model" error={deviceForm.formState.errors.model?.message} required>
-                    <Input {...deviceForm.register('model')} placeholder="iPhone 15 Pro" />
-                  </FormField>
-                  <FormField label="IMEI"><Input {...deviceForm.register('imei')} /></FormField>
-                  <FormField label="Serial"><Input {...deviceForm.register('serialNumber')} /></FormField>
-                  <FormField label="Rang"><Input {...deviceForm.register('color')} /></FormField>
-                  <Button type="submit" disabled={deviceForm.formState.isSubmitting}>Qurilmani saqlash</Button>
-                </form>
-               )}
-            </CardContent>
-          </Card>
-
-          {/* Step 3 — Qabul */}
-          <Card>
-            <CardHeader><CardTitle>3. Qabul tafsilotlari</CardTitle></CardHeader>
-            <CardContent>
-              {!deviceId ? <p className="muted">Avval qurilmani saqlang</p> : (
-                <form onSubmit={receiveForm.handleSubmit(onReceive)} className="grid gap-3">
-                  <FormField label="Filial" error={receiveForm.formState.errors.branchId?.message} required>
-                    <Select {...receiveForm.register('branchId')}>
-                      <option value="">Tanlang</option>
-                      {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </Select>
-                  </FormField>
-                  <FormField label="Mijoz shikoyati" error={receiveForm.formState.errors.complaint?.message} required>
-                    <Textarea {...receiveForm.register('complaint')} />
-                  </FormField>
-                  <FormField label="Komplektatsiya">
-                    <Input {...receiveForm.register('accessories')} placeholder="Telefon, kabel, chexol" />
-                  </FormField>
-                  <FormField label="Tashqi holat">
-                    <Input {...receiveForm.register('condition')} placeholder="Ekran singan, tirnalgan" />
-                  </FormField>
-                  <FormField label="Holat rasmlari">
-                    <input type="file" accept="image/jpeg,image/png,image/webp" multiple
-                      onChange={e => setPhotos(Array.from(e.target.files ?? []).slice(0, 6))} />
-                    <small>{photos.length} ta rasm tanlandi</small>
-                  </FormField>
-                  {receiveForm.formState.errors.root && <p className="error">{receiveForm.formState.errors.root.message}</p>}
-                  {createOrder.error && <p className="error">{createOrder.error.message}</p>}
-                  <Button type="submit" disabled={createOrder.isPending}>
-                    {createOrder.isPending ? 'Saqlanmoqda...' : 'Qabul qilish'}
-                  </Button>
-                </form>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      <section>
-        {isLoading ? <p className="muted">Yuklanmoqda...</p> : (
-          <div className="table-scroll">
-            <table>
-              <thead><tr><th>Raqam</th><th>Mijoz</th><th>Qurilma</th><th>Holat</th><th>Jami</th></tr></thead>
-              <tbody>
-                {orders.map(o => (
-                  <tr key={o.id}>
-                    <td><Link href={'/orders/' + o.id}>{o.number}</Link></td>
-                    <td>{o.customer.firstName}<small>{o.customer.phone}</small></td>
-                    <td>{o.device.brand} {o.device.model}</td>
-                    <td><StatusBadge status={o.status} /></td>
-                    <td>{Number(o.total).toLocaleString('uz-UZ')} so'm</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {orders.length === 0 && <p className="muted">Hozircha buyurtmalar yo'q.</p>}
+    <AppShell
+      subtitle="Servis jarayoni"
+      title="Buyurtmalar roʻyxati"
+      action={
+        me?.permissions.includes('orders.create') ? (
+          <Link href="/orders/new">
+            <Button className="gap-2 shadow-sm">
+              <PlusCircle className="h-4 w-4" />
+              <span>Yangi qabul</span>
+            </Button>
+          </Link>
+        ) : null
+      }
+    >
+      <div className="space-y-6">
+        {/* Filter & Search Bar */}
+        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3.5 top-3 h-4 w-4 text-zinc-400" />
+            <Input
+              placeholder="Raqam, mijoz, telefon yoki model..."
+              className="pl-10"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
           </div>
-        )}
-      </section>
-    </main>
+
+          <div className="text-xs text-zinc-500 font-medium">
+            Jami: <span className="font-bold text-zinc-900 dark:text-zinc-100">{filteredOrders.length}</span> ta buyurtma
+          </div>
+        </div>
+
+        {/* Status Tabs */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-zinc-200 dark:border-zinc-800">
+          {STATUS_TABS.map(tab => {
+            const count =
+              tab.id === 'ALL'
+                ? orders.length
+                : orders.filter(o => o.status === tab.id).length;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-3.5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-2 ${
+                  isActive
+                    ? 'bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900 shadow-sm'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                    isActive
+                      ? 'bg-zinc-700 text-white dark:bg-zinc-200 dark:text-zinc-900'
+                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Orders Table & Mobile Cards */}
+        <Card className="overflow-hidden">
+          <CardContent className="p-0">
+            {isLoading ? (
+              <div className="p-12 text-center text-sm text-zinc-400">
+                Buyurtmalar yuklanmoqda...
+              </div>
+            ) : filteredOrders.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/50 text-[11px] uppercase tracking-wider text-zinc-400 font-semibold">
+                      <th className="py-3 px-4">Buyurtma</th>
+                      <th className="py-3 px-4">Mijoz</th>
+                      <th className="py-3 px-4">Qurilma</th>
+                      <th className="py-3 px-4">Holat</th>
+                      <th className="py-3 px-4 text-right">Summa</th>
+                      <th className="py-3 px-4 text-right">Amal</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                    {filteredOrders.map(order => (
+                      <tr
+                        key={order.id}
+                        onClick={() => router.push(`/orders/${order.id}`)}
+                        className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer group"
+                      >
+                        <td className="py-3.5 px-4">
+                          <div className="font-mono text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                            {order.number}
+                          </div>
+                          <div className="text-[11px] text-zinc-400 mt-0.5 flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {new Date(order.createdAt).toLocaleDateString('uz-UZ')}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="font-semibold text-xs text-zinc-900 dark:text-zinc-100">
+                            {order.customer?.firstName} {order.customer?.lastName}
+                          </div>
+                          <div className="text-xs text-zinc-500">{order.customer?.phone}</div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="font-medium text-xs text-zinc-800 dark:text-zinc-200">
+                            {order.device?.brand} {order.device?.model}
+                          </div>
+                          <div className="text-[11px] text-zinc-400 truncate max-w-xs">
+                            {order.complaint}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <StatusBadge status={order.status} />
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="font-bold text-xs text-zinc-900 dark:text-zinc-100">
+                            {Number(order.total || 0).toLocaleString('uz-UZ')} soʻm
+                          </div>
+                          {Number(order.balance || 0) > 0 && (
+                            <div className="text-[11px] font-semibold text-red-600 dark:text-red-400">
+                              Qarz: {Number(order.balance).toLocaleString('uz-UZ')}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-zinc-400 group-hover:text-zinc-900 dark:group-hover:text-zinc-100"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-12 text-center space-y-3">
+                <Smartphone className="h-10 w-10 text-zinc-300 dark:text-zinc-700 mx-auto" />
+                <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                  Mos buyurtmalar topilmadi
+                </p>
+                <p className="text-xs text-zinc-400">
+                  Qidiruv mezonlarini oʻzgartirib koʻring yoki yangi buyurtma yarating.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </AppShell>
   );
 }
