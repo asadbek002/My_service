@@ -40,10 +40,11 @@ export class AuthController {
   @Get('me') @AllowPasswordChange() @Header('Cache-Control', 'no-store')
   me(@CurrentActor() actor: Actor) { return this.auth.me(actor); }
 
-  @Post('change-password') @AllowPasswordChange() @HttpCode(204)
+  @Post('change-password') @AllowPasswordChange() @HttpCode(200)
   async change(@CurrentActor() actor: Actor, @Body() dto: ChangePasswordDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     this.origin(req);
-    await this.auth.changePassword(actor, dto.currentPassword, dto.newPassword);
-    res.clearCookie('myservice_refresh', this.cookieOptions());
+    const result = await this.auth.changePassword(actor, dto.currentPassword, dto.newPassword);
+    res.cookie('myservice_refresh', result.refreshToken, this.cookieOptions());
+    return { accessToken: result.accessToken, expiresIn: result.expiresIn };
   }
 }

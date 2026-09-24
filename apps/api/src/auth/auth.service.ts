@@ -83,14 +83,18 @@ export class AuthService implements OnModuleInit {
     const user = await this.db.user.findUniqueOrThrow({ where: { id: actor.userId } });
     if (!await argon2.verify(user.passwordHash, currentPassword)) throw new UnauthorizedException();
     const passwordHash = await argon2.hash(newPassword, { type: argon2.argon2id });
+    const token = this.mint();
+    const expiresAt = new Date(Date.now() + 30 * 86400000);
     await this.db.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${actor.userId} FOR UPDATE`;
       const current = await tx.user.findUniqueOrThrow({ where: { id: actor.userId } });
       if (current.passwordHash !== user.passwordHash || current.status !== 'ACTIVE') throw new UnauthorizedException();
       await tx.user.update({ where: { id: actor.userId }, data: { passwordHash, mustChangePassword: false } });
       await tx.session.updateMany({ where: { userId: actor.userId }, data: { status: 'REVOKED', revokedAt: new Date() } });
+      await tx.session.create({ data: { id: token.id, userId: actor.userId, tokenFamilyId: token.id, refreshTokenHash: token.hash, expiresAt } });
       await tx.auditLog.create({ data: { organizationId: actor.organizationId, actorId: actor.userId, action: 'AUTH_PASSWORD_CHANGED', entityId: actor.userId } });
     });
+    return this.response(actor.userId, token.id, token.refresh, expiresAt);
   }
 
   me(actor: Actor) {
