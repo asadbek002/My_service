@@ -30,6 +30,10 @@ services:
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+      # Browsers upload photos directly with presigned URLs from the web origin.
+      MINIO_API_CORS_ALLOW_ORIGIN: ${WEB_URL}
+    ports:
+      - "127.0.0.1:9000:9000"
     volumes:
       - minio_data:/data
 

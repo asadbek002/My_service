@@ -1,6 +1,6 @@
 import {BadRequestException,Body,ConflictException,Controller,Get,HttpCode,Injectable,Logger,Module,NotFoundException,OnModuleDestroy,OnModuleInit,Param,Post,Res}from'@nestjs/common';
 import{IsIn,IsInt,IsString,Length,Matches,Max,Min}from'class-validator';
-import{HeadObjectCommand,PutObjectCommand,S3Client}from'@aws-sdk/client-s3';
+import{CreateBucketCommand,HeadBucketCommand,HeadObjectCommand,PutObjectCommand,S3Client}from'@aws-sdk/client-s3';
 import{getSignedUrl}from'@aws-sdk/s3-request-presigner';
 import{PDFDocument,rgb}from'pdf-lib';
 import fontkit from'@pdf-lib/fontkit';
@@ -32,7 +32,11 @@ class DocumentRequestDto{@IsString()@Length(1,100)requestId!:string}
 function storage(){
  const endpoint=process.env.S3_ENDPOINT,bucket=process.env.S3_BUCKET,accessKeyId=process.env.S3_ACCESS_KEY,secretAccessKey=process.env.S3_SECRET_KEY;
  if(!endpoint||!bucket||!accessKeyId||!secretAccessKey)throw new ConflictException('Storage not configured');
- return{bucket,client:new S3Client({endpoint,region:process.env.S3_REGION??'us-east-1',forcePathStyle:true,requestChecksumCalculation:'WHEN_REQUIRED',credentials:{accessKeyId,secretAccessKey}})};
+ const client=(url:string)=>new S3Client({endpoint:url,region:process.env.S3_REGION??'us-east-1',forcePathStyle:true,requestChecksumCalculation:'WHEN_REQUIRED',credentials:{accessKeyId,secretAccessKey}});
+ // Browsers upload straight to storage, so presigned URLs must use the public address (e.g. https://files.example.uz);
+ // the API itself keeps talking to the internal endpoint.
+ const publicEndpoint=process.env.S3_PUBLIC_ENDPOINT;
+ return{bucket,client:client(endpoint),presignClient:publicEndpoint?client(publicEndpoint):client(endpoint)};
 }
 
 async function buildPdf(db:Database,organizationId:string,orderId:string,type:string):Promise<Uint8Array>{
@@ -62,6 +66,7 @@ export class DocumentsService implements OnModuleInit,OnModuleDestroy{
  constructor(private readonly db:Database){}
 
  async onModuleInit(){
+  await this.ensureBucket();
   if(!process.env.REDIS_URL)return;
   const url=new URL(process.env.REDIS_URL);
   const connection={host:url.hostname,port:Number(url.port||6379),...(url.password?{password:decodeURIComponent(url.password)}:{}),...(url.protocol==='rediss:'?{tls:{}}:{})};
@@ -79,6 +84,17 @@ export class DocumentsService implements OnModuleInit,OnModuleDestroy{
    }
   },{connection,concurrency:4});
   this.worker.on('error',()=>this.logger.error('Document worker connection failed'));
+ }
+
+ private async ensureBucket(){
+  // A fresh MinIO volume has no bucket; without it every upload and the storage health check fail.
+  if(!process.env.S3_ENDPOINT||!process.env.S3_BUCKET||!process.env.S3_ACCESS_KEY||!process.env.S3_SECRET_KEY)return;
+  const{client,bucket}=storage();
+  try{await client.send(new HeadBucketCommand({Bucket:bucket}));}
+  catch{
+   try{await client.send(new CreateBucketCommand({Bucket:bucket}));this.logger.log('Created storage bucket '+bucket);}
+   catch{this.logger.error('Storage bucket '+bucket+' is unavailable');}
+  }
  }
 
  async onModuleDestroy(){
@@ -116,10 +132,10 @@ class DocumentsController{
   const order=await this.db.order.findFirst({where:{id,...orderScope(a)}});if(!order)throw new NotFoundException();
   const ext:Record<string,string>={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'};
   const objectKey=a.organizationId+'/orders/'+order.number+'/'+randomUUID()+'.'+ext[d.contentType];
-  const{client,bucket}=storage();
+  const{presignClient,bucket}=storage();
   const pending=await this.db.pendingUpload.create({data:{organizationId:a.organizationId,orderId:id,objectKey,kind:d.kind,contentType:d.contentType,size:d.size,sha256:d.sha256,uploadedBy:a.userId,expiresAt:new Date(Date.now()+15*60000)}});
   const command=new PutObjectCommand({Bucket:bucket,Key:objectKey,ContentType:d.contentType,ContentLength:d.size,Metadata:{sha256:d.sha256}});
-  return{uploadId:pending.id,url:await getSignedUrl(client,command,{expiresIn:600,unhoistableHeaders:new Set(['x-amz-meta-sha256']),signableHeaders:new Set(['content-type'])}),headers:{'Content-Type':d.contentType,'x-amz-meta-sha256':d.sha256}};
+  return{uploadId:pending.id,url:await getSignedUrl(presignClient,command,{expiresIn:600,unhoistableHeaders:new Set(['x-amz-meta-sha256']),signableHeaders:new Set(['content-type'])}),headers:{'Content-Type':d.contentType,'x-amz-meta-sha256':d.sha256}};
  }
 
  @Post(':id/attachments/confirm')@Permissions('orders.edit')
