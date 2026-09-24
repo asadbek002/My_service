@@ -12,8 +12,8 @@ import { allowedOrigins } from './auth/security';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableShutdownHooks();
-  // Behind host nginx: take the client IP from X-Forwarded-For (one proxy hop) for rate limits and audit logs.
-  (app.getHttpAdapter().getInstance() as Express).set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
+  // Behind a reverse proxy set TRUST_PROXY_HOPS so rate limits and audit logs see the client IP; default trusts none.
+  (app.getHttpAdapter().getInstance() as Express).set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 0));
   app.setGlobalPrefix('api');
   app.use(helmet());
   app.use(cookieParser());

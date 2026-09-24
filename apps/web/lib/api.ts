@@ -31,10 +31,17 @@ export function clearAccess() {
 
 // Single-flight: parallel requests must share one refresh, otherwise the server
 // sees the rotated refresh token reused and revokes the whole session family.
+// The Web Lock also serializes tabs, which share the refresh cookie: the next tab
+// runs after the cookie has been rotated and sends the new one.
 let refreshing: Promise<string | null> | null = null;
 function refreshToken(): Promise<string | null> {
-  refreshing ??= doRefresh().finally(() => { refreshing = null; });
+  refreshing ??= lockedRefresh().finally(() => { refreshing = null; });
   return refreshing;
+}
+
+async function lockedRefresh(): Promise<string | null> {
+  if (typeof navigator === 'undefined' || !navigator.locks) return doRefresh();
+  return await navigator.locks.request('myservice-refresh', doRefresh);
 }
 
 async function doRefresh(): Promise<string | null> {
