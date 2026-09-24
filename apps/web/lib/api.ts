@@ -29,7 +29,15 @@ export function clearAccess() {
   try { sessionStorage.removeItem('ms_at'); } catch {}
 }
 
-async function refreshToken(): Promise<string | null> {
+// Single-flight: parallel requests must share one refresh, otherwise the server
+// sees the rotated refresh token reused and revokes the whole session family.
+let refreshing: Promise<string | null> | null = null;
+function refreshToken(): Promise<string | null> {
+  refreshing ??= doRefresh().finally(() => { refreshing = null; });
+  return refreshing;
+}
+
+async function doRefresh(): Promise<string | null> {
   try {
     const res = await fetch(API_BASE + '/auth/refresh', {
       method: 'POST', credentials: 'include',

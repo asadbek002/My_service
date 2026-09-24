@@ -4,13 +4,15 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
-import type { NextFunction, Request, Response } from 'express';
+import type { Express, NextFunction, Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableShutdownHooks();
+  // Behind host nginx: take the client IP from X-Forwarded-For (one proxy hop) for rate limits and audit logs.
+  (app.getHttpAdapter().getInstance() as Express).set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
   app.setGlobalPrefix('api');
   app.use(helmet());
   app.use(cookieParser());
