@@ -2,7 +2,9 @@ import {BadRequestException,Body,ConflictException,Controller,Get,HttpCode,Injec
 import{IsIn,IsInt,IsString,Length,Matches,Max,Min}from'class-validator';
 import{HeadObjectCommand,PutObjectCommand,S3Client}from'@aws-sdk/client-s3';
 import{getSignedUrl}from'@aws-sdk/s3-request-presigner';
-import{PDFDocument,StandardFonts,rgb}from'pdf-lib';
+import{PDFDocument,rgb}from'pdf-lib';
+import fontkit from'@pdf-lib/fontkit';
+import{readFileSync}from'node:fs';
 import QRCode from'qrcode';
 import type{Response}from'express';
 import{Queue,Worker}from'bullmq';
@@ -13,6 +15,10 @@ import{CurrentActor,Permissions}from'../auth/security';
 import type{Actor}from'../auth/security';
 import{createLink}from'../notifications/links.module';
 import{orderScope,record}from'../orders/orders.module';
+
+// Standard PDF fonts are WinAnsi-only and throw on Cyrillic/Uzbek letters; embed a Unicode TTF instead.
+const fontFile=(name:string)=>readFileSync(require.resolve('dejavu-fonts-ttf/ttf/'+name));
+const regularFont=fontFile('DejaVuSans.ttf'),boldFont=fontFile('DejaVuSans-Bold.ttf');
 
 class UploadDto{
  @IsIn(['FRONT','BACK','LEFT','RIGHT','DAMAGE','OTHER'])kind!:string;
@@ -36,7 +42,7 @@ async function buildPdf(db:Database,organizationId:string,orderId:string,type:st
  const paid=order.payments.reduce((n,p)=>p.kind==='REFUND'?n.minus(p.amount):n.plus(p.amount),new Prisma.Decimal(0));
  const snapshot={type,number:order.number,customer:order.customer.firstName,phone:order.customer.phone,device:order.device.brand+' '+order.device.model,status:order.status,total:order.total.toString(),paid:paid.toString(),balance:order.total.minus(paid).toString(),createdAt:order.createdAt.toISOString(),warrantyEnd:order.warranty?.endDate.toISOString()??null};
  const track=await createLink(db,organizationId,orderId,'TRACK');
- const pdf=await PDFDocument.create();const page=pdf.addPage([420,595]);const font=await pdf.embedFont(StandardFonts.Helvetica);const bold=await pdf.embedFont(StandardFonts.HelveticaBold);
+ const pdf=await PDFDocument.create();const page=pdf.addPage([420,595]);pdf.registerFontkit(fontkit);const font=await pdf.embedFont(regularFont,{subset:true});const bold=await pdf.embedFont(boldFont,{subset:true});
  const qrData=await QRCode.toDataURL(process.env.WEB_URL+'/track/'+track,{width:180,margin:1});const qr=await pdf.embedPng(qrData);
  page.drawText('MY SERVICE',{x:34,y:548,size:22,font:bold,color:rgb(.08,.08,.08)});page.drawText(type.toUpperCase()+' DOCUMENT',{x:34,y:524,size:9,font});
  const rows=[['Order',snapshot.number],['Customer',snapshot.customer],['Phone',snapshot.phone],['Device',snapshot.device],['Status',snapshot.status],['Total',snapshot.total+' UZS'],['Paid',snapshot.paid+' UZS'],['Balance',snapshot.balance+' UZS'],...(snapshot.warrantyEnd?[['Warranty end',snapshot.warrantyEnd.slice(0,10)]]:[])] as [string,string][];

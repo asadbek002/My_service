@@ -12,36 +12,38 @@
     "seed:platform": "node scripts/platform-seed.cjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.890.0",
+    "@aws-sdk/s3-request-presigner": "^3.890.0",
     "@myservice/types": "workspace:*",
     "@myservice/validation": "workspace:*",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.0",
+    "@nestjs/jwt": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/swagger": "^11.0.0",
+    "@pdf-lib/fontkit": "^1.1.1",
     "@prisma/client": "6.19.0",
     "argon2": "^0.41.0",
+    "bullmq": "^5.58.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
-    "helmet": "^8.0.0",
-    "reflect-metadata": "^0.2.0",
-    "rxjs": "^7.8.0",
-    "@nestjs/jwt": "^11.0.0",
     "cookie-parser": "^1.4.7",
-    "ioredis": "^5.6.0",
+    "dejavu-fonts-ttf": "^2.37.3",
     "dotenv": "^16.4.7",
-    "bullmq": "^5.58.0",
-    "@aws-sdk/client-s3": "^3.890.0",
-    "@aws-sdk/s3-request-presigner": "^3.890.0",
+    "helmet": "^8.0.0",
+    "ioredis": "^5.6.0",
     "pdf-lib": "^1.17.1",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "reflect-metadata": "^0.2.0",
+    "rxjs": "^7.8.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
-    "@types/node": "^22.0.0",
-    "typescript": "^5.0.0",
     "@types/cookie-parser": "^1.4.8",
     "@types/express": "^5.0.0",
-    "@types/qrcode": "^1.5.5"
+    "@types/node": "^22.0.0",
+    "@types/qrcode": "^1.5.5",
+    "typescript": "^5.0.0"
   }
 }

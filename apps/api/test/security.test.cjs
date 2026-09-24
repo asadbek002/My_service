@@ -258,6 +258,8 @@ test('signed upload verifies metadata and receipt is a PDF', async () => {
   assert.equal((await request('/orders/' + order.id + '/attachments/confirm', { ...auth, method: 'POST', body: { uploadId: signed.uploadId } })).status, 201);
   const attachments = await (await request('/orders/' + order.id + '/attachments', auth)).json();
   assert.ok(attachments.some(x => x.sha256 === undefined && x.kind === 'DAMAGE'));
+  // Cyrillic and Uzbek letters must not break PDF text encoding.
+  await db.customer.update({ where: { id: order.customerId }, data: { firstName: 'Алишер Oʻzbek' } });
   const pdf = await request('/orders/' + order.id + '/documents/receipt', { ...auth, method: 'POST' });
   assert.equal(pdf.status, 200);
   assert.equal(pdf.headers.get('content-type'), 'application/pdf');
