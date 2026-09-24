@@ -2,7 +2,7 @@ import { Body, Controller, ForbiddenException, Get, Header, HttpCode, Post, Req,
 import { ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
-import { AllowPasswordChange, CurrentActor, Public } from './security';
+import { AllowPasswordChange, CurrentActor, Public, allowedOrigins } from './security';
 import type { Actor } from './security';
 import { ChangePasswordDto, LoginDto } from './auth.dto';
 import { LoginRateGuard } from './rate-limit';
@@ -12,7 +12,7 @@ import { LoginRateGuard } from './rate-limit';
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
   private origin(req: Request) {
-    if (req.headers.origin !== process.env.WEB_URL) throw new ForbiddenException('Origin rejected');
+    if (!req.headers.origin || !allowedOrigins().includes(req.headers.origin)) throw new ForbiddenException('Origin rejected');
   }
   private cookieOptions() {
     return { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' as const, path: '/api/auth' };
@@ -43,8 +43,6 @@ export class AuthController {
   @Post('change-password') @AllowPasswordChange() @HttpCode(200)
   async change(@CurrentActor() actor: Actor, @Body() dto: ChangePasswordDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     this.origin(req);
-    const result = await this.auth.changePassword(actor, dto.currentPassword, dto.newPassword);
-    res.cookie('myservice_refresh', result.refreshToken, this.cookieOptions());
-    return { accessToken: result.accessToken, expiresIn: result.expiresIn };
+    return this.send(res, await this.auth.changePassword(actor, dto.currentPassword, dto.newPassword));
   }
 }

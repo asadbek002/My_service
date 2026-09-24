@@ -22,7 +22,7 @@ import { useMe, useDashboard, useOrders, useStaff } from '../../lib/queries';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { changePasswordSchema, type ChangePasswordInput } from '../../lib/schemas';
-import { api, clearAccess } from '../../lib/api';
+import { api, setAccessToken } from '../../lib/api';
 import { AppShell } from '../../components/layout/app-shell';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -46,15 +46,15 @@ export default function Dashboard() {
   }
 
   async function onChangePassword(data: ChangePasswordInput) {
-    await api('/auth/change-password', {
+    const result = await api<{ accessToken: string; expiresIn: number }>('/auth/change-password', {
       method: 'POST',
       body: JSON.stringify({
         currentPassword: data.currentPassword,
         newPassword: data.newPassword,
       }),
     });
-    clearAccess();
-    router.replace('/login');
+    setAccessToken(result.accessToken, result.expiresIn);
+    window.location.reload();
   }
 
   if (me?.mustChangePassword) {

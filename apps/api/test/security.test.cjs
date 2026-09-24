@@ -90,8 +90,10 @@ test('temporary password blocks business actions, change revokes sessions, RBAC 
   const user = await response.json();
   const auth = await login(user);
   assert.equal((await request('/branches', auth)).status, 403);
-  assert.equal((await request('/auth/change-password', { ...auth, method: 'POST', body: { currentPassword: password, newPassword: 'changed-password-123' } })).status, 204);
+  const changed = await request('/auth/change-password', { ...auth, method: 'POST', body: { currentPassword: password, newPassword: 'changed-password-123' } });
+  assert.equal(changed.status, 200);
   assert.equal((await request('/auth/me', auth)).status, 401);
+  assert.equal((await request('/auth/me', { token: (await changed.json()).accessToken })).status, 200);
   const r = await request('/auth/login', { method: 'POST', body: { login: user.login, password: 'changed-password-123' } });
   const token = (await r.json()).accessToken;
   assert.equal((await request('/staff', { token })).status, 403);

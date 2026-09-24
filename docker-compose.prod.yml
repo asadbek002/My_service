@@ -39,6 +39,8 @@ services:
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     env_file: .env
+    environment:
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
     ports:
       - "127.0.0.1:3004:3001"
     depends_on:

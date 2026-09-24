@@ -5,7 +5,7 @@ import * as argon2 from 'argon2';
 import { Prisma } from '@prisma/client';
 import type { Request } from 'express';
 import { Database } from '../database';
-import { Public } from '../auth/security';
+import { Public, allowedOrigins } from '../auth/security';
 import { LoginRateGuard } from '../auth/rate-limit';
 import { LoginDto } from '../auth/auth.dto';
 import { SubscriptionCache } from '../auth/subscription-cache';
@@ -56,7 +56,7 @@ class PlatformAuthController {
   constructor(private readonly db: Database) {}
   @Post('login') @UseGuards(LoginRateGuard)
   async login(@Req() req: Request, @Body() d: LoginDto) {
-    if (req.headers.origin !== process.env.WEB_URL) throw new ForbiddenException();
+    if (!req.headers.origin || !allowedOrigins().includes(req.headers.origin)) throw new ForbiddenException();
     const admin = await this.db.platformAdmin.findUnique({ where: { login: d.login.toLowerCase() } });
     // Always do Argon2 work for unknown users.
     const dummy = '$argon2id$v=19$m=65536,t=3,p=4$cmFuZG9tLXNlZWQtc2FsdA$R5sjIzDcudFDASNkKMjGNgpdsmaOoE1ZeInDz5Cyb1U';

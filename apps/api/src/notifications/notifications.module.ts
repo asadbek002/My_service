@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Body, Injectable, Module, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { IsOptional, IsString, Length, Matches } from 'class-validator';
 import { EskizClient } from './eskiz.client';
 import { Queue, Worker } from 'bullmq';
 import { Database } from '../database';
@@ -7,6 +8,11 @@ import { createLink } from './links.module';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { orderScope } from '../orders/orders.module';
+
+class TestSmsDto {
+  @IsString() @Matches(/^\+?[1-9][0-9]{7,14}$/) phone!: string;
+  @IsOptional() @IsString() @Length(1, 500) message?: string;
+}
 
 function render(template:string,values:Record<string,string>){return template.replace(/{{([a-z_]+)}}/g,(_,key:string)=>values[key]??'');}
 const labels: Record<string,string> = {
@@ -136,7 +142,7 @@ class NotificationsController {
   }
 
   @Post('test-sms') @Permissions('settings.manage')
-  async testSms(@Body() dto: { phone: string; message?: string }) {
+  async testSms(@Body() dto: TestSmsDto) {
     const message = dto.message?.trim() || (process.env.ESKIZ_TEST_MODE === 'true' ? 'Bu Eskiz dan test' : 'MyService: SMS xizmati muvaffaqiyatli ulandi!');
     const result = await this.eskiz.send(dto.phone, message);
     return { ok: true, result, message };
