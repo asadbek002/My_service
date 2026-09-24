@@ -7,6 +7,7 @@ import helmet from 'helmet';
 import type { Express, NextFunction, Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { AppModule } from './app.module';
+import { allowedOrigins } from './auth/security';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -21,7 +22,7 @@ async function bootstrap() {
     res.on('finish', () => console.log(JSON.stringify({ level: res.statusCode >= 500 ? 'error' : 'info', event: 'http_request', requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - started, ip: req.ip, timestamp: new Date().toISOString() })));
     next();
   });
-  app.enableCors({ origin: (process.env.CORS_ORIGINS ?? process.env.WEB_URL ?? '').split(',').map(s => s.trim()), credentials: true });
+  app.enableCors({ origin: allowedOrigins(), credentials: true });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   const spec = new DocumentBuilder().setTitle('MyService API').setVersion('0.2').addBearerAuth().build();
   if (process.env.NODE_ENV !== 'production') SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, spec));

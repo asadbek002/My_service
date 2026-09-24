@@ -5,6 +5,7 @@ import type { Request } from 'express';
 import { Database } from '../database';
 import { SubscriptionCache } from './subscription-cache';
 
+export const allowedOrigins = () => (process.env.CORS_ORIGINS ?? process.env.WEB_URL ?? '').split(',').map(s => s.trim()).filter(Boolean);
 export const Public = () => SetMetadata('public', true);
 export const Permissions = (...permissions: string[]) => SetMetadata('permissions', permissions);
 export const AllowPasswordChange = () => SetMetadata('allowPasswordChange', true);
