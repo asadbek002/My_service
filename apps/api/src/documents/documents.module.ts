@@ -1,6 +1,6 @@
 import {BadRequestException,Body,ConflictException,Controller,Get,HttpCode,Injectable,Logger,Module,NotFoundException,OnModuleInit,Param,Post,Res}from'@nestjs/common';
 import{IsIn,IsInt,IsString,Length,Matches,Max,Min}from'class-validator';
-import{CreateBucketCommand,HeadBucketCommand,HeadObjectCommand,PutObjectCommand,S3Client}from'@aws-sdk/client-s3';
+import{CreateBucketCommand,GetObjectCommand,HeadBucketCommand,HeadObjectCommand,PutObjectCommand,S3Client}from'@aws-sdk/client-s3';
 import{getSignedUrl}from'@aws-sdk/s3-request-presigner';
 import{PDFDocument,rgb}from'pdf-lib';
 import fontkit from'@pdf-lib/fontkit';
@@ -120,6 +120,16 @@ class DocumentsController{
  async attachments(@CurrentActor()a:Actor,@Param('id')id:string){
   if(!await this.db.order.findFirst({where:{id,...orderScope(a)}}))throw new NotFoundException();
   return this.db.attachment.findMany({where:{organizationId:a.organizationId,orderId:id},select:{id:true,kind:true,contentType:true,size:true,createdAt:true}});
+ }
+
+ @Get(':id/attachments/:attachmentId/url')@Permissions('orders.view')
+ async attachmentUrl(@CurrentActor()a:Actor,@Param('id')id:string,@Param('attachmentId')attachmentId:string){
+  if(!await this.db.order.findFirst({where:{id,...orderScope(a)}}))throw new NotFoundException();
+  const attachment=await this.db.attachment.findFirst({where:{id:attachmentId,organizationId:a.organizationId,orderId:id}});
+  if(!attachment)throw new NotFoundException();
+  const{presignClient,bucket}=storage();
+  // Short-lived read link; the object itself is never public.
+  return{url:await getSignedUrl(presignClient,new GetObjectCommand({Bucket:bucket,Key:attachment.objectKey}),{expiresIn:300})};
  }
 
  @Post(':id/documents/:type')@HttpCode(200)@Permissions('orders.view')

@@ -58,12 +58,13 @@ export const diagnosisSchema = z.object({
   requiredWork: z.string().min(3, "Bajariladigan ish turi majburiy"),
   labor: z.string().regex(/^\d+(\.\d{1,2})?$/, "Noto'g'ri xizmat narxi"),
   partsTotal: z.string().regex(/^\d+(\.\d{1,2})?$/, "Noto'g'ri ehtiyot qism narxi"),
-  estimatedMinutes: z.number().min(1).optional(),
+  estimatedTime: z.string().max(100).optional(),
 });
 
 export const paymentSchema = z.object({
   amount: z.string().regex(/^\d+(\.\d{1,2})?$/, "Noto'g'ri summa"),
-  method: z.enum(['CASH', 'CARD', 'CLICK', 'PAYME', 'TRANSFER', 'OTHER']),
+  // Built-in methods plus organization-defined keys (settings → payment methods).
+  method: z.string().regex(/^[A-Z0-9_]{1,64}$/, "To'lov usuli tanlanmagan"),
   note: z.string().optional(),
 });
 

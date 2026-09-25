@@ -4,12 +4,14 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { clean } from '../../lib/utils';
 import { api } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
 import { FormField } from '../../components/ui/form-field';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
+import { AppShell } from '../../components/layout/app-shell';
 
 type Supplier = { id: string; name: string; phone: string; company?: string; telegram?: string; address?: string };
 const supplierSchema = z.object({
@@ -26,15 +28,13 @@ export default function Suppliers() {
   const qc = useQueryClient();
   const { data: suppliers = [], isLoading } = useQuery({ queryKey: ['suppliers'], queryFn: () => api<Supplier[]>('/suppliers') });
   const create = useMutation({
-    mutationFn: (d: SupplierInput) => api('/suppliers', { method: 'POST', body: JSON.stringify(d) }),
+    mutationFn: (d: SupplierInput) => api('/suppliers', { method: 'POST', body: JSON.stringify(clean(d, ['name', 'phone', 'company', 'telegram', 'address', 'notes'])) }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['suppliers'] }); reset(); },
   });
   const { register, handleSubmit, reset, formState: { errors } } = useForm<SupplierInput>({ resolver: zodResolver(supplierSchema) });
 
   return (
-    <main className="page">
-      <header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/inventory">Ombor</Link></header>
-      <div className="title-row"><div><p className="eyebrow">HAMKORLAR</p><h1>Yetkazib beruvchilar</h1></div></div>
+    <AppShell title="Ta'minotchilar" subtitle="Ombor">
 
       <div className="detail-grid">
         <Card>
@@ -68,6 +68,6 @@ export default function Suppliers() {
           </CardContent>
         </Card>
       </div>
-    </main>
+    </AppShell>
   );
 }

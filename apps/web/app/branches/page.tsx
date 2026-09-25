@@ -11,6 +11,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { FormField } from '../../components/ui/form-field';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
+import { AppShell } from '../../components/layout/app-shell';
 
 const branchSchema = z.object({ name: z.string().min(1, 'Nom majburiy').max(100) });
 type BranchInput = z.infer<typeof branchSchema>;
@@ -27,9 +28,7 @@ export default function Branches() {
   const { register, handleSubmit, reset, formState: { errors } } = useForm<BranchInput>({ resolver: zodResolver(branchSchema) });
 
   return (
-    <main className="page">
-      <header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/settings">Sozlamalar</Link></header>
-      <div className="title-row"><div><p className="eyebrow">ORGANIZATION</p><h1>Filiallar</h1></div></div>
+    <AppShell title="Filiallar" subtitle="Tashkilot">
 
       <div className="detail-grid">
         <Card>
@@ -62,6 +61,6 @@ export default function Branches() {
           </Card>
         )}
       </div>
-    </main>
+    </AppShell>
   );
 }

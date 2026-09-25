@@ -1,1 +1,5 @@
-import{redirect}from'next/navigation';export default function PlatformSection(){redirect('/platform')}
+import PlatformConsole from '../console';
+
+export default function Page() {
+  return <PlatformConsole tab="organizations" />;
+}

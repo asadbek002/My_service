@@ -43,10 +43,10 @@ const navItems = [
   { href: '/staff', label: 'Xodimlar', icon: UserCheck, permission: 'staff.view' },
   { href: '/inventory', label: 'Ombor', icon: Package, permission: 'inventory.view' },
   { href: '/payments', label: "To'lovlar", icon: CreditCard, permission: 'payments.view' },
-  { href: '/expenses', label: 'Xarajatlar', icon: Receipt, permission: null },
-  { href: '/warranties', label: 'Kafolatlar', icon: ShieldCheck, permission: null },
+  { href: '/expenses', label: 'Xarajatlar', icon: Receipt, permission: 'reports.finance' },
+  { href: '/warranties', label: 'Kafolatlar', icon: ShieldCheck, permission: 'orders.view' },
   { href: '/reports', label: 'Hisobotlar', icon: BarChart3, permission: 'reports.view' },
-  { href: '/notifications', label: 'Xabarnomalar', icon: Bell, permission: null },
+  { href: '/notifications', label: 'Xabarnomalar', icon: Bell, permission: 'orders.view' },
   { href: '/settings', label: 'Sozlamalar', icon: Settings, permission: 'settings.manage' },
 ];
 

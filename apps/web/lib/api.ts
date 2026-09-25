@@ -116,7 +116,8 @@ export async function logout(): Promise<void> {
 export async function uploadAttachment(orderId: string, file: File, kind: string): Promise<void> {
   const sha256 = await computeSha256(file);
   const { uploadId, url, headers } = await api<{ uploadId: string; url: string; headers: Record<string, string> }>('/orders/' + orderId + '/attachments/presign', { method: 'POST', body: JSON.stringify({ kind, contentType: file.type, size: file.size, sha256 }) });
-  await fetch(url, { method: 'PUT', headers: { ...headers }, body: file });
+  const put = await fetch(url, { method: 'PUT', headers: { ...headers }, body: file });
+  if (!put.ok) throw new ApiError('UPLOAD_FAILED', put.status);
   await api('/orders/' + orderId + '/attachments/confirm', { method: 'POST', body: JSON.stringify({ uploadId }) });
 }
 

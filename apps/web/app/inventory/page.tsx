@@ -18,6 +18,7 @@ import {
   Barcode,
   Tag,
 } from 'lucide-react';
+import { clean } from '../../lib/utils';
 import { api } from '../../lib/api';
 import { useMe, useBranches } from '../../lib/queries';
 import { AppShell } from '../../components/layout/app-shell';
@@ -84,12 +85,11 @@ export default function InventoryPage() {
     mutationFn: (d: PartInput) =>
       api('/inventory/parts', {
         method: 'POST',
-        body: JSON.stringify({
+        body: JSON.stringify(clean({
           ...d,
           minimumQuantity: Number(d.minimumQuantity || 0),
           compatibleModels: d.compatibleModels?.split(',').map(x => x.trim()).filter(Boolean) ?? [],
-          supplierId: d.supplierId || undefined,
-        }),
+        }, ['name', 'sku', 'barcode', 'brand', 'compatibleModels', 'storageLocation', 'minimumQuantity', 'purchasePrice', 'salePrice'])),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['parts'] });
@@ -102,11 +102,11 @@ export default function InventoryPage() {
     mutationFn: (d: ReceiveInput) =>
       api('/inventory/receive', {
         method: 'POST',
-        body: JSON.stringify({
+        body: JSON.stringify(clean({
           ...d,
           quantity: Number(d.quantity),
           reason: d.reason || 'Kirim hujjati',
-        }),
+        }, ['branchId', 'partId', 'quantity', 'supplierId', 'reason'])),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['parts'] });

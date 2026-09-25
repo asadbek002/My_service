@@ -33,7 +33,8 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '../..
 export default function Dashboard() {
   const router = useRouter();
   const { data: me, error: meError, isLoading: meLoading } = useMe();
-  const { data: report, isLoading: reportLoading } = useDashboard();
+  // Only roles with reports.view get the aggregated report; others see figures from their own order list.
+  const { data: report, isLoading: reportLoading } = useDashboard(!!me?.permissions.includes('reports.view'));
   const { data: orders = [], isLoading: ordersLoading } = useOrders();
 
   const pwForm = useForm<ChangePasswordInput>({
@@ -111,11 +112,11 @@ export default function Dashboard() {
 
   const isTechnician = me?.role === 'TECHNICIAN';
   const recentOrders = orders.slice(0, 7);
-
-  // Technician-focused calculations
-  const myAssignedOrders = orders.filter(o =>
-    o.assignments?.some(a => a.technicianId === me?.id)
-  );
+  const myAssignedOrders = orders.filter(o => o.assignments?.some(a => a.userId === me?.id));
+  if (isTechnician && me) return <TechnicianHome firstName={me.firstName} orders={myAssignedOrders} />;
+  const statusCount = (status: string) => report?.statuses?.find(s => s.status === status)?.count ?? orders.filter(o => o.status === status).length;
+  const todayStart = new Date(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date()) + 'T00:00:00+05:00');
+  const todayReceived = report?.todayReceived ?? orders.filter(o => new Date(o.createdAt) >= todayStart).length;
 
   return (
     <AppShell
@@ -142,7 +143,7 @@ export default function Dashboard() {
                   Bugun qabul
                 </p>
                 <h3 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 mt-1">
-                  {report?.todayReceived ?? 0}
+                  {todayReceived}
                 </h3>
               </div>
               <div className="h-11 w-11 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
@@ -158,7 +159,7 @@ export default function Dashboard() {
                   Ta'mirda
                 </p>
                 <h3 className="text-3xl font-bold tracking-tight text-blue-600 dark:text-blue-400 mt-1">
-                  {report?.statuses?.find(s => s.status === 'IN_REPAIR')?.count ?? 0}
+                  {statusCount('IN_REPAIR')}
                 </h3>
               </div>
               <div className="h-11 w-11 rounded-xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center text-blue-600 dark:text-blue-400">
@@ -174,7 +175,7 @@ export default function Dashboard() {
                   Tayyor
                 </p>
                 <h3 className="text-3xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-1">
-                  {report?.statuses?.find(s => s.status === 'READY')?.count ?? 0}
+                  {statusCount('READY')}
                 </h3>
               </div>
               <div className="h-11 w-11 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
@@ -187,18 +188,16 @@ export default function Dashboard() {
             <CardContent className="p-5 flex items-center justify-between">
               <div>
                 <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                  {isTechnician ? 'Mening faol ishlarim' : 'Bugungi tushum'}
+                  {report?.todayCash !== undefined ? 'Bugungi tushum' : 'Diagnostikada'}
                 </p>
                 <h3 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 mt-1">
-                  {isTechnician
-                    ? myAssignedOrders.length
-                    : report?.todayCash
-                    ? `${Number(report.todayCash).toLocaleString('uz-UZ')} soʻm`
-                    : '0 soʻm'}
+                  {report?.todayCash !== undefined
+                    ? `${Number(report.todayCash).toLocaleString('ru-RU')} soʻm`
+                    : statusCount('DIAGNOSING')}
                 </h3>
               </div>
               <div className="h-11 w-11 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
-                {isTechnician ? <Clock className="h-5 w-5" /> : <TrendingUp className="h-5 w-5" />}
+                <TrendingUp className="h-5 w-5" />
               </div>
             </CardContent>
           </Card>
@@ -403,6 +402,54 @@ export default function Dashboard() {
             </Card>
           </div>
         </div>
+      </div>
+    </AppShell>
+  );
+}
+
+// Spec §13: a technician sees their own queue, not the financial dashboard.
+function TechnicianHome({ firstName, orders }: { firstName: string; orders: { id: string; number: string; status: string; complaint?: string; device: { brand: string; model: string } }[] }) {
+  const tiles: [string, string, string][] = [
+    ['RECEIVED', 'Yangi', 'text-zinc-900 dark:text-zinc-50'],
+    ['DIAGNOSING', 'Diagnostikada', 'text-sky-600'],
+    ['WAITING_PART', 'Detal kutilmoqda', 'text-purple-600'],
+    ['IN_REPAIR', "Ta'mirda", 'text-blue-600'],
+    ['READY', 'Tayyor', 'text-emerald-600'],
+  ];
+  const active = orders.filter(o => !['DELIVERED', 'CANCELLED', 'UNREPAIRABLE'].includes(o.status));
+  const order = ['IN_REPAIR', 'WAITING_PART', 'DIAGNOSING', 'RECEIVED', 'WAITING_CUSTOMER_APPROVAL', 'READY'];
+  const sorted = [...active].sort((x, y) => order.indexOf(x.status) - order.indexOf(y.status));
+  return (
+    <AppShell subtitle="Menga biriktirilgan" title={`Salom, ${firstName}`}>
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {tiles.map(([status, label, color]) => (
+            <Card key={status}>
+              <CardContent className="p-4">
+                <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider">{label}</p>
+                <p className={`text-3xl font-bold mt-1 ${color}`}>{orders.filter(o => o.status === status).length}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Mening ishlarim</CardTitle>
+            <CardDescription>Avval ta&apos;mirdagi, keyin detal kutayotgan va yangi buyurtmalar</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0 divide-y divide-zinc-100 dark:divide-zinc-800/80">
+            {sorted.map(o => (
+              <Link key={o.id} href={`/orders/${o.id}`} className="p-4 flex items-center justify-between hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40">
+                <div className="min-w-0 pr-4">
+                  <p className="font-mono text-xs font-bold">{o.number} <span className="font-sans font-medium text-zinc-600 dark:text-zinc-300">· {o.device.brand} {o.device.model}</span></p>
+                  <p className="text-xs text-zinc-500 truncate mt-1">{o.complaint}</p>
+                </div>
+                <StatusBadge status={o.status} />
+              </Link>
+            ))}
+            {sorted.length === 0 && <p className="p-8 text-center text-sm text-zinc-400">Sizga biriktirilgan faol buyurtma yo&apos;q</p>}
+          </CardContent>
+        </Card>
       </div>
     </AppShell>
   );

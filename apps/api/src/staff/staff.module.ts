@@ -11,6 +11,8 @@ class CreateStaffDto {
   @ApiProperty() @IsString() @Length(3, 64) @Matches(/^[a-zA-Z0-9_.-]+$/) login!: string;
   @ApiProperty() @IsString() @Length(12, 128) temporaryPassword!: string;
   @ApiProperty() @IsString() @Length(1, 100) firstName!: string;
+  @ApiProperty() @IsOptional() @IsString() @Length(0, 100) lastName?: string;
+  @ApiProperty() @IsOptional() @IsEmail() email?: string;
   @ApiProperty() @IsString() @Matches(/^\+[1-9][0-9]{7,14}$/) phone!: string;
   @ApiProperty() @IsIn(['ADMIN', 'MANAGER', 'TECHNICIAN']) role!: string;
   @ApiProperty({ type: [String] }) @IsArray() @ArrayNotEmpty() @ArrayUnique() @IsString({ each: true }) branchIds!: string[];
@@ -101,6 +103,7 @@ class StaffController {
         if (!role) throw new NotFoundException('Role not configured');
         const user = await tx.user.create({ data: {
           organizationId: actor.organizationId, login: dto.login.toLowerCase(), firstName: dto.firstName,
+          ...(dto.lastName ? { lastName: dto.lastName } : {}), ...(dto.email ? { email: dto.email } : {}),
           phone: dto.phone, passwordHash, mustChangePassword: true,
         }, select: safe });
         await tx.userRole.create({ data: { organizationId: actor.organizationId, userId: user.id, roleId: role.id } });

@@ -33,6 +33,7 @@ import {
   type CustomerInput,
   type DeviceInput,
 } from '../../../lib/schemas';
+import { clean } from '../../../lib/utils';
 import { api } from '../../../lib/api';
 import { AppShell } from '../../../components/layout/app-shell';
 import { Button } from '../../../components/ui/button';
@@ -120,7 +121,7 @@ export default function NewOrderWizard() {
     try {
       const created = await api<{ id: string }>('/devices', {
         method: 'POST',
-        body: JSON.stringify({ customerId: selectedCustomerId, ...data }),
+        body: JSON.stringify(clean({ customerId: selectedCustomerId, ...data }, ['customerId', 'category', 'brand', 'model', 'imei', 'serialNumber', 'color'])),
       });
       setSelectedDeviceId(created.id);
       setDeviceData(data);
@@ -191,7 +192,7 @@ export default function NewOrderWizard() {
         photos: photos.map(p => p.file),
       });
 
-      router.push(`/orders/${order.id}`);
+      router.push(`/orders/${order.id}${order.failedPhotos ? '?photos=' + order.failedPhotos : ''}`);
     } catch (err: any) {
       setOrderError(err.message || "Buyurtma yaratishda xatolik yuz berdi");
     }

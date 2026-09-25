@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -35,6 +35,8 @@ export default function StaffPage() {
   const { data: branches = [] } = useBranches();
   const createStaff = useCreateStaff();
   const [showAddForm, setShowAddForm] = useState(false);
+  // /staff/new lands here with ?new=1
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('new')) setShowAddForm(true); }, []);
 
   const {
     register,
@@ -55,10 +57,14 @@ export default function StaffPage() {
 
   async function onSubmit(data: StaffInput) {
     try {
-      await createStaff.mutateAsync({ ...data, branchIds: [data.branchId] });
+      // Send only what the API accepts: it rejects unknown fields.
+      await createStaff.mutateAsync({
+        login: data.login, firstName: data.firstName, phone: data.phone, temporaryPassword: data.temporaryPassword, role: data.role,
+        branchIds: [data.branchId], ...(data.lastName ? { lastName: data.lastName } : {}),
+      });
       reset();
       setShowAddForm(false);
-    } catch {}
+    } catch { /* shown via createStaff.error */ }
   }
 
   async function toggleStatus(user: typeof staff[0]) {
@@ -141,6 +147,11 @@ export default function StaffPage() {
                   </FormField>
                 </div>
 
+                {createStaff.error && (
+                  <p role="alert" className="text-sm text-red-600">
+                    {createStaff.error.message === 'Login unavailable' ? 'Bu login band' : createStaff.error.message === 'STAFF_LIMIT' ? "Tarif bo'yicha xodimlar limiti tugagan" : createStaff.error.message}
+                  </p>
+                )}
                 <div className="flex justify-end gap-2 pt-2">
                   <Button
                     type="button"

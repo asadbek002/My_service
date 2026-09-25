@@ -48,6 +48,16 @@ class SettingsController{
    await tx.auditLog.create({data:{organizationId:a.organizationId,actorId:a.userId,action:'ROLE_PERMISSIONS_CHANGED',entityId:id}});return{ok:true};
   });
  }
+ // Non-sensitive defaults every staff member needs (expense form, delivery form).
+ @Get('defaults')
+ async defaults(@CurrentActor()a:Actor){
+  const rows=await this.db.organizationSetting.findMany({where:{organizationId:a.organizationId,key:{in:['warranty_terms','expense_categories']}}});
+  const value=(key:string)=>rows.find(r=>r.key===key)?.value as Record<string,unknown>|undefined;
+  const items=value('expense_categories')?.items;
+  const categories=Array.isArray(items)?items.filter((x):x is string=>typeof x==='string'&&x.trim().length>0):[];
+  const text=value('warranty_terms')?.text;
+  return{warrantyTerms:typeof text==='string'?text:'',expenseCategories:categories.length?categories:['RENT','SALARY','DELIVERY','ADVERTISEMENT','UTILITY','TRANSPORT','PURCHASE','OTHER']};
+ }
  @Get('telegram')@Permissions('settings.manage')
  async telegram(@CurrentActor()a:Actor){
   const [linked,total]=await Promise.all([this.db.customer.count({where:{organizationId:a.organizationId,telegramChatId:{not:null}}}),this.db.customer.count({where:{organizationId:a.organizationId}})]);

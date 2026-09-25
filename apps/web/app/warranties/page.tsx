@@ -13,6 +13,7 @@ import { FormField } from '../../components/ui/form-field';
 import { Badge } from '../../components/ui/badge';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 import { useState } from 'react';
+import { AppShell } from '../../components/layout/app-shell';
 
 const claimSchema = z.object({ reason: z.string().min(3, 'Sabab majburiy') });
 type ClaimInput = z.infer<typeof claimSchema>;
@@ -31,9 +32,7 @@ export default function Warranties() {
   const { register, handleSubmit, formState: { errors } } = useForm<ClaimInput>({ resolver: zodResolver(claimSchema) });
 
   return (
-    <main className="page">
-      <header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/orders">Buyurtmalar</Link></header>
-      <div className="title-row"><div><p className="eyebrow">KAFOLAT</p><h1>Kafolatlar</h1></div></div>
+    <AppShell title="Kafolatlar" subtitle="Kafolat">
 
       <section>
         {isLoading ? <p className="muted">Yuklanmoqda...</p> : (
@@ -78,6 +77,6 @@ export default function Warranties() {
           </CardContent>
         </Card>
       )}
-    </main>
+    </AppShell>
   );
 }

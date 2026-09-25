@@ -6,6 +6,7 @@ import { api } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { StatusBadge } from '../../components/ui/status-badge';
+import { AppShell } from '../../components/layout/app-shell';
 
 type SearchResult = { orders: { id: string; number: string; status: string; customer: { firstName: string; phone: string }; device: { brand: string; model: string } }[]; customers: { id: string; firstName: string; phone: string }[] };
 
@@ -20,9 +21,7 @@ export default function Search() {
   });
 
   return (
-    <main className="page">
-      <header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/dashboard">Bosh sahifa</Link></header>
-      <div className="title-row"><div><p className="eyebrow">QIDIRISH</p><h1>Global qidirish</h1></div></div>
+    <AppShell title="Global qidirish" subtitle="Qidirish">
 
       <form className="search-form" onSubmit={e => { e.preventDefault(); setSubmitted(q); }}>
         <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Telefon, ism, buyurtma raqami, IMEI..." autoFocus />
@@ -69,6 +68,6 @@ export default function Search() {
           )}
         </>
       )}
-    </main>
+    </AppShell>
   );
 }

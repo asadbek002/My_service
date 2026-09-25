@@ -2,14 +2,13 @@
 import Link from 'next/link';
 import { useNotifications } from '../../lib/queries';
 import { Badge } from '../../components/ui/badge';
+import { AppShell } from '../../components/layout/app-shell';
 
 export default function Notifications() {
   const { data: notifications = [], isLoading } = useNotifications();
 
   return (
-    <main className="page">
-      <header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/settings">Shablonlar</Link></header>
-      <div className="title-row"><div><p className="eyebrow">YETKAZIB BERISH TARIXI</p><h1>Xabarnomalar</h1></div></div>
+    <AppShell title="Xabarnomalar" subtitle="Yetkazib berish tarixi">
 
       <section>
         {isLoading ? <p className="muted">Yuklanmoqda...</p> : (
@@ -37,6 +36,6 @@ export default function Notifications() {
           </div>
         )}
       </section>
-    </main>
+    </AppShell>
   );
 }

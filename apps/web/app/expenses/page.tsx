@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { clean } from '../../lib/utils';
 import { api } from '../../lib/api';
 import { useBranches } from '../../lib/queries';
 import { Button } from '../../components/ui/button';
@@ -13,8 +14,8 @@ import { Select } from '../../components/ui/select';
 import { Textarea } from '../../components/ui/textarea';
 import { FormField } from '../../components/ui/form-field';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
+import { AppShell } from '../../components/layout/app-shell';
 
-const CATEGORIES = ['RENT','SALARY','DELIVERY','ADVERTISEMENT','UTILITY','TRANSPORT','PURCHASE','OTHER'];
 
 const expenseSchema = z.object({
   branchId: z.string().min(1, 'Filial tanlang'),
@@ -28,12 +29,15 @@ export default function Expenses() {
   const router = useRouter();
   const qc = useQueryClient();
   const { data: branches = [] } = useBranches();
+  // Categories are configurable in Settings → General.
+  const { data: defaults } = useQuery({ queryKey: ['settings', 'defaults'], queryFn: () => api<{ expenseCategories: string[] }>('/settings/defaults') });
+  const CATEGORIES = defaults?.expenseCategories ?? ['OTHER'];
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['expenses'],
     queryFn: () => api<{ id: string; category: string; amount: string; note: string; createdAt: string }[]>('/expenses'),
   });
   const create = useMutation({
-    mutationFn: (data: ExpenseInput) => api('/expenses', { method: 'POST', body: JSON.stringify(data) }),
+    mutationFn: (data: ExpenseInput) => api('/expenses', { method: 'POST', body: JSON.stringify(clean(data, ['branchId', 'category', 'amount', 'note'])) }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['expenses'] }); reset(); },
   });
 
@@ -45,9 +49,7 @@ export default function Expenses() {
   if (create.error instanceof Error && create.error.message === 'SESSION_EXPIRED') { router.replace('/login'); return null; }
 
   return (
-    <main className="page">
-      <header><Link href="/dashboard" className="brand">MY SERVICE</Link><Link href="/reports">Hisobotlar</Link></header>
-      <div className="title-row"><div><p className="eyebrow">MOLIYA</p><h1>Xarajatlar</h1></div></div>
+    <AppShell title="Xarajatlar" subtitle="Moliya">
 
       <div className="detail-grid">
         <section>
@@ -100,6 +102,6 @@ export default function Expenses() {
           </CardContent>
         </Card>
       </div>
-    </main>
+    </AppShell>
   );
 }
