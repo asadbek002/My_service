@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import {
   useCustomers,
+  useMe,
   useBranches,
   useCreateCustomer,
   useCreateOrder,
@@ -65,7 +66,17 @@ const CONDITION_OPTIONS = [
   'Qurilma yoqilmaydi',
 ];
 
-export default function NewOrderWizard() {
+export default function NewOrderPage() {
+  const { data: me, isLoading } = useMe();
+  if (isLoading || !me) return <AppShell title="Yangi qabul"><p className="p-10 text-center text-sm text-zinc-400">Yuklanmoqda...</p></AppShell>;
+  // Intake needs order creation and customer access; without them every request here would be a 403.
+  if (!me.permissions.includes('orders.create') || !me.permissions.includes('customers.view')) {
+    return <AppShell title="Yangi qabul"><p className="p-10 text-center text-sm text-zinc-500">Qurilma qabul qilish uchun ruxsatingiz yo&apos;q.</p></AppShell>;
+  }
+  return <NewOrderWizard />;
+}
+
+function NewOrderWizard() {
   const router = useRouter();
   const { data: customers = [] } = useCustomers();
   const { data: branches = [] } = useBranches();

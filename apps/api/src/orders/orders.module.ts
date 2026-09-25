@@ -205,7 +205,7 @@ class OrdersController {
         approvalStatus: 'PENDING', approvalChannel: null, approvedAt: null,
       } });
       await record(tx, actor, id, 'QUOTE_UPDATED', { diagnosis: order.diagnosis, requiredWork: order.requiredWork, labor: order.labor.toString(), partsTotal: order.partsTotal.toString(), total: order.total.toString(), quoteVersion: order.quoteVersion }, { diagnosis: dto.diagnosis, requiredWork: dto.requiredWork, labor: dto.labor, partsTotal: dto.partsTotal, total: new Prisma.Decimal(dto.labor).plus(dto.partsTotal).toString(), quoteVersion: order.quoteVersion + 1 });
-      await transition(tx, actor, order, 'WAITING_CUSTOMER_APPROVAL', 'Diagnosis/quote updated'); return { ok: true };
+      await transition(tx, actor, order, 'WAITING_CUSTOMER_APPROVAL', 'Smeta tuzildi, mijoz tasdig‘i kutilmoqda'); return { ok: true };
     });
   }
   @Post(':id/approve') @Permissions('orders.edit')

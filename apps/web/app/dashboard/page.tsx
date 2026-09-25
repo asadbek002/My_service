@@ -34,8 +34,10 @@ export default function Dashboard() {
   const router = useRouter();
   const { data: me, error: meError, isLoading: meLoading } = useMe();
   // Only roles with reports.view get the aggregated report; others see figures from their own order list.
-  const { data: report, isLoading: reportLoading } = useDashboard(!!me?.permissions.includes('reports.view'));
-  const { data: orders = [], isLoading: ordersLoading } = useOrders();
+  // Business data is blocked (403) until a temporary password is replaced, so do not ask for it yet.
+  const ready = !!me && !me.mustChangePassword;
+  const { data: report, isLoading: reportLoading } = useDashboard(ready && me.permissions.includes('reports.view'));
+  const { data: orders = [], isLoading: ordersLoading } = useOrders(ready);
 
   const pwForm = useForm<ChangePasswordInput>({
     resolver: zodResolver(changePasswordSchema),

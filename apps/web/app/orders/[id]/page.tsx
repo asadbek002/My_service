@@ -322,7 +322,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   {(attachments.data ?? []).map(a => (
                     <button key={a.id} onClick={() => openPhoto(a.id)} className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900">
                       <span className="font-semibold block">{PHOTO_KINDS.find(([k]) => k === a.kind)?.[1] ?? a.kind}</span>
-                      <span className="text-zinc-400">{Math.round(a.size / 1024)} KB · ko&apos;rish</span>
+                      <span className="text-zinc-400">{Math.max(1, Math.round(a.size / 1024))} KB · ko&apos;rish</span>
                     </button>
                   ))}
                 </div>

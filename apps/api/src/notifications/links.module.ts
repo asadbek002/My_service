@@ -67,7 +67,7 @@ class TrackingController {
       if (!order || order.status !== 'WAITING_CUSTOMER_APPROVAL' || order.quoteVersion !== dto.quoteVersion || order.quoteVersion !== link.quoteVersion) throw new ConflictException('Quote changed');
       await tx.order.update({ where: { id: order.id }, data: { approvedVersion: order.quoteVersion, approvalStatus: dto.approved ? 'APPROVED' : 'REJECTED', approvalChannel: 'CUSTOMER_LINK', approvedAt: new Date() } });
       const actor: Actor = { organizationId: link.organizationId, userId: 'customer-link:' + link.id, sessionId: '', branchIds: [], permissions: [], owner: false };
-      await transition(tx, actor, order, dto.approved ? 'WAITING_PART' : 'CANCELLED', 'Customer secure-link decision');
+      await transition(tx, actor, order, dto.approved ? 'WAITING_PART' : 'CANCELLED', 'Mijoz havola orqali qaror qildi');
       return { ok: true };
     });
   }

@@ -146,7 +146,7 @@ class RepairsController {
       const orderPart = existing
         ? await tx.orderPart.update({ where: { id: existing.id }, data: line })
         : await tx.orderPart.create({ data: { organizationId: actor.organizationId, orderId: id, partId: dto.partId, ...line } });
-      await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: order.branchId, partId: dto.partId, orderId: id, type: 'RESERVE', quantity: dto.quantity, reason: 'Order reservation', actorId: actor.userId } });
+      await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: order.branchId, partId: dto.partId, orderId: id, type: 'RESERVE', quantity: dto.quantity, reason: 'Buyurtma uchun rezerv', actorId: actor.userId } });
       await record(tx, actor, id, 'PART_RESERVED'); return { id: orderPart.id, status: orderPart.status };
     });
   }
@@ -163,7 +163,7 @@ class RepairsController {
       if (!stock || stock.reserved < part.quantity || stock.onHand < part.quantity) throw new ConflictException('Stock inconsistency');
       await tx.stock.update({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: order.branchId, partId } }, data: { onHand: { decrement: part.quantity }, reserved: { decrement: part.quantity } } });
       await tx.orderPart.update({ where: { id: part.id }, data: { status: 'USED' } });
-      await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: order.branchId, partId, orderId: id, type: 'USED', quantity: part.quantity, reason: 'Part installed', actorId: actor.userId } });
+      await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: order.branchId, partId, orderId: id, type: 'USED', quantity: part.quantity, reason: 'Qurilmaga o‘rnatildi', actorId: actor.userId } });
       await record(tx, actor, id, 'PART_USED'); return { ok: true };
     });
   }
@@ -179,7 +179,7 @@ class RepairsController {
       if (!stock || stock.reserved < part.quantity) throw new ConflictException('Stock inconsistency');
       await tx.stock.update({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: order.branchId, partId } }, data: { reserved: { decrement: part.quantity } } });
       await tx.orderPart.update({ where: { id: part.id }, data: { status: 'RELEASED' } });
-      await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: order.branchId, partId, orderId: id, type: 'RELEASE', quantity: part.quantity, reason: 'Reservation released', actorId: actor.userId } });
+      await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: order.branchId, partId, orderId: id, type: 'RELEASE', quantity: part.quantity, reason: 'Rezerv bekor qilindi', actorId: actor.userId } });
       await record(tx, actor, id, 'PART_RELEASED'); return { ok: true };
     });
   }
@@ -194,7 +194,7 @@ class RepairsController {
       await stockLock(tx, actor.organizationId, order.branchId, partId);
       await tx.stock.update({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: order.branchId, partId } }, data: { onHand: { increment: part.quantity } } });
       await tx.orderPart.update({ where: { id: part.id }, data: { status: 'RETURNED' } });
-      await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: order.branchId, partId, orderId: id, type: 'RETURN', quantity: part.quantity, reason: 'Removed from device, returned to stock', actorId: actor.userId } });
+      await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: order.branchId, partId, orderId: id, type: 'RETURN', quantity: part.quantity, reason: 'Qurilmadan olinib omborga qaytarildi', actorId: actor.userId } });
       await record(tx, actor, id, 'PART_RETURNED'); return { ok: true };
     });
   }
@@ -207,7 +207,7 @@ class RepairsController {
       const active = await tx.repairSession.findFirst({ where: { organizationId: actor.organizationId, userId: actor.userId, endedAt: null } });
       if (active) throw new ConflictException('Another repair session is active');
       const session = await tx.repairSession.create({ data: { organizationId: actor.organizationId, orderId: id, userId: actor.userId } });
-      if (order.status !== 'IN_REPAIR') await transition(tx, actor, order, 'IN_REPAIR', 'Repair started');
+      if (order.status !== 'IN_REPAIR') await transition(tx, actor, order, 'IN_REPAIR', 'Ta‘mir boshlandi');
       await record(tx, actor, id, 'REPAIR_STARTED'); return session;
     });
   }
@@ -255,7 +255,7 @@ class RepairsController {
       if (!sessions) throw new ConflictException('Start a repair session first');
       await tx.repairSession.updateMany({ where: { organizationId: actor.organizationId, orderId: id, endedAt: null }, data: { endedAt: new Date() } });
       await tx.order.update({ where: { id }, data: { finalTest: dto.passedChecks } });
-      await transition(tx, actor, order, 'READY', 'Final test passed'); return { ok: true };
+      await transition(tx, actor, order, 'READY', 'Yakuniy test o‘tdi'); return { ok: true };
     });
   }
   @Post(':id/payments') @Permissions('payments.create')
@@ -308,7 +308,7 @@ class RepairsController {
         await tx.commissionEntry.create({ data: { organizationId: actor.organizationId, orderId: id, userId, amount, ruleSnapshot: { type: rule.type, percentage: rule.percentage?.toString() ?? null, fixedPerJob: rule.fixedPerJob?.toString() ?? null, labor: labor.toString() } } });
       }
       const warranty = await tx.warranty.create({ data: { organizationId: actor.organizationId, orderId: id, startDate, endDate: new Date(startDate.getTime() + dto.warrantyDays * 86400000), terms: dto.warrantyTerms, coveredOrderPartIds: coveredParts, coveredRepairActionIds: coveredActions } });
-      await transition(tx, actor, order, 'DELIVERED', outstanding.isZero() ? 'Device delivered' : 'Device delivered with outstanding balance');
+      await transition(tx, actor, order, 'DELIVERED', outstanding.isZero() ? 'Qurilma topshirildi' : 'Qurilma qarz bilan topshirildi');
       await record(tx, actor, id, 'WARRANTY_CREATED', undefined, { warrantyId: warranty.id, endDate: warranty.endDate.toISOString() }); return warranty;
     });
   }

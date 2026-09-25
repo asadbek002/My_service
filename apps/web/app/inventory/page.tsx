@@ -76,9 +76,11 @@ export default function InventoryPage() {
     queryKey: ['parts'],
     queryFn: () => api('/inventory'),
   });
+  // Suppliers are only needed for stock receipts, which require inventory.manage.
   const { data: suppliers = [] } = useQuery<Supplier[]>({
     queryKey: ['suppliers'],
     queryFn: () => api('/suppliers'),
+    enabled: !!me?.permissions.includes('inventory.manage'),
   });
 
   const createPart = useMutation({

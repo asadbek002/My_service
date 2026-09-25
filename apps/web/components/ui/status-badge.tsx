@@ -18,7 +18,7 @@ const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondar
   ARCHIVED:                   { label: 'Arxivlangan',       variant: 'default',     dotColor: 'bg-zinc-400' },
 };
 
-export interface StatusBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface StatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   status: string;
 }
 

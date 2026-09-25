@@ -8,6 +8,8 @@ export const metadata: Metadata = {
   title: 'MyService',
   description: 'Premium Repair Service',
   manifest: '/manifest.webmanifest',
+  icons: { icon: '/icon.svg', apple: '/apple-touch-icon.png' },
+  appleWebApp: { capable: true, title: 'MyService', statusBarStyle: 'default' },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

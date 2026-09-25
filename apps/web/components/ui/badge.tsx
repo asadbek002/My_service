@@ -17,6 +17,7 @@ const badgeVariants = cva('inline-flex items-center rounded-full px-2.5 py-0.5 t
   },
   defaultVariants: { variant: 'default' },
 });
-export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof badgeVariants> {}
-function Badge({ className, variant, ...props }: BadgeProps) { return <div className={cn(badgeVariants({ variant }), className)} {...props} />; }
+export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement>, VariantProps<typeof badgeVariants> {}
+// A span, so badges can sit inside text (a <div> inside <p> breaks hydration).
+function Badge({ className, variant, ...props }: BadgeProps) { return <span className={cn(badgeVariants({ variant }), className)} {...props} />; }
 export { Badge, badgeVariants };

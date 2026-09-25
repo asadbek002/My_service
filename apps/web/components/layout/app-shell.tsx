@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -55,6 +55,10 @@ export function AppShell({ children, title, subtitle, action }: AppShellProps) {
   const router = useRouter();
   const { data: me } = useMe();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // A temporary password blocks every business request; the dashboard hosts the change form.
+  useEffect(() => {
+    if (me?.mustChangePassword && pathname !== '/dashboard') router.replace('/dashboard');
+  }, [me?.mustChangePassword, pathname, router]);
 
   const onLogout = async () => {
     try {

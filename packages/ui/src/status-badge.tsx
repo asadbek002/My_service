@@ -57,7 +57,7 @@ const statusConfig: Record<
   },
 };
 
-export interface StatusBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface StatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   status: string;
 }
 

@@ -35,7 +35,7 @@ export type Warranty = { id: string; startDate: string; endDate: string; status:
 
 // Queries
 export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/auth/me') });
-export const useOrders = () => useQuery({ queryKey: ['orders'], queryFn: () => api<Order[]>('/orders') });
+export const useOrders = (enabled = true) => useQuery({ queryKey: ['orders'], queryFn: () => api<Order[]>('/orders'), enabled });
 export const useOrder = (id: string) => useQuery({ queryKey: ['orders', id], queryFn: () => api<Order>('/orders/' + id), enabled: !!id });
 export const useCustomers = () => useQuery({ queryKey: ['customers'], queryFn: () => api<Customer[]>('/customers') });
 export const useCustomer = (id: string) => useQuery({ queryKey: ['customers', id], queryFn: () => api<Customer>('/customers/' + id), enabled: !!id });

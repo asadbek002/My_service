@@ -134,14 +134,20 @@ class NotificationsController {
 
   @Get('eskiz-status') @Permissions('settings.manage')
   async eskizStatus() {
-    const limits = await this.eskiz.getUserLimit();
+    const configured = !!process.env.SMS_API_KEY && !!process.env.SMS_API_SECRET;
+    // Missing credentials or an unreachable provider is a status to show, not a server error.
+    let limits = { balance: 0, smsCount: 0 }, error: string | null = null;
+    if (configured) {
+      try { limits = await this.eskiz.getUserLimit(); } catch (e) { error = e instanceof Error ? e.message : 'ESKIZ_UNAVAILABLE'; }
+    }
     return {
       provider: process.env.SMS_PROVIDER || 'eskiz',
       sender: process.env.SMS_FROM || '4546',
       testMode: process.env.ESKIZ_TEST_MODE === 'true',
       balance: limits.balance,
       smsCount: limits.smsCount,
-      configured: !!process.env.SMS_API_KEY && !!process.env.SMS_API_SECRET,
+      configured,
+      error,
     };
   }
 

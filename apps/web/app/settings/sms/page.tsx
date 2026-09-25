@@ -30,16 +30,17 @@ type EskizStatus = {
   balance: number;
   smsCount: number;
   configured: boolean;
+  error?: string | null;
 };
 
 export default function SmsSettingsPage() {
   const { data: me } = useMe();
   const qc = useQueryClient();
-  const [testPhone, setTestPhone] = useState('+998910085942');
+  const [testPhone, setTestPhone] = useState('');
   const [testMessage, setTestMessage] = useState('Bu Eskiz dan test');
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string; id?: string } | null>(null);
 
-  const { data: eskiz, isLoading, refetch, isFetching } = useQuery<EskizStatus>({
+  const { data: eskiz, refetch, isFetching } = useQuery<EskizStatus>({
     queryKey: ['settings', 'eskiz-status'],
     queryFn: () => api<EskizStatus>('/notifications/eskiz-status'),
   });
@@ -115,15 +116,21 @@ export default function SmsSettingsPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-100 dark:border-zinc-800">
                   <span className="text-zinc-400 text-[10px] uppercase font-bold block">Status</span>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Ulangan (Faol)</span>
-                  </div>
+                  {(() => {
+                    const ok = !!eskiz?.configured && !eskiz?.error;
+                    const label = !eskiz ? '...' : !eskiz.configured ? 'Sozlanmagan' : eskiz.error ? 'Ulanishda xato' : 'Ulangan (Faol)';
+                    return (
+                      <div className="flex items-center gap-1.5 mt-0.5" title={eskiz?.error ?? undefined}>
+                        <span className={`h-2 w-2 rounded-full ${ok ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                        <span className={`text-xs font-bold ${ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600'}`}>{label}</span>
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-100 dark:border-zinc-800">
                   <span className="text-zinc-400 text-[10px] uppercase font-bold block">Hisob balansi</span>
                   <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100 mt-0.5 block">
-                    {isLoading ? '...' : (eskiz?.balance ?? 0).toLocaleString('uz-UZ')} UZS
+                    {eskiz ? eskiz.balance.toLocaleString('ru-RU') : '...'} UZS
                   </span>
                 </div>
                 <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-100 dark:border-zinc-800">
