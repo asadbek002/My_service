@@ -22,7 +22,10 @@ const labels: Record<string,string> = {
   REPAIR_STARTED: 'Qurilmangizni ta’mirlash boshlandi.',
   ORDER_READY: 'Qurilmangiz tayyor.',
   ORDER_DELIVERED: 'Qurilmangiz topshirildi.',
+  WARRANTY_CREATED: 'Kafolat rasmiylashtirildi.',
 };
+// Status the order must still be in for the event to be worth sending (skip stale events after an outage).
+const expectedStatusFor = (type: string) => type === 'REPAIR_STARTED' ? 'IN_REPAIR' : type === 'WARRANTY_CREATED' ? 'DELIVERED' : type.slice('ORDER_'.length);
 @Injectable()
 export class Notifications implements OnModuleInit, OnModuleDestroy {
   private queue?: Queue;
@@ -60,20 +63,21 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
     const event = await this.db.outboxEvent.findUniqueOrThrow({ where: { id: eventId } });
     const notification = await this.db.notification.upsert({ where: { eventId }, create: { eventId, organizationId: event.organizationId, orderId: event.entityId, type: event.type }, update: {} });
     if (notification.status === 'SENT' || notification.status === 'SKIPPED') return;
-    const order = await this.db.order.findFirst({ where: { id: event.entityId, organizationId: event.organizationId }, include: { customer: true, device: true, organization: { include: { subscription: { include: { plan: true } } } } } });
+    const order = await this.db.order.findFirst({ where: { id: event.entityId, organizationId: event.organizationId }, include: { customer: true, device: true, warranty: true, organization: { include: { subscription: { include: { plan: true } } } } } });
     if (!order) return;
     // Do not send a stale status after a worker outage.
-    const expectedStatus = event.type.startsWith('ORDER_') ? event.type.slice(6) : 'IN_REPAIR';
-    if (order.status !== expectedStatus) {
+    if (order.status !== expectedStatusFor(event.type)) {
       await this.db.notification.update({ where: { id: notification.id }, data: { status: 'SKIPPED', errorCode: 'STALE_EVENT' } }); return;
     }
     const flags = order.organization.subscription?.plan.features as Record<string, unknown> | undefined;
     const tracking = await createLink(this.db, order.organizationId, order.id, 'TRACK');
     const approval = order.status === 'WAITING_CUSTOMER_APPROVAL' ? await createLink(this.db, order.organizationId, order.id, 'APPROVAL', order.quoteVersion) : null;
     const link = process.env.WEB_URL + (approval ? '/approve/' + approval : '/track/' + tracking);
-    const defaultText = 'MyService · ' + order.number + '\n' + labels[event.type] + '\n' + order.device.brand + ' ' + order.device.model + '\nJami: ' + order.total.toString() + ' so‘m\n' + link;
-    const paid = await this.db.payment.aggregate({ where: { organizationId: order.organizationId, orderId: order.id, kind: 'PAYMENT' }, _sum: { amount: true } });
-    const variables = { customer_name: order.customer.firstName, order_number: order.number, device: order.device.brand+' '+order.device.model, repair: order.requiredWork??'', price: order.total.toString(), paid: (paid._sum.amount??0).toString(), balance: order.total.minus(paid._sum.amount??0).toString(), status: order.status, warranty_end: '', link };
+    const warrantyEnd = order.warranty ? order.warranty.endDate.toISOString().slice(0, 10) : '';
+    const defaultText = 'MyService · ' + order.number + '\n' + labels[event.type] + '\n' + order.device.brand + ' ' + order.device.model + '\nJami: ' + order.total.toString() + ' so‘m' + (warrantyEnd ? '\nKafolat: ' + warrantyEnd + ' gacha' : '') + '\n' + link;
+    const payments = await this.db.payment.findMany({ where: { organizationId: order.organizationId, orderId: order.id }, select: { kind: true, amount: true } });
+    const paid = payments.reduce((sum, p) => p.kind === 'REFUND' ? sum.minus(p.amount) : sum.plus(p.amount), order.total.minus(order.total));
+    const variables = { customer_name: order.customer.firstName, order_number: order.number, device: order.device.brand+' '+order.device.model, repair: order.requiredWork??'', price: order.total.toString(), paid: paid.toString(), balance: order.total.minus(paid).toString(), status: order.status, warranty_end: warrantyEnd, link };
     const templates = await this.db.notificationTemplate.findMany({ where: { organizationId: order.organizationId, type: event.type, active: true } });
     const message = (channel:string) => { const template=templates.find(t=>t.channel===channel); return template?render(template.body,variables):defaultText; };
     let channel = 'SMS';

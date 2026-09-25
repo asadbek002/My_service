@@ -1,4 +1,4 @@
-import {BadRequestException,Body,ConflictException,Controller,Get,HttpCode,Injectable,Logger,Module,NotFoundException,OnModuleDestroy,OnModuleInit,Param,Post,Res}from'@nestjs/common';
+import {BadRequestException,Body,ConflictException,Controller,Get,HttpCode,Injectable,Logger,Module,NotFoundException,OnModuleInit,Param,Post,Res}from'@nestjs/common';
 import{IsIn,IsInt,IsString,Length,Matches,Max,Min}from'class-validator';
 import{CreateBucketCommand,HeadBucketCommand,HeadObjectCommand,PutObjectCommand,S3Client}from'@aws-sdk/client-s3';
 import{getSignedUrl}from'@aws-sdk/s3-request-presigner';
@@ -7,7 +7,6 @@ import fontkit from'@pdf-lib/fontkit';
 import{readFileSync}from'node:fs';
 import QRCode from'qrcode';
 import type{Response}from'express';
-import{Queue,Worker}from'bullmq';
 import{randomUUID}from'node:crypto';
 import{Prisma}from'@prisma/client';
 import{Database}from'../database';
@@ -48,43 +47,28 @@ async function buildPdf(db:Database,organizationId:string,orderId:string,type:st
  const track=await createLink(db,organizationId,orderId,'TRACK');
  const pdf=await PDFDocument.create();const page=pdf.addPage([420,595]);pdf.registerFontkit(fontkit);const font=await pdf.embedFont(regularFont,{subset:true});const bold=await pdf.embedFont(boldFont,{subset:true});
  const qrData=await QRCode.toDataURL(process.env.WEB_URL+'/track/'+track,{width:180,margin:1});const qr=await pdf.embedPng(qrData);
- page.drawText('MY SERVICE',{x:34,y:548,size:22,font:bold,color:rgb(.08,.08,.08)});page.drawText(type.toUpperCase()+' DOCUMENT',{x:34,y:524,size:9,font});
- const rows=[['Order',snapshot.number],['Customer',snapshot.customer],['Phone',snapshot.phone],['Device',snapshot.device],['Status',snapshot.status],['Total',snapshot.total+' UZS'],['Paid',snapshot.paid+' UZS'],['Balance',snapshot.balance+' UZS'],...(snapshot.warrantyEnd?[['Warranty end',snapshot.warrantyEnd.slice(0,10)]]:[])] as [string,string][];
- for(const[i,row]of rows.entries()){const[k,v]=row;if(!k||!v)continue;const y=480-i*27;page.drawText(k,{x:34,y,size:9,font,color:rgb(.4,.4,.4)});page.drawText(v,{x:145,y,size:10,font:bold});}
- page.drawImage(qr,{x:250,y:40,width:130,height:130});page.drawText('Status tracking',{x:270,y:26,size:8,font});
+ const titles:Record<string,string>={receipt:'QABUL KVITANSIYASI',repair:"TA'MIRLASH CHEKI",payment:"TO'LOV CHEKI",warranty:'KAFOLAT TALONI'};
+ page.drawText('MY SERVICE',{x:34,y:548,size:22,font:bold,color:rgb(.08,.08,.08)});page.drawText('Premium Repair Service · '+(titles[type]??type.toUpperCase()),{x:34,y:528,size:9,font});
+ const money=(v:string)=>Number(v).toLocaleString('ru-RU').replace(/\u00a0/g,' ')+" so'm";
+ const clip=(v:string,n=46)=>v.length>n?v.slice(0,n-1)+'…':v;
+ const rows=([['Buyurtma',snapshot.number],['Qabul sanasi',snapshot.createdAt.slice(0,10)],['Mijoz',snapshot.customer],['Telefon',snapshot.phone],['Qurilma',snapshot.device],
+  ...(type==='receipt'?[['Shikoyat',clip(order.complaint)]]:[['Ish',clip(order.requiredWork??'—')]]),
+  ['Jami',money(snapshot.total)],['To\'langan',money(snapshot.paid)],['Qoldiq',money(snapshot.balance)],
+  ...(snapshot.warrantyEnd?[['Kafolat',snapshot.warrantyEnd.slice(0,10)+' gacha']]:[])]) as [string,string][];
+ for(const[i,row]of rows.entries()){const[k,v]=row;if(!k||!v)continue;const y=490-i*26;page.drawText(k,{x:34,y,size:9,font,color:rgb(.4,.4,.4)});page.drawText(v,{x:130,y,size:10,font:bold});}
+ if(type==='warranty'&&order.warranty){page.drawText('Shartlar: '+clip(order.warranty.terms,70),{x:34,y:190,size:8,font,color:rgb(.3,.3,.3)});}
+ page.drawImage(qr,{x:250,y:40,width:130,height:130});page.drawText('Holatni kuzatish',{x:275,y:26,size:8,font});
  await db.document.create({data:{organizationId,orderId,type:type.toUpperCase(),snapshot,createdBy:'system'}});
  return pdf.save();
 }
 
 @Injectable()
-export class DocumentsService implements OnModuleInit,OnModuleDestroy{
- private queue?:Queue;
- private worker?:Worker;
+export class DocumentsService implements OnModuleInit{
  private readonly logger=new Logger('Documents');
- private readonly pending=new Map<string,{resolve:(b:Buffer)=>void;reject:(e:Error)=>void}>();
 
  constructor(private readonly db:Database){}
 
- async onModuleInit(){
-  await this.ensureBucket();
-  if(!process.env.REDIS_URL)return;
-  const url=new URL(process.env.REDIS_URL);
-  const connection={host:url.hostname,port:Number(url.port||6379),...(url.password?{password:decodeURIComponent(url.password)}:{}),...(url.protocol==='rediss:'?{tls:{}}:{})};
-  this.queue=new Queue('documents',{connection});
-  this.worker=new Worker('documents',async job=>{
-   const{requestId,organizationId,orderId,type}=job.data as{requestId:string;organizationId:string;orderId:string;type:string};
-   try{
-    const bytes=await buildPdf(this.db,organizationId,orderId,type);
-    const buf=Buffer.from(bytes);
-    this.pending.get(requestId)?.resolve(buf);
-   }catch(e){
-    this.pending.get(requestId)?.reject(e instanceof Error?e:new Error(String(e)));
-   }finally{
-    this.pending.delete(requestId);
-   }
-  },{connection,concurrency:4});
-  this.worker.on('error',()=>this.logger.error('Document worker connection failed'));
- }
+ async onModuleInit(){ await this.ensureBucket(); }
 
  private async ensureBucket(){
   // A fresh MinIO volume has no bucket; without it every upload and the storage health check fail.
@@ -97,29 +81,10 @@ export class DocumentsService implements OnModuleInit,OnModuleDestroy{
   }
  }
 
- async onModuleDestroy(){
-  await this.worker?.close();
-  await this.queue?.close();
- }
-
+ // Generated in the request: the caller waits for the file anyway, and a queue round-trip
+ // through an in-memory promise map breaks as soon as more than one API instance runs.
  async generate(organizationId:string,orderId:string,type:string):Promise<Buffer>{
-  // Queue mavjud bo'lsa background job orqali, aks holda synchronous
-  if(this.queue){
-   const requestId=randomUUID();
-   const buf=await new Promise<Buffer>((resolve,reject)=>{
-    this.pending.set(requestId,{resolve,reject});
-    this.queue!.add('generate',{requestId,organizationId,orderId,type},{
-     attempts:3,backoff:{type:'exponential',delay:2000},removeOnComplete:{age:300},removeOnFail:{age:3600}
-    }).catch(e=>{this.pending.delete(requestId);reject(e);});
-    setTimeout(()=>{
-     if(this.pending.has(requestId)){this.pending.delete(requestId);reject(new Error('PDF_TIMEOUT'));}
-    },30000);
-   });
-   return buf;
-  }
-  // Fallback: synchronous (Redis yo'q bo'lganda)
-  const bytes=await buildPdf(this.db,organizationId,orderId,type);
-  return Buffer.from(bytes);
+  return Buffer.from(await buildPdf(this.db,organizationId,orderId,type));
  }
 }
 

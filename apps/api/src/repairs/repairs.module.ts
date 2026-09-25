@@ -137,12 +137,15 @@ class RepairsController {
       const stock = await stockLock(tx, actor.organizationId, order.branchId, dto.partId);
       if (!stock || stock.onHand - stock.reserved < dto.quantity) throw new ConflictException('INSUFFICIENT_STOCK');
       const existing = await tx.orderPart.findFirst({ where: { organizationId: actor.organizationId, orderId: id, partId: dto.partId } });
-      if (existing) throw new ConflictException('Part already attached');
+      if (existing && existing.status !== 'RELEASED' && existing.status !== 'RETURNED') throw new ConflictException('Part already attached');
       const parts = await tx.orderPart.findMany({ where: { organizationId: actor.organizationId, orderId: id, status: { in: ['RESERVED','USED'] } } });
       const sum = parts.reduce((s, p) => s.plus(p.unitPrice.mul(p.quantity)), part.salePrice.mul(dto.quantity));
       if (sum.greaterThan(order.partsTotal)) throw new ConflictException('Parts exceed approved quote');
       await tx.stock.update({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: order.branchId, partId: dto.partId } }, data: { reserved: { increment: dto.quantity } } });
-      const orderPart = await tx.orderPart.create({ data: { organizationId: actor.organizationId, orderId: id, partId: dto.partId, quantity: dto.quantity, unitCost: part.purchasePrice, unitPrice: part.salePrice } });
+      const line = { quantity: dto.quantity, unitCost: part.purchasePrice, unitPrice: part.salePrice, status: 'RESERVED' };
+      const orderPart = existing
+        ? await tx.orderPart.update({ where: { id: existing.id }, data: line })
+        : await tx.orderPart.create({ data: { organizationId: actor.organizationId, orderId: id, partId: dto.partId, ...line } });
       await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: order.branchId, partId: dto.partId, orderId: id, type: 'RESERVE', quantity: dto.quantity, reason: 'Order reservation', actorId: actor.userId } });
       await record(tx, actor, id, 'PART_RESERVED'); return { id: orderPart.id, status: orderPart.status };
     });
@@ -162,6 +165,37 @@ class RepairsController {
       await tx.orderPart.update({ where: { id: part.id }, data: { status: 'USED' } });
       await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: order.branchId, partId, orderId: id, type: 'USED', quantity: part.quantity, reason: 'Part installed', actorId: actor.userId } });
       await record(tx, actor, id, 'PART_USED'); return { ok: true };
+    });
+  }
+  @Post(':id/parts/:partId/release') @Permissions('inventory.use')
+  release(@CurrentActor() actor: Actor, @Param('id') id: string, @Param('partId') partId: string) {
+    return this.db.$transaction(async tx => {
+      const order = await lockedOrder(tx, actor, id);
+      if (!['WAITING_PART','IN_REPAIR'].includes(order.status)) throw new ConflictException('Order is not in repair');
+      const part = await tx.orderPart.findFirst({ where: { organizationId: actor.organizationId, orderId: id, partId } });
+      if (!part) throw new NotFoundException();
+      if (part.status !== 'RESERVED') throw new ConflictException('Only a reserved part can be released');
+      const stock = await stockLock(tx, actor.organizationId, order.branchId, partId);
+      if (!stock || stock.reserved < part.quantity) throw new ConflictException('Stock inconsistency');
+      await tx.stock.update({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: order.branchId, partId } }, data: { reserved: { decrement: part.quantity } } });
+      await tx.orderPart.update({ where: { id: part.id }, data: { status: 'RELEASED' } });
+      await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: order.branchId, partId, orderId: id, type: 'RELEASE', quantity: part.quantity, reason: 'Reservation released', actorId: actor.userId } });
+      await record(tx, actor, id, 'PART_RELEASED'); return { ok: true };
+    });
+  }
+  @Post(':id/parts/:partId/return') @Permissions('inventory.manage')
+  returnUsed(@CurrentActor() actor: Actor, @Param('id') id: string, @Param('partId') partId: string) {
+    return this.db.$transaction(async tx => {
+      const order = await lockedOrder(tx, actor, id);
+      if (!['WAITING_PART','IN_REPAIR'].includes(order.status)) throw new ConflictException('Order is not in repair');
+      const part = await tx.orderPart.findFirst({ where: { organizationId: actor.organizationId, orderId: id, partId } });
+      if (!part) throw new NotFoundException();
+      if (part.status !== 'USED') throw new ConflictException('Only a used part can be returned');
+      await stockLock(tx, actor.organizationId, order.branchId, partId);
+      await tx.stock.update({ where: { organizationId_branchId_partId: { organizationId: actor.organizationId, branchId: order.branchId, partId } }, data: { onHand: { increment: part.quantity } } });
+      await tx.orderPart.update({ where: { id: part.id }, data: { status: 'RETURNED' } });
+      await tx.inventoryMovement.create({ data: { organizationId: actor.organizationId, branchId: order.branchId, partId, orderId: id, type: 'RETURN', quantity: part.quantity, reason: 'Removed from device, returned to stock', actorId: actor.userId } });
+      await record(tx, actor, id, 'PART_RETURNED'); return { ok: true };
     });
   }
   @Post(':id/repair/start') @Permissions('orders.change_status')
@@ -211,11 +245,11 @@ class RepairsController {
       const parts = await tx.orderPart.findMany({ where: { organizationId: actor.organizationId, orderId: id } });
       if (parts.some(p => p.status === 'RESERVED')) throw new ConflictException('Reserved parts must be used or released');
       const usedTotal = parts.filter(p => p.status === 'USED').reduce((s, p) => s.plus(p.unitPrice.mul(p.quantity)), new Prisma.Decimal(0));
-      if (parts.length > 0 && !usedTotal.equals(order.partsTotal)) throw new ConflictException('Used parts must match approved quote');
+      if (usedTotal.greaterThan(order.partsTotal)) throw new ConflictException('Used parts exceed approved quote');
       const actions = await tx.repairAction.findMany({ where: { organizationId: actor.organizationId, orderId: id } });
       if (actions.length > 0) {
         const actionLabor = actions.reduce((sum, action) => sum.plus(action.laborAmount), new Prisma.Decimal(0));
-        if (!actionLabor.equals(order.labor)) throw new ConflictException('Repair action labor must match approved labor');
+        if (actionLabor.greaterThan(order.labor)) throw new ConflictException('Repair action labor exceeds approved labor');
       }
       const sessions = await tx.repairSession.count({ where: { organizationId: actor.organizationId, orderId: id } });
       if (!sessions) throw new ConflictException('Start a repair session first');
@@ -275,7 +309,7 @@ class RepairsController {
       }
       const warranty = await tx.warranty.create({ data: { organizationId: actor.organizationId, orderId: id, startDate, endDate: new Date(startDate.getTime() + dto.warrantyDays * 86400000), terms: dto.warrantyTerms, coveredOrderPartIds: coveredParts, coveredRepairActionIds: coveredActions } });
       await transition(tx, actor, order, 'DELIVERED', outstanding.isZero() ? 'Device delivered' : 'Device delivered with outstanding balance');
-      await record(tx, actor, warranty.id, 'WARRANTY_CREATED'); return warranty;
+      await record(tx, actor, id, 'WARRANTY_CREATED', undefined, { warrantyId: warranty.id, endDate: warranty.endDate.toISOString() }); return warranty;
     });
   }
 }

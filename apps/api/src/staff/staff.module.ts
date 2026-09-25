@@ -1,7 +1,7 @@
 import { Module, Controller, Get, Post, Patch, Param, Body, Query, BadRequestException, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ApiProperty, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { IsString, IsIn, Length, Matches, IsArray, ArrayNotEmpty, ArrayUnique } from 'class-validator';
+import { IsString, IsIn, Length, Matches, IsArray, ArrayNotEmpty, ArrayUnique, IsOptional, IsEmail } from 'class-validator';
 import * as argon2 from 'argon2';
 import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
@@ -14,6 +14,14 @@ class CreateStaffDto {
   @ApiProperty() @IsString() @Matches(/^\+[1-9][0-9]{7,14}$/) phone!: string;
   @ApiProperty() @IsIn(['ADMIN', 'MANAGER', 'TECHNICIAN']) role!: string;
   @ApiProperty({ type: [String] }) @IsArray() @ArrayNotEmpty() @ArrayUnique() @IsString({ each: true }) branchIds!: string[];
+}
+class UpdateStaffDto {
+  @ApiProperty() @IsOptional() @IsString() @Length(1, 100) firstName?: string;
+  @ApiProperty() @IsOptional() @IsString() @Length(0, 100) lastName?: string;
+  @ApiProperty() @IsOptional() @IsString() @Matches(/^\+[1-9][0-9]{7,14}$/) phone?: string;
+  @ApiProperty() @IsOptional() @IsEmail() email?: string;
+  @ApiProperty() @IsOptional() @IsIn(['ADMIN', 'MANAGER', 'TECHNICIAN']) role?: string;
+  @ApiProperty({ type: [String] }) @IsOptional() @IsArray() @ArrayNotEmpty() @ArrayUnique() @IsString({ each: true }) branchIds?: string[];
 }
 class CompensationDto {
   @ApiProperty() @IsIn(['SALARY','PERCENTAGE','FIXED_PER_JOB','SALARY_PLUS_PERCENTAGE']) type!: string;
@@ -104,6 +112,42 @@ class StaffController {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Login unavailable');
       throw error;
     }
+  }
+  @Patch(':id') @Permissions('staff.manage')
+  async update(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: UpdateStaffDto) {
+    if (!actor.owner) throw new ForbiddenException('Only owner can edit staff');
+    return this.db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${id} AND "organizationId" = ${actor.organizationId} FOR UPDATE`;
+      const user = await tx.user.findFirst({ where: { id, organizationId: actor.organizationId }, include: { roles: { include: { role: true } } } });
+      if (!user) throw new NotFoundException();
+      const isOwner = user.roles.some(r => r.role.systemKey === 'OWNER');
+      if (isOwner && (dto.role || dto.branchIds)) throw new ForbiddenException('Owner role and branches are managed separately');
+      if (dto.branchIds) {
+        const count = await tx.branch.count({ where: { id: { in: dto.branchIds }, organizationId: actor.organizationId } });
+        if (count !== dto.branchIds.length) throw new NotFoundException('Branch not found');
+        await tx.userBranch.deleteMany({ where: { organizationId: actor.organizationId, userId: id } });
+        await tx.userBranch.createMany({ data: dto.branchIds.map(branchId => ({ organizationId: actor.organizationId, userId: id, branchId })) });
+      }
+      if (dto.role) {
+        const role = await tx.role.findFirst({ where: { organizationId: actor.organizationId, systemKey: dto.role } });
+        if (!role) throw new NotFoundException('Role not configured');
+        await tx.userRole.deleteMany({ where: { organizationId: actor.organizationId, userId: id } });
+        await tx.userRole.create({ data: { organizationId: actor.organizationId, userId: id, roleId: role.id } });
+      }
+      const result = await tx.user.update({ where: { id }, data: {
+        ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
+        ...(dto.lastName !== undefined ? { lastName: dto.lastName || null } : {}),
+        ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
+        ...(dto.email !== undefined ? { email: dto.email } : {}),
+      }, select: safe });
+      await tx.auditLog.create({ data: { organizationId: actor.organizationId, actorId: actor.userId, action: 'STAFF_UPDATED', entityId: id, oldValue: { firstName: user.firstName, lastName: user.lastName, phone: user.phone, role: user.roles.map(r => r.role.systemKey) }, newValue: JSON.parse(JSON.stringify(dto)) } });
+      return result;
+    });
+  }
+  @Get(':id/compensation') @Permissions('staff.view')
+  async currentCompensation(@CurrentActor() actor: Actor, @Param('id') id: string) {
+    if (!await this.db.user.findFirst({ where: { id, organizationId: actor.organizationId } })) throw new NotFoundException();
+    return this.db.technicianCompensation.findFirst({ where: { organizationId: actor.organizationId, userId: id, effectiveTo: null }, orderBy: { effectiveFrom: 'desc' } });
   }
   @Post(':id/compensation') @Permissions('staff.manage')
   async compensation(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: CompensationDto) {

@@ -325,3 +325,61 @@ test('permanent Telegram failure falls back to idempotent SMS delivery', async (
 });
 
 test('CSV export is plan-gated and protects spreadsheet cells', async()=>{const auth=await login(a.user);const response=await request('/reports/export',auth);assert.equal(response.status,200);assert.ok(response.headers.get('content-type').startsWith('text/csv'));const bytes=new Uint8Array(await response.arrayBuffer());assert.deepEqual([...bytes.slice(0,3)],[0xef,0xbb,0xbf]);const csv=new TextDecoder().decode(bytes);assert.ok(csv.includes('order'));});
+let ownerSession; // shared: the per-login rate limit (15 / 15 min) is close after the earlier tests
+test('parts can be released or returned and a cheaper actual part does not block finishing', async () => {
+  const auth = ownerSession = await login(a.user);
+  const me = await (await request('/auth/me', auth)).json();
+  assert.equal(me.role, 'OWNER'); assert.deepEqual(me.roles, ['OWNER']);
+  const customer = await (await request('/customers', { ...auth, method: 'POST', body: { firstName: 'Sardor', phone: '+998900000077' } })).json();
+  const device = await (await request('/devices', { ...auth, method: 'POST', body: { customerId: customer.id, category: 'Phone', brand: 'Samsung', model: 'S23' } })).json();
+  const part = await (await request('/inventory/parts', { ...auth, method: 'POST', body: { name: 'Battery', sku: 'bat-' + randomUUID(), purchasePrice: '100000', salePrice: '180000' } })).json();
+  assert.equal((await request('/inventory/receive', { ...auth, method: 'POST', body: { partId: part.id, branchId: a.branch.id, quantity: 3, reason: 'Delivery' } })).status, 201);
+  const order = await (await request('/orders', { ...auth, method: 'POST', body: { customerId: customer.id, deviceId: device.id, branchId: a.branch.id, complaint: 'Battery drains', accessories: [], condition: [] } })).json();
+  assert.equal((await request('/orders/' + order.id + '/status', { ...auth, method: 'PATCH', body: { status: 'DIAGNOSING', comment: 'Start' } })).status, 200);
+  // Quote expects 200 000 of parts, the real part sells for 180 000.
+  assert.equal((await request('/orders/' + order.id + '/diagnosis', { ...auth, method: 'POST', body: { diagnosis: 'Worn battery', requiredWork: 'Replace battery', labor: '100000', partsTotal: '200000', estimatedTime: '2 soat' } })).status, 201);
+  assert.equal((await db.order.findUnique({ where: { id: order.id } })).estimatedTime, '2 soat');
+  assert.equal((await request('/orders/' + order.id + '/approve', { ...auth, method: 'POST', body: { quoteVersion: 1, approved: true, evidence: 'Phone call' } })).status, 201);
+  const stockOf = () => db.stock.findUnique({ where: { organizationId_branchId_partId: { organizationId: a.org.id, branchId: a.branch.id, partId: part.id } } });
+  assert.equal((await request('/orders/' + order.id + '/parts', { ...auth, method: 'POST', body: { partId: part.id, quantity: 1 } })).status, 201);
+  assert.equal((await stockOf()).reserved, 1);
+  // Wrong part reserved: release it, then reserve again (same order line is reused).
+  assert.equal((await request('/orders/' + order.id + '/parts/' + part.id + '/release', { ...auth, method: 'POST' })).status, 201);
+  assert.equal((await stockOf()).reserved, 0);
+  assert.equal((await request('/orders/' + order.id + '/parts/' + part.id + '/release', { ...auth, method: 'POST' })).status, 409);
+  assert.equal((await request('/orders/' + order.id + '/parts', { ...auth, method: 'POST', body: { partId: part.id, quantity: 1 } })).status, 201);
+  assert.equal((await request('/orders/' + order.id + '/repair/start', { ...auth, method: 'POST' })).status, 201);
+  assert.equal((await request('/orders/' + order.id + '/parts/' + part.id + '/use', { ...auth, method: 'POST' })).status, 201);
+  assert.equal((await stockOf()).onHand, 2);
+  // Installed part turned out faulty: return it to stock, then install a fresh one.
+  assert.equal((await request('/orders/' + order.id + '/parts/' + part.id + '/return', { ...auth, method: 'POST' })).status, 201);
+  assert.equal((await stockOf()).onHand, 3);
+  assert.equal(await db.inventoryMovement.count({ where: { orderId: order.id, type: 'RETURN' } }), 1);
+  assert.equal((await request('/orders/' + order.id + '/parts', { ...auth, method: 'POST', body: { partId: part.id, quantity: 1 } })).status, 201);
+  assert.equal((await request('/orders/' + order.id + '/parts/' + part.id + '/use', { ...auth, method: 'POST' })).status, 201);
+  assert.equal((await request('/orders/' + order.id + '/repair/actions', { ...auth, method: 'POST', body: { description: 'Battery replaced', laborAmount: '100000' } })).status, 201);
+  assert.equal((await request('/orders/' + order.id + '/repair/actions', { ...auth, method: 'POST', body: { description: 'Extra work', laborAmount: '50000' } })).status, 201);
+  const checks = { passedChecks: ['Display','Touch','Camera','Microphone','Speaker','Charging','Wi-Fi','Bluetooth','Face ID'] };
+  // Labor above the approved quote is rejected, parts below it are fine.
+  assert.equal((await request('/orders/' + order.id + '/repair/finish', { ...auth, method: 'POST', body: checks })).status, 409);
+  await db.repairAction.deleteMany({ where: { orderId: order.id, description: 'Extra work' } });
+  assert.equal((await request('/orders/' + order.id + '/repair/finish', { ...auth, method: 'POST', body: checks })).status, 201);
+  const detail = await (await request('/orders/' + order.id, auth)).json();
+  assert.equal(detail.status, 'READY');
+  assert.equal(detail.actorNames[a.user.id], 'Test');
+  const list = await (await request('/orders', auth)).json();
+  assert.ok(Array.isArray(list.find(o => o.id === order.id).assignments));
+});
+test('owner edits staff profile, role and branches', async () => {
+  const auth = ownerSession ?? await login(a.user);
+  const created = await (await request('/staff', { ...auth, method: 'POST', body: { login: 'edit-' + randomUUID().slice(0, 8), firstName: 'Aziz', temporaryPassword: password, phone: '+998901112233', role: 'TECHNICIAN', branchIds: [a.branch.id] } })).json();
+  const technicianRole = await db.role.findFirst({ where: { organizationId: a.org.id, systemKey: 'TECHNICIAN' } });
+  assert.ok(technicianRole);
+  const updated = await request('/staff/' + created.id, { ...auth, method: 'PATCH', body: { firstName: 'Aziz', lastName: 'Karimov', phone: '+998901112244' } });
+  assert.equal(updated.status, 200);
+  const body = await updated.json();
+  assert.equal(body.lastName, 'Karimov'); assert.equal(body.phone, '+998901112244');
+  assert.equal((await request('/staff/' + a.user.id, { ...auth, method: 'PATCH', body: { role: 'TECHNICIAN' } })).status, 403);
+  assert.equal((await request('/staff/' + created.id, { ...auth, method: 'PATCH', body: { branchIds: [b.branch.id] } })).status, 404);
+  assert.ok(await db.auditLog.findFirst({ where: { organizationId: a.org.id, action: 'STAFF_UPDATED', entityId: created.id } }));
+});

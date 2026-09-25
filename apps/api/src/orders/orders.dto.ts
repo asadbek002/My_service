@@ -38,6 +38,7 @@ export class DiagnosisDto {
   @ApiProperty() @IsString() @Length(1, 4000) requiredWork!: string;
   @ApiProperty({ example: '150000.00' }) @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) labor!: string;
   @ApiProperty({ example: '700000.00' }) @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) partsTotal!: string;
+  @ApiPropertyOptional({ example: '1 kun' }) @IsOptional() @IsString() @Length(1, 100) estimatedTime?: string;
 }
 export class ApprovalDto {
   @ApiProperty() @IsInt() @Min(1) quoteVersion!: number;

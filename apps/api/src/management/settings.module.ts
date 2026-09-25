@@ -31,7 +31,9 @@ class SettingsController{
   return this.db.paymentMethod.upsert({where:{organizationId_key:{organizationId:a.organizationId,key}},create:{organizationId:a.organizationId,key,label:d.label},update:{label:d.label,active:true}});
  }
  @Get('roles')@Permissions('settings.manage')
- roles(@CurrentActor()a:Actor){return this.db.role.findMany({where:{organizationId:a.organizationId},include:{permissions:{include:{permission:true}}}})}
+ roles(@CurrentActor()a:Actor){return this.db.role.findMany({where:{organizationId:a.organizationId},include:{permissions:{include:{permission:true}}},orderBy:{name:'asc'}})}
+ @Get('permissions')@Permissions('settings.manage')
+ permissions(){return this.db.permission.findMany({orderBy:{key:'asc'},select:{key:true}})}
  @Put('roles/:id')@Permissions('settings.manage')
  async role(@CurrentActor()a:Actor,@Param('id')id:string,@Body()d:RoleDto){
   if(!a.owner)throw new ForbiddenException();
@@ -45,6 +47,11 @@ class SettingsController{
    await tx.rolePermission.createMany({data:permissions.map(p=>({roleId:id,permissionId:p.id}))});
    await tx.auditLog.create({data:{organizationId:a.organizationId,actorId:a.userId,action:'ROLE_PERMISSIONS_CHANGED',entityId:id}});return{ok:true};
   });
+ }
+ @Get('telegram')@Permissions('settings.manage')
+ async telegram(@CurrentActor()a:Actor){
+  const [linked,total]=await Promise.all([this.db.customer.count({where:{organizationId:a.organizationId,telegramChatId:{not:null}}}),this.db.customer.count({where:{organizationId:a.organizationId}})]);
+  return{botConfigured:!!process.env.TELEGRAM_BOT_TOKEN,botUsername:process.env.TELEGRAM_BOT_USERNAME||null,webhookConfigured:!!process.env.TELEGRAM_WEBHOOK_SECRET,linkedCustomers:linked,totalCustomers:total};
  }
  @Get('subscription')subscription(@CurrentActor()a:Actor){return this.db.subscription.findUnique({where:{organizationId:a.organizationId},include:{plan:true}})}
  @Get('general')@Permissions('settings.manage')

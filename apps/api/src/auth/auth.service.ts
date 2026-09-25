@@ -100,7 +100,12 @@ export class AuthService implements OnModuleInit {
   me(actor: Actor) {
     return this.db.user.findFirstOrThrow({
       where: { id: actor.userId, organizationId: actor.organizationId },
-      select: { id: true, login: true, firstName: true, lastName: true, organizationId: true, mustChangePassword: true, status: true },
-    }).then(user => ({ ...user, permissions: actor.permissions, branchIds: actor.branchIds }));
+      select: { id: true, login: true, firstName: true, lastName: true, organizationId: true, mustChangePassword: true, status: true, roles: { select: { role: { select: { systemKey: true } } } } },
+    }).then(({ roles, ...user }) => {
+      const keys = roles.map(r => r.role.systemKey).filter((k): k is string => !!k);
+      // Highest role decides which dashboard the UI shows.
+      const role = ['OWNER', 'ADMIN', 'MANAGER', 'TECHNICIAN'].find(k => keys.includes(k)) ?? null;
+      return { ...user, role, roles: keys, permissions: actor.permissions, branchIds: actor.branchIds };
+    });
   }
 }

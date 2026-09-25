@@ -63,7 +63,8 @@ class ReportsController {
   @Get('dashboard') @Permissions('reports.view')
   async dashboard(@CurrentActor() a: Actor) {
     const scope = orderScope(a);
-    const now = new Date(); const today = new Date(now); today.setHours(0,0,0,0); const week = new Date(now.getTime() - 6 * 86400000); week.setHours(0,0,0,0);
+    const tashkentDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const today = new Date(tashkentDay + 'T00:00:00+05:00'); const week = new Date(today.getTime() - 6 * 86400000);
     const [groups,recent,orders,stocks,assignments] = await Promise.all([
       this.db.order.groupBy({ by: ['status'], where: scope, _count: true }),
       this.db.order.findMany({ where: scope, include: { customer: { select: { firstName: true } }, device: { select: { brand: true, model: true } } }, orderBy: { createdAt: 'desc' }, take: 8 }),
@@ -78,7 +79,7 @@ class ReportsController {
     const paid = (order: typeof orders[number]) => order.payments.reduce((sum,p)=>p.kind==='REFUND'?sum.minus(p.amount):sum.plus(p.amount),new Prisma.Decimal(0));
     const debt = orders.reduce((sum,o)=>sum.plus((o.total.minus(paid(o)).greaterThan(0)?o.total.minus(paid(o)):new Prisma.Decimal(0))),new Prisma.Decimal(0));
     const todayCash = orders.flatMap(o=>o.payments).filter(p=>p.createdAt>=today).reduce((sum,p)=>p.kind==='REFUND'?sum.minus(p.amount):sum.plus(p.amount),new Prisma.Decimal(0));
-    const revenueByDay = Array.from({length:7},(_,offset)=>{const day=new Date(week.getTime()+offset*86400000);const next=new Date(day.getTime()+86400000);const revenue=orders.filter(o=>o.history.some(h=>h.createdAt>=day&&h.createdAt<next)).reduce((sum,o)=>sum.plus(o.total),new Prisma.Decimal(0));return{day:day.toISOString().slice(0,10),revenue};});
+    const revenueByDay = Array.from({length:7},(_,offset)=>{const day=new Date(week.getTime()+offset*86400000);const next=new Date(day.getTime()+86400000);const revenue=orders.filter(o=>o.history.some(h=>h.createdAt>=day&&h.createdAt<next)).reduce((sum,o)=>sum.plus(o.total),new Prisma.Decimal(0));return{day:new Date(day.getTime()+5*3600000).toISOString().slice(0,10),revenue};});
     return { ...base, todayCash, debt, revenueByDay };
   }
   @Get('finance') @Permissions('reports.finance')

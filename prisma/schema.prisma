@@ -246,6 +246,7 @@ model Order {
   condition String[]
   diagnosis String?
   requiredWork String?
+  estimatedTime String?
   quoteVersion Int @default(0)
   approvedVersion Int?
   approvalStatus String @default("PENDING")
