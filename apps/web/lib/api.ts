@@ -98,11 +98,14 @@ export async function apiBlob(path: string, init?: RequestInit): Promise<Blob> {
 }
 
 export async function login(loginId: string, password: string): Promise<void> {
-  const res = await fetch(API_BASE + '/auth/login', {
-    method: 'POST', credentials: 'include',
-    headers: { 'Content-Type': 'application/json', Origin: window.location.origin },
-    body: JSON.stringify({ login: loginId, password }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(API_BASE + '/auth/login', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Origin: window.location.origin },
+      body: JSON.stringify({ login: loginId.trim(), password }),
+    });
+  } catch { throw new ApiError('NETWORK_ERROR', 0); }
   if (res.status === 401) throw new ApiError('LOGIN_FAILED', 401);
   if (!res.ok) { const b = await res.json().catch(() => ({})) as { message?: string }; throw new ApiError(b.message ?? 'LOGIN_FAILED', res.status); }
   const d = await res.json() as { accessToken: string; expiresIn: number };
