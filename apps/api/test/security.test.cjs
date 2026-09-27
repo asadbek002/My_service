@@ -123,6 +123,16 @@ test('staff have the owner\'s rights but cannot touch the owner account', async 
   assert.equal((await request('/staff/' + a.user.id + '/status', { ...auth, method: 'PATCH', body: { status: 'SUSPENDED' } })).status, 403);
   assert.equal((await request('/staff/' + a.user.id, { ...auth, method: 'PATCH', body: { firstName: 'Hacked' } })).status, 403);
   assert.equal((await db.user.findUnique({ where: { id: a.user.id } })).firstName, 'Egasi');
+  assert.equal((await request('/staff/' + a.user.id + '/reset-password', { ...auth, method: 'POST', body: { temporaryPassword: 'owner-reset-attempt-1' } })).status, 403);
+  // A wrong current password is a form error (400), not an expired session (401).
+  assert.equal((await request('/auth/change-password', { ...auth, method: 'POST', body: { currentPassword: 'wrong-password-000', newPassword: 'another-password-123' } })).status, 400);
+  // A colleague who forgot the password gets a temporary one; their sessions end.
+  const colleagueUser = await colleague.json();
+  const colleagueSession = await login(colleagueUser);
+  assert.equal((await request('/staff/' + colleagueUser.id + '/reset-password', { ...auth, method: 'POST', body: { temporaryPassword: 'fresh-temporary-123' } })).status, 201);
+  assert.equal((await request('/auth/me', colleagueSession)).status, 401);
+  const relogged = await login(colleagueUser, 'fresh-temporary-123');
+  assert.equal((await json(await request('/auth/me', relogged))).mustChangePassword, true);
   // The owner can suspend staff; their sessions end immediately.
   assert.equal((await request('/staff/' + staff.id + '/status', { ...boss, method: 'PATCH', body: { status: 'SUSPENDED' } })).status, 200);
   assert.equal((await request('/auth/me', auth)).status, 401);

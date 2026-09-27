@@ -19,6 +19,6 @@ SMS:
 - Response: 2xx JSON {id}. Adapt this interface to your chosen provider before enabling.
 - Missing credentials produce FAILED/SMS_NOT_CONFIGURED, never false success.
 
-Tracking tokens are separate from one-time approval and Telegram-link tokens, are stored only as hashes, expire and expose no phone/IMEI/serial/customer name. Quote approval verifies the quote version and consumes the token in the same transaction as the status update.
+Tracking tokens are separate from Telegram-link tokens, are stored only as hashes, expire after 90 days and expose no phone number or customer name. The only customer message is ORDER_READY (Telegram first, SMS fallback).
 
 References: [Telegram Bot API](https://core.telegram.org/bots/api), [BullMQ connections](https://docs.bullmq.io/guide/connections).

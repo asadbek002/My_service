@@ -1,248 +1,99 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import {
-  UserCheck,
-  Plus,
-  Shield,
-  Phone,
-  Building2,
-  ChevronRight,
-  UserX,
-} from 'lucide-react';
-import { useMe, useStaff, useBranches, useCreateStaff } from '../../lib/queries';
+import { ChevronRight, Plus } from 'lucide-react';
 import { staffSchema, type StaffInput } from '../../lib/schemas';
+import { api } from '../../lib/api';
+import { errorText } from '../../lib/errors';
+import { fullName, normalizePhone, phone } from '../../lib/format';
+import { can, useMe, useStaff, type Staff } from '../../lib/queries';
+import { useQueryClient } from '@tanstack/react-query';
 import { AppShell } from '../../components/layout/app-shell';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Select } from '../../components/ui/select';
 import { FormField } from '../../components/ui/form-field';
 import { StatusBadge } from '../../components/ui/status-badge';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '../../components/ui/card';
-import { Badge } from '../../components/ui/badge';
-import { api } from '../../lib/api';
-import { useQueryClient } from '@tanstack/react-query';
+import { ErrorBox, Loading, Notice } from '../../components/ui/feedback';
 
-export default function StaffPage() {
-  const router = useRouter();
-  const qc = useQueryClient();
-  const { data: me, error: meError } = useMe();
-  const { data: staff = [], isLoading } = useStaff();
-  const { data: branches = [] } = useBranches();
-  const createStaff = useCreateStaff();
-  const [showAddForm, setShowAddForm] = useState(false);
-  // /staff/new lands here with ?new=1
-  useEffect(() => { if (new URLSearchParams(window.location.search).get('new')) setShowAddForm(true); }, []);
+export default function Page() {
+  return <Suspense><StaffList /></Suspense>;
+}
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<StaffInput>({
-    resolver: zodResolver(staffSchema),
-    defaultValues: { role: 'TECHNICIAN' },
-  });
-
-  if (meError?.message === 'SESSION_EXPIRED') {
-    router.replace('/login');
-    return null;
-  }
-
-  const canManage = me?.permissions.includes('staff.manage');
-
-  async function onSubmit(data: StaffInput) {
-    try {
-      // Send only what the API accepts: it rejects unknown fields.
-      await createStaff.mutateAsync({
-        login: data.login, firstName: data.firstName, phone: data.phone, temporaryPassword: data.temporaryPassword, role: data.role,
-        branchIds: [data.branchId], ...(data.lastName ? { lastName: data.lastName } : {}),
-      });
-      reset();
-      setShowAddForm(false);
-    } catch { /* shown via createStaff.error */ }
-  }
-
-  async function toggleStatus(user: typeof staff[0]) {
-    const next = user.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
-    await api('/staff/' + user.id + '/status', {
-      method: 'PATCH',
-      body: JSON.stringify({ status: next }),
-    });
-    qc.invalidateQueries({ queryKey: ['staff'] });
-  }
-
+function StaffList() {
+  const { data: me } = useMe();
+  const { data: staff, isLoading, error } = useStaff();
+  const [open, setOpen] = useState(useSearchParams().get('new') === '1');
+  const [created, setCreated] = useState('');
+  const manage = can(me, 'staff.manage');
   return (
-    <AppShell
-      subtitle="Jamoa boshqaruvi"
-      title="Xodimlar va ustalar"
-      action={
-        canManage ? (
-          <Button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="gap-2 shadow-sm"
-          >
-            <Plus className="h-4 w-4" />
-            <span>{showAddForm ? 'Formani yopish' : 'Yangi xodim'}</span>
-          </Button>
-        ) : null
-      }
-    >
-      <div className="space-y-6">
-        {/* Add Staff Inline Panel */}
-        {showAddForm && (
-          <Card className="border-zinc-300 dark:border-zinc-700 shadow-md">
-            <CardHeader>
-              <CardTitle className="text-base">Yangi xodim yaratish</CardTitle>
-              <CardDescription>
-                Xodim uchun login, vaqtinchalik parol va tegishli rolni biriktiring.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <FormField label="Login" error={errors.login?.message} required>
-                    <Input {...register('login')} placeholder="aziz_usta" />
-                  </FormField>
-                  <FormField label="Ism" error={errors.firstName?.message} required>
-                    <Input {...register('firstName')} placeholder="Aziz" />
-                  </FormField>
-                  <FormField label="Telefon" error={errors.phone?.message} required>
-                    <Input {...register('phone')} placeholder="+998901234567" />
-                  </FormField>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <FormField
-                    label="Vaqtinchalik parol"
-                    error={errors.temporaryPassword?.message}
-                    required
-                  >
-                    <Input
-                      {...register('temporaryPassword')}
-                      type="password"
-                      placeholder="Kamida 12 belgi"
-                    />
-                  </FormField>
-                  <FormField label="Lavozim / Rol" error={errors.role?.message} required>
-                    <Select {...register('role')}>
-                      <option value="TECHNICIAN">Usta (TECHNICIAN)</option>
-                      <option value="MANAGER">Menejer (MANAGER)</option>
-                      <option value="ADMIN">Administrator (ADMIN)</option>
-                    </Select>
-                  </FormField>
-                  <FormField label="Asosiy filial" error={errors.branchId?.message} required>
-                    <Select {...register('branchId')}>
-                      <option value="">Filialni tanlang...</option>
-                      {branches.map(b => (
-                        <option key={b.id} value={b.id}>
-                          {b.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </FormField>
-                </div>
-
-                {createStaff.error && (
-                  <p role="alert" className="text-sm text-red-600">
-                    {createStaff.error.message === 'Login unavailable' ? 'Bu login band' : createStaff.error.message === 'STAFF_LIMIT' ? "Tarif bo'yicha xodimlar limiti tugagan" : createStaff.error.message}
-                  </p>
-                )}
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowAddForm(false)}
-                  >
-                    Bekor qilish
-                  </Button>
-                  <Button type="submit" size="sm" disabled={isSubmitting || createStaff.isPending}>
-                    {createStaff.isPending ? 'Saqlanmoqda...' : 'Xodimni yaratish'}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+    <AppShell title="Xodimlar" narrow action={manage && !open && <Button size="sm" onClick={() => { setOpen(true); setCreated(''); }}><Plus className="h-4 w-4" /> Qo&apos;shish</Button>}>
+      <div className="space-y-4">
+        {open && <CreateStaff onDone={login => { setOpen(false); setCreated(login); }} onClose={() => setOpen(false)} />}
+        <Notice>{created && `Xodim qo'shildi. Unga login (${created}) va vaqtinchalik parolni bering — birinchi kirishda o'z parolini qo'yadi.`}</Notice>
+        {error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading ? <Loading /> : (
+          <ul className="divide-y overflow-hidden rounded-lg border bg-white">
+            {staff?.map(s => <StaffRow key={s.id} s={s} />)}
+          </ul>
         )}
-
-        {/* Staff Table */}
-        <Card className="overflow-hidden">
-          <CardContent className="p-0">
-            {isLoading ? (
-              <div className="p-12 text-center text-sm text-zinc-400">Yuklanmoqda...</div>
-            ) : staff.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/50 text-[11px] uppercase tracking-wider text-zinc-400 font-semibold">
-                      <th className="py-3 px-4">Xodim</th>
-                      <th className="py-3 px-4">Login</th>
-                      <th className="py-3 px-4">Rol</th>
-                      <th className="py-3 px-4">Filial</th>
-                      <th className="py-3 px-4">Holat</th>
-                      {canManage && <th className="py-3 px-4 text-right">Amal</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                    {staff.map(u => (
-                      <tr
-                        key={u.id}
-                        className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40 transition-colors"
-                      >
-                        <td className="py-3.5 px-4">
-                          <Link href={'/staff/' + u.id} className="font-semibold text-xs text-zinc-900 dark:text-zinc-100 hover:underline flex items-center gap-2">
-                            <div className="h-7 w-7 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-700 dark:text-zinc-300">
-                              {u.firstName[0]}
-                            </div>
-                            <div>
-                              <span>{u.firstName} {u.lastName ?? ''}</span>
-                              <div className="text-[11px] text-zinc-400 font-normal">{u.phone}</div>
-                            </div>
-                          </Link>
-                        </td>
-                        <td className="py-3.5 px-4 font-mono text-xs text-zinc-600 dark:text-zinc-400">
-                          {u.login}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <Badge variant="outline" className="text-[10px]">
-                            {u.roles.map(r => r.role.name).join(', ')}
-                          </Badge>
-                        </td>
-                        <td className="py-3.5 px-4 text-xs text-zinc-600 dark:text-zinc-400">
-                          {u.branches.map(b => b.branch.name).join(', ') || '—'}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <StatusBadge status={u.status} />
-                        </td>
-                        {canManage && (
-                          <td className="py-3.5 px-4 text-right">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-xs h-7"
-                              onClick={() => toggleStatus(u)}
-                              disabled={u.roles.some(r => r.role.systemKey === 'OWNER')}
-                            >
-                              {u.status === 'ACTIVE' ? 'Toʻxtatish' : 'Faollashtirish'}
-                            </Button>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="p-12 text-center text-xs text-zinc-400">Xodimlar topilmadi</div>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </AppShell>
+  );
+}
+
+function StaffRow({ s }: { s: Staff }) {
+  const owner = s.roles.some(r => r.role.systemKey === 'OWNER');
+  return (
+    <li>
+      <Link href={`/staff/${s.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-paper">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black/[0.05] text-sm font-semibold">{s.firstName.slice(0, 1).toUpperCase()}</span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium">{fullName(s)} <span className="text-xs font-normal text-mute">· {owner ? 'Boshliq' : 'Xodim'}</span></p>
+          <p className="num truncate font-mono text-xs text-mute">{s.login} · {phone(s.phone)}</p>
+        </div>
+        {s.status !== 'ACTIVE' && <StatusBadge status={s.status} />}
+        {s.mustChangePassword && s.status === 'ACTIVE' && <span className="hidden text-xs text-amber-700 sm:inline">parol kutilmoqda</span>}
+        <ChevronRight className="h-4 w-4 shrink-0 text-mute" />
+      </Link>
+    </li>
+  );
+}
+
+function CreateStaff({ onDone, onClose }: { onDone: (login: string) => void; onClose: () => void }) {
+  const qc = useQueryClient();
+  const { register, handleSubmit, formState: { errors, isSubmitting }, setError } = useForm<StaffInput>({ resolver: zodResolver(staffSchema) });
+  async function submit(d: StaffInput) {
+    try {
+      const body = { firstName: d.firstName.trim(), ...(d.lastName?.trim() ? { lastName: d.lastName.trim() } : {}), phone: d.phone, login: d.login.trim().toLowerCase(), temporaryPassword: d.temporaryPassword };
+      await api('/staff', { method: 'POST', body: JSON.stringify(body) });
+      await qc.invalidateQueries({ queryKey: ['staff'] });
+      onDone(body.login);
+    } catch (e) { setError('root', { message: errorText(e) }); }
+  }
+  const phoneField = register('phone', { setValueAs: (v: string) => normalizePhone(v) });
+  return (
+    <section className="rounded-lg border-2 border-ink bg-white p-4">
+      <h2 className="font-semibold">Yangi xodim</h2>
+      <p className="mt-0.5 text-sm text-mute">Xodim hamma ishni qila oladi: qabul, to&apos;lov, hisobot, sozlamalar.</p>
+      <form onSubmit={handleSubmit(submit)} className="mt-4 grid gap-3" noValidate>
+        <div className="grid grid-cols-2 gap-3">
+          <FormField label="Ism" error={errors.firstName?.message}><Input {...register('firstName')} autoCapitalize="words" /></FormField>
+          <FormField label="Familiya"><Input {...register('lastName')} autoCapitalize="words" /></FormField>
+        </div>
+        <FormField label="Telefon" error={errors.phone?.message}><Input {...phoneField} inputMode="tel" placeholder="+998 90 123 45 67" /></FormField>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FormField label="Login" error={errors.login?.message}><Input {...register('login')} autoCapitalize="none" autoCorrect="off" spellCheck={false} /></FormField>
+          <FormField label="Vaqtinchalik parol" error={errors.temporaryPassword?.message} description="Kamida 12 belgi"><Input {...register('temporaryPassword')} autoCapitalize="none" autoComplete="new-password" /></FormField>
+        </div>
+        <ErrorBox>{errors.root?.message}</ErrorBox>
+        <div className="flex gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>Bekor</Button>
+          <Button disabled={isSubmitting} className="flex-1 sm:flex-none">Qo&apos;shish</Button>
+        </div>
+      </form>
+    </section>
   );
 }

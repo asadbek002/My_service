@@ -1,5 +1,4 @@
 import * as React from 'react';
-import { Label } from './label';
 import { cn } from '../../lib/utils';
 interface FormFieldProps {
   label: string;
@@ -9,13 +8,14 @@ interface FormFieldProps {
   children: React.ReactNode;
   className?: string | undefined;
 }
+/** A label wrapping its control, so tapping the label focuses the field. */
 export function FormField({ label, error, required, description, children, className }: FormFieldProps) {
   return (
-    <div className={cn('grid gap-2', className)}>
-      <Label>{label}{required && <span className="text-red-500 ml-1">*</span>}</Label>
+    <label className={cn('grid gap-1.5', className)}>
+      <span className="text-sm font-medium text-ink">{label}{required && <span className="ml-0.5 text-red-600">*</span>}</span>
       {children}
-      {description && !error && <p className="text-xs text-zinc-500 dark:text-zinc-400">{description}</p>}
-      {error && <p className="text-xs text-red-600">{error}</p>}
-    </div>
+      {description && !error && <span className="text-xs text-mute">{description}</span>}
+      {error && <span className="text-xs text-red-600">{error}</span>}
+    </label>
   );
 }

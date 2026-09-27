@@ -1,89 +1,53 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, apiBlob, uploadAttachment } from './api';
-import { clean } from './utils';
+import { api } from './api';
 
-// Types
+export type Payment = { id: string; kind: 'PAYMENT' | 'REFUND'; amount: string; method: string; reason?: string | null; originalPaymentId?: string | null; actorId?: string | null; createdAt: string };
+export type Device = { id: string; category: string; brand: string; model: string };
+export type Customer = { id: string; firstName: string; lastName?: string | null; phone: string; telegramUsername?: string | null; telegramChatId?: string | null; notificationPreference?: string; devices?: Device[] };
 export type Order = {
-  id: string;
-  number: string;
-  status: string;
-  total: string;
-  complaint?: string;
-  requiredWork?: string;
-  diagnosis?: string;
-  quoteVersion?: number;
-  accessories?: string[];
-  customer: { id: string; firstName: string; lastName?: string | null; phone: string; telegramChatId?: string; telegramUsername?: string };
-  device: { brand: string; model: string; imei?: string; serial?: string; passcode?: string; appearance?: string };
-  assignments?: { userId: string; user?: { firstName: string; lastName?: string }; task?: string }[];
-  costs?: any[];
-  checklist?: Record<string, boolean>;
-  attachments?: any[];
-  history?: any[];
-  worklogs?: any[];
-  payments?: any[];
-  [key: string]: any;
+  id: string; number: string; status: string; createdAt: string;
+  complaint: string; accessories: string[];
+  labor: string; partsTotal: string; total: string;
+  customer: Customer; device: Device;
+  payments: Pick<Payment, 'kind' | 'amount'>[];
+  parentOrderId?: string | null;
 };
-export type Customer = { id: string; firstName: string; lastName?: string; phone: string; telegramUsername?: string; telegramChatId?: string; notificationPreference: string };
-export type Branch = { id: string; name: string };
-export type Me = { id: string; firstName: string; lastName?: string | null; login: string; mustChangePassword: boolean; permissions: string[]; organizationId?: string; role: 'OWNER' | 'ADMIN' | 'MANAGER' | 'TECHNICIAN' | null; roles: string[]; branchIds?: string[] };
-export type Staff = { id: string; login: string; firstName: string; lastName?: string | null; phone: string; status: string; roles: { role: { name: string; systemKey?: string } }[]; branches: { branch: { id: string; name: string } }[] };
-export type Part = { id: string; name: string; sku: string; salePrice: string; stocks: { onHand: number; reserved: number; branchId: string }[] };
-export type DashReport = { todayReceived: number; todayCash?: string; debt?: string; statuses: { status: string; count: number }[]; workload: { id: string; name: string; active: number }[]; lowStock: { partId: string; name: string; branch: string; free: number; minimum: number }[]; revenueByDay?: { day: string; revenue: string }[] };
-export type Notification = { id: string; type: string; status: string; channel: string; createdAt: string; sentAt?: string };
-export type Warranty = { id: string; startDate: string; endDate: string; status: string; terms?: string; order: { id: string; number: string; status: string; customer: { firstName: string; phone: string }; device: { brand: string; model: string } } };
+export type OrderDetail = Omit<Order, 'payments'> & {
+  payments: Payment[];
+  history: { id: string; fromStatus?: string | null; toStatus: string; actorId?: string | null; comment?: string | null; createdAt: string }[];
+  warranty?: { id: string; startDate: string; endDate: string; terms?: string | null } | null;
+  actorNames: Record<string, string>;
+  totalPaid: string; balance: string;
+};
+export type Me = { id: string; firstName: string; lastName?: string | null; login: string; organizationId: string; mustChangePassword: boolean; permissions: string[]; role: 'OWNER' | 'STAFF' | null; roles: string[]; support?: boolean };
+export type Staff = { id: string; login: string; firstName: string; lastName?: string | null; phone: string; email?: string | null; status: string; mustChangePassword: boolean; createdAt: string; roles: { role: { name: string; systemKey?: string | null } }[] };
+export type Dashboard = {
+  statuses: { status: string; count: number }[]; todayReceived: number;
+  recent: (Pick<Order, 'id' | 'number' | 'status' | 'total' | 'createdAt'> & { customer: { firstName: string; phone: string }; device: { brand: string; model: string } })[];
+  todayCash: string; monthCash: string; debt: string; revenueByDay: { day: string; revenue: string }[];
+};
+export type Defaults = { warrantyTerms: string; expenseCategories: string[]; receiptWidth: 58 | 80 };
 
-// Queries
-export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/auth/me') });
-export const useOrders = (enabled = true) => useQuery({ queryKey: ['orders'], queryFn: () => api<Order[]>('/orders'), enabled });
-export const useOrder = (id: string) => useQuery({ queryKey: ['orders', id], queryFn: () => api<Order>('/orders/' + id), enabled: !!id });
-export const useCustomers = () => useQuery({ queryKey: ['customers'], queryFn: () => api<Customer[]>('/customers') });
-export const useCustomer = (id: string) => useQuery({ queryKey: ['customers', id], queryFn: () => api<Customer>('/customers/' + id), enabled: !!id });
-export const useBranches = () => useQuery({ queryKey: ['branches'], queryFn: () => api<Branch[]>('/branches') });
-export const useStaff = () => useQuery({ queryKey: ['staff'], queryFn: () => api<Staff[]>('/staff') });
-export const useParts = () => useQuery({ queryKey: ['parts'], queryFn: () => api<Part[]>('/inventory') });
-export const useDashboard = (enabled = true) => useQuery({ queryKey: ['dashboard'], queryFn: () => api<DashReport>('/reports/dashboard'), enabled });
-export const useNotifications = () => useQuery({ queryKey: ['notifications'], queryFn: () => api<Notification[]>('/notifications') });
-export const useWarranties = () => useQuery({ queryKey: ['warranties'], queryFn: () => api<Warranty[]>('/warranties') });
-export const useStaffActivity = (id: string) => useQuery({ queryKey: ['staff', id, 'activity'], queryFn: () => api<{ action: string; createdAt: string; entityId?: string }[]>('/staff/' + id + '/activity'), enabled: !!id });
-export const useStaffActive = (id: string, days = 5) => useQuery({ queryKey: ['staff', id, 'active', days], queryFn: () => api<{ active: boolean; auditEvents: number; orderEvents: number }>('/staff/' + id + '/active?days=' + days), enabled: !!id });
-
-// Mutations
-export function useCreateCustomer() {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: (data: Record<string, unknown>) => api<Customer>('/customers', { method: 'POST', body: JSON.stringify(clean(data, ['firstName', 'lastName', 'phone', 'telegramUsername', 'notificationPreference', 'notes'])) }), onSuccess: () => qc.invalidateQueries({ queryKey: ['customers'] }) });
+/** What was paid on an order: payments minus refunds. */
+export function paidOf(payments: Pick<Payment, 'kind' | 'amount'>[]) {
+  return payments.reduce((s, p) => s + (p.kind === 'REFUND' ? -1 : 1) * Number(p.amount), 0);
 }
-export function useCreateOrder() {
+export const can = (me: Me | undefined, permission: string) => !!me?.permissions.includes(permission);
+
+export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/auth/me') });
+export const useOrders = (status = '', enabled = true) => useQuery({ queryKey: ['orders', 'list', status], queryFn: () => api<Order[]>('/orders' + (status ? '?status=' + status : '')), enabled });
+export const useOrder = (id: string) => useQuery({ queryKey: ['orders', id], queryFn: () => api<OrderDetail>('/orders/' + id), enabled: !!id });
+export const useDashboard = (enabled = true) => useQuery({ queryKey: ['dashboard'], queryFn: () => api<Dashboard>('/reports/dashboard'), enabled });
+export const useDefaults = () => useQuery({ queryKey: ['defaults'], queryFn: () => api<Defaults>('/settings/defaults'), staleTime: 300_000 });
+export const useStaff = () => useQuery({ queryKey: ['staff'], queryFn: () => api<Staff[]>('/staff') });
+export const usePaymentMethods = () => useQuery({ queryKey: ['payment-methods'], queryFn: () => api<{ key: string; label: string }[]>('/settings/payment-methods'), staleTime: 300_000 });
+
+/** Mutation that refreshes every order view afterwards (list, detail, dashboard). */
+export function useOrderMutation<V, R = unknown>(fn: (v: V) => Promise<R>) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ data, photos }: { data: unknown; photos: File[] }) => {
-      const order = await api<{ id: string }>('/orders', { method: 'POST', body: JSON.stringify(data) });
-      // The order already exists at this point: a failed photo must not look like a failed order,
-      // otherwise the operator submits again and creates a duplicate.
-      const kinds = ['FRONT', 'BACK', 'LEFT', 'RIGHT', 'DAMAGE', 'OTHER'] as const;
-      let failedPhotos = 0;
-      for (let i = 0; i < photos.length; i++) {
-        const f = photos[i];
-        if (!f) continue;
-        try { await uploadAttachment(order.id, f, kinds[Math.min(i, 5)] ?? 'OTHER'); } catch { failedPhotos++; }
-      }
-      return { ...order, failedPhotos };
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['orders'] }),
+    mutationFn: fn,
+    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['orders'] }), qc.invalidateQueries({ queryKey: ['dashboard'] }), qc.invalidateQueries({ queryKey: ['customers'] })]),
   });
 }
-export function useUpdateOrderStatus() {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: ({ id, status, comment }: { id: string; status: string; comment?: string }) => api(`/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, comment }) }), onSuccess: (_d, v) => { qc.invalidateQueries({ queryKey: ['orders', v.id] }); qc.invalidateQueries({ queryKey: ['orders'] }); } });
-}
-export function useCreateStaff() {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: (data: unknown) => api<Staff>('/staff', { method: 'POST', body: JSON.stringify(data) }), onSuccess: () => qc.invalidateQueries({ queryKey: ['staff'] }) });
-}
-export function useCreatePayment() {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: ({ orderId, data }: { orderId: string; data: unknown }) => api(`/orders/${orderId}/payments`, { method: 'POST', body: JSON.stringify(data) }), onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: ['orders', v.orderId] }) });
-}
-export function useDownloadDocument() {
-  return useMutation({ mutationFn: ({ orderId, type }: { orderId: string; type: string }) => apiBlob(`/orders/${orderId}/documents/${type}`, { method: 'POST' }) });
-}
+export const post = (path: string, body: unknown, method = 'POST') => api(path, { method, body: JSON.stringify(body) });

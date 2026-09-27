@@ -14,34 +14,29 @@ export const customerSchema = z.object({
   notes: z.string().optional(),
 });
 
+const money = z.string().regex(/^\d{1,12}(\.\d{1,2})?$/, "Summani raqamda yozing");
+
 export const deviceSchema = z.object({
-  category: z.string().min(1, "Kategoriya majburiy"),
-  brand: z.string().min(1, "Brend majburiy"),
-  model: z.string().min(1, "Model majburiy"),
-  imei: z.string().optional(),
-  serialNumber: z.string().optional(),
-  color: z.string().optional(),
-  notes: z.string().optional(),
+  category: z.string().min(1, "Turini tanlang"),
+  brand: z.string().min(1, "Brendni yozing"),
+  model: z.string().min(1, "Modelni yozing"),
 });
 
 export const orderSchema = z.object({
   customerId: z.string().min(1, "Mijoz tanlanmagan"),
   deviceId: z.string().min(1, "Qurilma tanlanmagan"),
-  branchId: z.string().min(1, "Filial tanlanmagan"),
-  complaint: z.string().min(3, "Mijoz shikoyati majburiy"),
+  complaint: z.string().min(1, "Nosozlikni yozing"),
   accessories: z.array(z.string()).default([]),
-  condition: z.array(z.string()).default([]),
-  notes: z.string().optional(),
+  labor: money,
+  partsTotal: money,
 });
 
 export const staffSchema = z.object({
-  login: z.string().min(3).regex(/^[a-zA-Z0-9_.-]+$/, "Faqat harf, raqam va _ . -"),
-  firstName: z.string().min(1, "Ism majburiy"),
+  firstName: z.string().min(1, "Ismni yozing"),
   lastName: z.string().optional(),
-  phone: z.string().regex(/^\+[1-9][0-9]{7,14}$/, "Noto'g'ri telefon (+998...)"),
-  temporaryPassword: z.string().min(12, "Vaqtinchalik parol kamida 12 belgi bo'lishi kerak"),
-  role: z.enum(['ADMIN', 'MANAGER', 'TECHNICIAN']),
-  branchId: z.string().min(1, "Filial tanlanmagan"),
+  phone: z.string().regex(/^\+[1-9][0-9]{7,14}$/, "Telefon: +998901234567"),
+  login: z.string().min(3, "Login kamida 3 belgi").regex(/^[a-zA-Z0-9_.-]+$/, "Faqat lotin harf, raqam va _ . -"),
+  temporaryPassword: z.string().min(12, "Parol kamida 12 belgi"),
 });
 
 export const changePasswordSchema = z.object({
@@ -53,14 +48,6 @@ export const changePasswordSchema = z.object({
   path: ["confirmPassword"],
 });
 
-export const diagnosisSchema = z.object({
-  diagnosis: z.string().min(3, "Diagnostika xulosasi majburiy"),
-  requiredWork: z.string().min(3, "Bajariladigan ish turi majburiy"),
-  labor: z.string().regex(/^\d+(\.\d{1,2})?$/, "Noto'g'ri xizmat narxi"),
-  partsTotal: z.string().regex(/^\d+(\.\d{1,2})?$/, "Noto'g'ri ehtiyot qism narxi"),
-  estimatedTime: z.string().max(100).optional(),
-});
-
 export const paymentSchema = z.object({
   amount: z.string().regex(/^\d+(\.\d{1,2})?$/, "Noto'g'ri summa"),
   // Built-in methods plus organization-defined keys (settings → payment methods).
@@ -69,22 +56,9 @@ export const paymentSchema = z.object({
 });
 
 export const expenseSchema = z.object({
-  amount: z.string().regex(/^\d+(\.\d{1,2})?$/, "Noto'g'ri summa"),
-  category: z.string().min(1, "Kategoriya majburiy"),
-  branchId: z.string().min(1, "Filial majburiy"),
-  description: z.string().optional(),
-});
-
-export const partSchema = z.object({
-  name: z.string().min(1, "Nomi majburiy"),
-  sku: z.string().min(1, "SKU majburiy"),
-  barcode: z.string().optional(),
-  brand: z.string().min(1, "Brend majburiy"),
-  compatibleModels: z.array(z.string()).default([]),
-  storageLocation: z.string().optional(),
-  minimumQuantity: z.number().min(0).default(0),
-  purchasePrice: z.string().regex(/^\d+(\.\d{1,2})?$/, "Noto'g'ri kirim narxi"),
-  salePrice: z.string().regex(/^\d+(\.\d{1,2})?$/, "Noto'g'ri sotuv narxi"),
+  amount: money,
+  category: z.string().min(1, "Turini tanlang"),
+  note: z.string().min(3, "Izoh kamida 3 belgi"),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -93,7 +67,5 @@ export type DeviceInput = z.infer<typeof deviceSchema>;
 export type OrderInput = z.infer<typeof orderSchema>;
 export type StaffInput = z.infer<typeof staffSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
-export type DiagnosisInput = z.infer<typeof diagnosisSchema>;
 export type PaymentInput = z.infer<typeof paymentSchema>;
 export type ExpenseInput = z.infer<typeof expenseSchema>;
-export type PartInput = z.infer<typeof partSchema>;

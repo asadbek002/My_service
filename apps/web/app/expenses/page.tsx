@@ -1,107 +1,73 @@
 'use client';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { clean } from '../../lib/utils';
+
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
-import { useBranches } from '../../lib/queries';
+import { errorText } from '../../lib/errors';
+import { dateTime, EXPENSE_CATEGORIES, money } from '../../lib/format';
+import { can, useDefaults, useMe } from '../../lib/queries';
+import { cn } from '../../lib/utils';
+import { AppShell } from '../../components/layout/app-shell';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Select } from '../../components/ui/select';
-import { Textarea } from '../../components/ui/textarea';
-import { FormField } from '../../components/ui/form-field';
-import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
-import { AppShell } from '../../components/layout/app-shell';
+import { MoneyInput } from '../../components/ui/money-input';
+import { Empty, ErrorBox, Loading, Notice } from '../../components/ui/feedback';
+import { List, ListRow } from '../../components/list-row';
 
-
-const expenseSchema = z.object({
-  branchId: z.string().min(1, 'Filial tanlang'),
-  category: z.string().min(1, 'Kategoriya majburiy'),
-  amount: z.string().regex(/^\d+(\.\d{1,2})?$/, "Noto'g'ri summa"),
-  note: z.string().min(3, 'Izoh majburiy'),
-});
-type ExpenseInput = z.infer<typeof expenseSchema>;
+type Expense = { id: string; category: string; amount: string; note: string; createdAt: string };
+const label = (c: string) => EXPENSE_CATEGORIES[c] ?? c;
 
 export default function Expenses() {
-  const router = useRouter();
-  const qc = useQueryClient();
-  const { data: branches = [] } = useBranches();
-  // Categories are configurable in Settings → General.
-  const { data: defaults } = useQuery({ queryKey: ['settings', 'defaults'], queryFn: () => api<{ expenseCategories: string[] }>('/settings/defaults') });
-  const CATEGORIES = defaults?.expenseCategories ?? ['OTHER'];
-  const { data: items = [], isLoading } = useQuery({
-    queryKey: ['expenses'],
-    queryFn: () => api<{ id: string; category: string; amount: string; note: string; createdAt: string }[]>('/expenses'),
-  });
-  const create = useMutation({
-    mutationFn: (data: ExpenseInput) => api('/expenses', { method: 'POST', body: JSON.stringify(clean(data, ['branchId', 'category', 'amount', 'note'])) }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['expenses'] }); reset(); },
-  });
-
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<ExpenseInput>({
-    resolver: zodResolver(expenseSchema),
-    defaultValues: { category: 'OTHER' },
-  });
-
-  if (create.error instanceof Error && create.error.message === 'SESSION_EXPIRED') { router.replace('/login'); return null; }
-
+  const { data: me } = useMe();
+  const { data, isLoading, error } = useQuery({ queryKey: ['expenses'], queryFn: () => api<Expense[]>('/expenses') });
   return (
-    <AppShell title="Xarajatlar" subtitle="Moliya">
-
-      <div className="detail-grid">
-        <section>
-          {isLoading ? <p className="muted">Yuklanmoqda...</p> : (
-            <div className="table-scroll">
-              <table>
-                <thead><tr><th>Sana</th><th>Kategoriya</th><th>Izoh</th><th>Summa</th></tr></thead>
-                <tbody>
-                  {items.map(x => (
-                    <tr key={x.id}>
-                      <td>{new Date(x.createdAt).toLocaleDateString('uz-UZ')}</td>
-                      <td>{x.category}</td>
-                      <td>{x.note}</td>
-                      <td>{Number(x.amount).toLocaleString('uz-UZ')} so'm</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {items.length === 0 && <p className="muted">Xarajatlar yo'q.</p>}
-            </div>
-          )}
-        </section>
-
-        <Card>
-          <CardHeader><CardTitle>Xarajat qo'shish</CardTitle></CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit(d => create.mutate(d))} className="grid gap-4">
-              <FormField label="Filial" error={errors.branchId?.message} required>
-                <Select {...register('branchId')}>
-                  <option value="">Tanlang</option>
-                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </Select>
-              </FormField>
-              <FormField label="Kategoriya" error={errors.category?.message} required>
-                <Select {...register('category')}>
-                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </Select>
-              </FormField>
-              <FormField label="Summa (so'm)" error={errors.amount?.message} required>
-                <Input {...register('amount')} placeholder="500000" />
-              </FormField>
-              <FormField label="Izoh" error={errors.note?.message} required>
-                <Textarea {...register('note')} />
-              </FormField>
-              {create.error && <p className="error">{(create.error as Error).message}</p>}
-              <Button type="submit" disabled={create.isPending}>
-                {create.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+    <AppShell title="Xarajatlar" narrow>
+      <div className="space-y-4">
+        {can(me, 'expenses.manage') && <ExpenseForm />}
+        {error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading ? <Loading rows={4} /> : !data?.length ? <Empty title="Hali xarajat yozilmagan" /> : (
+          <List>
+            {data.map(e => <ListRow key={e.id} title={label(e.category)} sub={`${dateTime(e.createdAt)} · ${e.note}`} right={money(e.amount)} />)}
+          </List>
+        )}
       </div>
     </AppShell>
+  );
+}
+
+function ExpenseForm() {
+  const qc = useQueryClient();
+  const { data: defaults } = useDefaults();
+  const categories = defaults?.expenseCategories ?? Object.keys(EXPENSE_CATEGORIES);
+  const [category, setCategory] = useState('');
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [state, setState] = useState<{ ok?: string; error?: string }>({});
+  const [busy, setBusy] = useState(false);
+  const chosen = category || categories[0] || 'OTHER';
+  async function save() {
+    setBusy(true); setState({});
+    try {
+      await api('/expenses', { method: 'POST', body: JSON.stringify({ category: chosen, amount, note: note.trim() }) });
+      setAmount(''); setNote('');
+      await Promise.all([qc.invalidateQueries({ queryKey: ['expenses'] }), qc.invalidateQueries({ queryKey: ['finance'] })]);
+      setState({ ok: 'Yozildi' });
+    } catch (e) { setState({ error: errorText(e) }); } finally { setBusy(false); }
+  }
+  return (
+    <section className="rounded-lg border bg-white p-4">
+      <h2 className="mb-3 font-semibold">Xarajat yozish</h2>
+      <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
+        {categories.map(c => (
+          <button key={c} type="button" onClick={() => setCategory(c)} aria-pressed={chosen === c}
+            className={cn('h-9 shrink-0 rounded-full border px-3.5 text-sm', chosen === c ? 'border-ink bg-ink text-white' : 'bg-white')}>{label(c)}</button>
+        ))}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-[12rem_1fr]">
+        <MoneyInput value={amount} onChange={setAmount} aria-label="Summa" />
+        <Input value={note} onChange={e => setNote(e.target.value)} placeholder="Izoh (masalan: oktyabr ijarasi)" />
+      </div>
+      <ErrorBox className="mt-3">{state.error}</ErrorBox><Notice className="mt-3">{state.ok}</Notice>
+      <Button className="mt-3 w-full sm:w-auto" disabled={busy || !Number(amount) || note.trim().length < 3} onClick={save}>Saqlash</Button>
+    </section>
   );
 }

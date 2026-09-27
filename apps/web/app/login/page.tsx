@@ -7,6 +7,8 @@ import { loginSchema, type LoginInput } from '../../lib/schemas';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { FormField } from '../../components/ui/form-field';
+import { ErrorBox } from '../../components/ui/feedback';
+import { AuthFrame } from '../../components/layout/auth-frame';
 
 // Each failure has a different fix, so say which one it is.
 function loginError(e: unknown) {
@@ -14,7 +16,7 @@ function loginError(e: unknown) {
   const message = e instanceof Error ? e.message : '';
   if (status === 401) return "Login yoki parol noto'g'ri";
   if (status === 429) return "Juda ko'p urinish. 15 daqiqadan keyin qayta urinib ko'ring.";
-  if (status === 403 && message === 'Origin rejected') return "Sayt manzili server sozlamasiga mos emas (WEB_URL / CORS_ORIGINS). Administratorga murojaat qiling.";
+  if (status === 403 && message === 'Origin rejected') return 'Sayt manzili server sozlamasiga mos emas (WEB_URL / CORS_ORIGINS). Administratorga murojaat qiling.';
   if (status === 400) return "Login faqat lotin harflari, raqam va _ . - belgilaridan iborat bo'lishi kerak";
   if (status >= 500 || status === 0) return "Server bilan bog'lanib bo'lmadi. Keyinroq urinib ko'ring.";
   return message || 'Xato yuz berdi';
@@ -22,9 +24,7 @@ function loginError(e: unknown) {
 
 export default function Login() {
   const router = useRouter();
-  const { register, handleSubmit, formState: { errors, isSubmitting }, setError } = useForm<LoginInput>({
-    resolver: zodResolver(loginSchema),
-  });
+  const { register, handleSubmit, formState: { errors, isSubmitting }, setError } = useForm<LoginInput>({ resolver: zodResolver(loginSchema) });
 
   async function onSubmit(data: LoginInput) {
     try {
@@ -36,27 +36,18 @@ export default function Login() {
   }
 
   return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <h1>MY SERVICE</h1>
-        <p className="muted" style={{ marginTop: 8 }}>Premium Repair Service</p>
-        <form onSubmit={handleSubmit(onSubmit)} style={{ marginTop: 28 }}>
-          <div className="grid gap-5">
-            <FormField label="Login" error={errors.login?.message} required>
-              <Input {...register('login')} autoComplete="username" autoFocus placeholder="login" />
-            </FormField>
-            <FormField label="Parol" error={errors.password?.message} required>
-              <Input {...register('password')} type="password" autoComplete="current-password" placeholder="••••••••" />
-            </FormField>
-            {errors.root && (
-              <p role="alert" className="error">{errors.root.message}</p>
-            )}
-            <Button type="submit" disabled={isSubmitting} className="w-full">
-              {isSubmitting ? 'Kirilmoqda...' : 'Kirish'}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <AuthFrame eyebrow="Servisga kirish" title="Xush kelibsiz">
+      <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4" noValidate>
+        <FormField label="Login" error={errors.login?.message}>
+          <Input {...register('login')} autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoFocus />
+        </FormField>
+        <FormField label="Parol" error={errors.password?.message}>
+          <Input {...register('password')} type="password" autoComplete="current-password" />
+        </FormField>
+        <ErrorBox>{errors.root?.message}</ErrorBox>
+        <Button type="submit" size="lg" disabled={isSubmitting} className="w-full">{isSubmitting ? 'Kirilmoqda…' : 'Kirish'}</Button>
+        <p className="text-xs text-mute">Parolni unutdingizmi? Boshliq yoki xodim uni &laquo;Xodimlar&raquo; bo&apos;limida yangilab beradi.</p>
+      </form>
+    </AuthFrame>
   );
 }

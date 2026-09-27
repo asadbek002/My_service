@@ -1,32 +1,26 @@
 import * as React from 'react';
-import { Badge } from './badge';
+import { Badge, type BadgeProps } from './badge';
 import { cn } from '../../lib/utils';
 
-const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'info' | 'purple'; dotColor: string }> = {
-  RECEIVED:                   { label: 'Qabul qilindi',    variant: 'secondary',   dotColor: 'bg-zinc-400' },
-  DIAGNOSING:                 { label: 'Diagnostikada',    variant: 'info',        dotColor: 'bg-sky-500' },
-  WAITING_CUSTOMER_APPROVAL:  { label: 'Mijoz tasdig\'i',   variant: 'warning',     dotColor: 'bg-amber-500' },
-  WAITING_PART:               { label: 'Detal kutilmoqda',  variant: 'purple',      dotColor: 'bg-purple-500' },
-  IN_REPAIR:                  { label: 'Ta\'mirda',          variant: 'info',        dotColor: 'bg-blue-600 animate-pulse' },
-  READY:                      { label: 'Tayyor',            variant: 'success',     dotColor: 'bg-emerald-500' },
-  DELIVERED:                  { label: 'Berildi',           variant: 'default',     dotColor: 'bg-zinc-300' },
-  CANCELLED:                  { label: 'Bekor qilindi',     variant: 'destructive', dotColor: 'bg-red-500' },
-  UNREPAIRABLE:               { label: 'Tuzatib bo\'lmadi',  variant: 'destructive', dotColor: 'bg-red-700' },
-  ACTIVE:                     { label: 'Faol',              variant: 'success',     dotColor: 'bg-emerald-500' },
-  SUSPENDED:                  { label: 'To\'xtatilgan',     variant: 'destructive', dotColor: 'bg-red-500' },
-  INVITED:                    { label: 'Taklif yuborildi',  variant: 'warning',     dotColor: 'bg-amber-500' },
-  ARCHIVED:                   { label: 'Arxivlangan',       variant: 'default',     dotColor: 'bg-zinc-400' },
+type Variant = NonNullable<BadgeProps['variant']>;
+export const STATUS: Record<string, { label: string; variant: Variant; dot: string }> = {
+  RECEIVED: { label: 'Qabul qilindi', variant: 'default', dot: 'bg-ink' },
+  IN_REPAIR: { label: "Ta'mirda", variant: 'info', dot: 'bg-blue-600' },
+  READY: { label: 'Tayyor', variant: 'success', dot: 'bg-emerald-600' },
+  DELIVERED: { label: 'Berildi', variant: 'outline', dot: 'bg-mute' },
+  CANCELLED: { label: 'Bekor qilindi', variant: 'destructive', dot: 'bg-red-600' },
+  ACTIVE: { label: 'Faol', variant: 'success', dot: 'bg-emerald-600' },
+  SUSPENDED: { label: "To'xtatilgan", variant: 'destructive', dot: 'bg-red-600' },
+  INVITED: { label: 'Taklif qilingan', variant: 'warning', dot: 'bg-amber-500' },
+  ARCHIVED: { label: 'Arxivda', variant: 'outline', dot: 'bg-mute' },
 };
+export const statusLabel = (status: string) => STATUS[status]?.label ?? status;
 
-export interface StatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  status: string;
-}
-
-export function StatusBadge({ status, className, ...props }: StatusBadgeProps) {
-  const s = STATUS_MAP[status] ?? { label: status, variant: 'secondary' as const, dotColor: 'bg-zinc-400' };
+export function StatusBadge({ status, className, ...props }: { status: string } & React.HTMLAttributes<HTMLSpanElement>) {
+  const s = STATUS[status] ?? { label: status, variant: 'default' as const, dot: 'bg-mute' };
   return (
-    <Badge variant={s.variant} className={cn('gap-1.5 font-medium px-2.5 py-1', className)} {...props}>
-      <span className={cn('h-1.5 w-1.5 rounded-full inline-block', s.dotColor)} />
+    <Badge variant={s.variant} className={className} {...props}>
+      <span className={cn('inline-block h-1.5 w-1.5 rounded-full', s.dot)} />
       {s.label}
     </Badge>
   );

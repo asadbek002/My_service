@@ -1,250 +1,121 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import {
-  BarChart3,
-  Download,
-  Calendar,
-  DollarSign,
-  TrendingUp,
-  Package,
-  Receipt,
-  Users,
-  Clock,
-  CheckCircle2,
-} from 'lucide-react';
+import { Download } from 'lucide-react';
 import { api, apiBlob } from '../../lib/api';
+import { errorText } from '../../lib/errors';
+import { date, EXPENSE_CATEGORIES, money, phone, today } from '../../lib/format';
+import { can, useMe } from '../../lib/queries';
+import { cn } from '../../lib/utils';
 import { AppShell } from '../../components/layout/app-shell';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '../../components/ui/card';
-import { Badge } from '../../components/ui/badge';
+import { ErrorBox, Loading, Row } from '../../components/ui/feedback';
+import { List, ListRow } from '../../components/list-row';
 
 type Finance = {
-  revenue: string;
-  received: string;
-  refunds: string;
-  netCash: string;
-  partCost: string;
-  operatingExpenses: string;
-  contributionAfterExpenses: string;
+  received: number; delivered: number; revenue: string; labor: string; parts: string; averageCheck: string;
+  cashIn: string; refunds: string; netCash: string; expenses: { category: string; amount: string }[]; operatingExpenses: string; profit: string;
+  debt: string; debtors: { id: string; number: string; createdAt: string; customer: { firstName: string; lastName?: string | null; phone: string }; device: { brand: string; model: string }; balance: string }[];
   basis: string;
 };
-type Tech = {
-  id: string;
-  firstName: string;
-  assigned: number;
-  completed: number;
-  repairSeconds: number;
-};
 
-export default function ReportsPage() {
-  const router = useRouter();
-  const [range, setRange] = useState('');
-  const [activePreset, setActivePreset] = useState<number | 'custom'>(30);
-  const [downloading, setDownloading] = useState(false);
+const startOf = (day: string) => new Date(day + 'T00:00:00+05:00').toISOString();
+const endOf = (day: string) => new Date(day + 'T23:59:59.999+05:00').toISOString();
+function preset(key: string): [string, string] {
+  const t = today();
+  if (key === 'today') return [t, t];
+  if (key === 'month') return [t.slice(0, 8) + '01', t];
+  const d = new Date(t + 'T12:00:00+05:00');
+  d.setUTCMonth(d.getUTCMonth() - 1);
+  const prev = d.toISOString().slice(0, 7);
+  const last = new Date(Date.UTC(Number(prev.slice(0, 4)), Number(prev.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  return [prev + '-01', last];
+}
+const PRESETS = [['today', 'Bugun'], ['month', 'Shu oy'], ['last', "O'tgan oy"]] as const;
 
-  const { data: finance, isLoading: financeLoading } = useQuery<Finance>({
-    queryKey: ['reports', 'finance', range],
-    queryFn: () => api('/reports/finance' + range),
+export default function Reports() {
+  const { data: me } = useMe();
+  const [range, setRange] = useState<[string, string]>(() => preset('month'));
+  const [mode, setMode] = useState<string>('month');
+  const finance = can(me, 'reports.finance');
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['finance', range],
+    queryFn: () => api<Finance>(`/reports/finance?from=${encodeURIComponent(startOf(range[0]))}&to=${encodeURIComponent(endOf(range[1]))}`),
+    enabled: finance,
   });
-  const { data: tech = [], isLoading: techLoading } = useQuery<Tech[]>({
-    queryKey: ['reports', 'technicians'],
-    queryFn: () => api('/reports/technicians'),
-  });
-
-  function applyPreset(days: number) {
-    setActivePreset(days);
-    const to = new Date(),
-      from = new Date();
-    from.setDate(to.getDate() - days + 1);
-    setRange('?from=' + from.toISOString().slice(0, 10) + '&to=' + to.toISOString().slice(0, 10));
-  }
-
-  async function handleExport() {
-    setDownloading(true);
+  const [exportError, setExportError] = useState('');
+  async function exportCsv() {
+    setExportError('');
     try {
-      const blob = await apiBlob('/reports/export' + range);
+      const blob = await apiBlob(`/reports/export?from=${encodeURIComponent(startOf(range[0]))}&to=${encodeURIComponent(endOf(range[1]))}`);
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `myservice-orders-report-${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setDownloading(false);
-    }
+      const a = Object.assign(document.createElement('a'), { href: url, download: `buyurtmalar-${range[0]}-${range[1]}.csv` });
+      a.click(); URL.revokeObjectURL(url);
+    } catch (e) { setExportError(errorText(e)); }
   }
 
   return (
-    <AppShell
-      subtitle="Tahlil va hisobotlar"
-      title="Moliyaviy va operatsion hisobotlar"
-      action={
-        <Button
-          onClick={handleExport}
-          disabled={downloading}
-          variant="outline"
-          size="sm"
-          className="gap-2 text-xs"
-        >
-          <Download className="h-3.5 w-3.5" />
-          {downloading ? 'Yuklanmoqda...' : 'CSV Eksport'}
-        </Button>
-      }
-    >
-      <div className="space-y-6">
-        {/* Period Preset Selectors */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-zinc-900 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
-          <div className="flex items-center gap-1.5 overflow-x-auto">
-            {[
-              { days: 1, label: 'Bugun' },
-              { days: 7, label: '7 kun' },
-              { days: 30, label: '30 kun' },
-              { days: 90, label: '3 oy' },
-            ].map(p => (
-              <Button
-                key={p.days}
-                variant={activePreset === p.days ? 'default' : 'ghost'}
-                size="sm"
-                className="text-xs h-8"
-                onClick={() => applyPreset(p.days)}
-              >
-                {p.label}
-              </Button>
-            ))}
-          </div>
-
-          {/* Custom Date Inputs */}
-          <form
-            className="flex items-center gap-2"
-            onSubmit={e => {
-              e.preventDefault();
-              setActivePreset('custom');
-              const d = new FormData(e.currentTarget as HTMLFormElement);
-              setRange('?from=' + d.get('from') + '&to=' + d.get('to'));
-            }}
-          >
-            <Input name="from" type="date" required className="h-8 text-xs w-36" />
-            <span className="text-zinc-400 text-xs">—</span>
-            <Input name="to" type="date" required className="h-8 text-xs w-36" />
-            <Button type="submit" variant="secondary" size="sm" className="h-8 text-xs">
-              Koʻrsatish
-            </Button>
-          </form>
+    <AppShell title="Hisobot" narrow action={<Button variant="secondary" size="sm" onClick={exportCsv} aria-label="Excel uchun yuklab olish"><Download className="h-4 w-4" /><span className="hidden sm:inline">CSV</span></Button>}>
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {PRESETS.map(([key, text]) => (
+            <button key={key} onClick={() => { setMode(key); setRange(preset(key)); }} aria-pressed={mode === key}
+              className={cn('h-9 rounded-full border px-3.5 text-sm', mode === key ? 'border-ink bg-ink text-white' : 'bg-white')}>{text}</button>
+          ))}
+          <button onClick={() => setMode('custom')} aria-pressed={mode === 'custom'} className={cn('h-9 rounded-full border px-3.5 text-sm', mode === 'custom' ? 'border-ink bg-ink text-white' : 'bg-white')}>Sana</button>
         </div>
-
-        {/* Financial KPI Cards */}
-        {finance && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="p-5">
-                <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
-                  Yetkazilgan tushum
-                </span>
-                <h3 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50 mt-1">
-                  {Number(finance.revenue).toLocaleString('uz-UZ')} soʻm
-                </h3>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-5">
-                <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
-                  Sof naqd pul oqimi
-                </span>
-                <h3 className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                  {Number(finance.netCash).toLocaleString('uz-UZ')} soʻm
-                </h3>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-5">
-                <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
-                  Ehtiyot qismlar tannarxi
-                </span>
-                <h3 className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
-                  {Number(finance.partCost).toLocaleString('uz-UZ')} soʻm
-                </h3>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-5">
-                <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
-                  Operatsion xarajatlar
-                </span>
-                <h3 className="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">
-                  {Number(finance.operatingExpenses).toLocaleString('uz-UZ')} soʻm
-                </h3>
-              </CardContent>
-            </Card>
+        {mode === 'custom' && (
+          <div className="grid grid-cols-2 gap-2">
+            <Input type="date" value={range[0]} max={range[1]} onChange={e => e.target.value && setRange([e.target.value, range[1]])} aria-label="Boshlanish" />
+            <Input type="date" value={range[1]} min={range[0]} max={today()} onChange={e => e.target.value && setRange([range[0], e.target.value])} aria-label="Tugash" />
           </div>
         )}
-
-        {/* Technicians Productivity Table */}
-        <Card className="overflow-hidden">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4 text-zinc-500" />
-              <span>Ustalar samaradorligi va ish vaqti</span>
-            </CardTitle>
-            <CardDescription>
-              Har bir ustaning taʼmir soni va oʻrtacha sarflangan vaqti.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            {techLoading ? (
-              <div className="p-12 text-center text-sm text-zinc-400">Yuklanmoqda...</div>
-            ) : tech.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/50 text-[11px] uppercase tracking-wider text-zinc-400 font-semibold">
-                      <th className="py-3 px-4">Usta</th>
-                      <th className="py-3 px-4 text-center">Biriktirilgan</th>
-                      <th className="py-3 px-4 text-center">Tugatilgan</th>
-                      <th className="py-3 px-4 text-right">Oʻrtacha ish vaqti</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                    {tech.map(t => (
-                      <tr
-                        key={t.id}
-                        className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40 transition-colors"
-                      >
-                        <td className="py-3.5 px-4 font-semibold text-xs text-zinc-900 dark:text-zinc-100">
-                          <Link href={`/staff/${t.id}`} className="hover:underline">
-                            {t.firstName}
-                          </Link>
-                        </td>
-                        <td className="py-3.5 px-4 text-center text-xs text-zinc-600 dark:text-zinc-400">
-                          {t.assigned} ta
-                        </td>
-                        <td className="py-3.5 px-4 text-center">
-                          <span className="font-bold text-xs text-emerald-600 dark:text-emerald-400">
-                            {t.completed} ta
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-mono text-xs text-zinc-700 dark:text-zinc-300">
-                          {Math.round(t.repairSeconds / 60)} daqiqa
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+        <ErrorBox>{exportError}</ErrorBox>
+        {!finance ? <p className="text-sm text-mute">Moliyaviy hisobotni ko&apos;rish uchun ruxsat yo&apos;q.</p> : error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading || !data ? <Loading rows={4} /> : (
+          <>
+            <section className="talon">
+              <div className="p-4">
+                <p className="eyebrow">Tushum · {date(startOf(range[0]))} – {date(endOf(range[1]))}</p>
+                <p className="num mt-1 font-mono text-3xl font-semibold">{money(data.revenue)}</p>
+                <p className="text-sm text-mute">{data.delivered} ta qurilma berildi · {data.received} ta qabul · o&apos;rtacha chek {money(data.averageCheck)}</p>
               </div>
-            ) : (
-              <div className="p-12 text-center text-xs text-zinc-400">Maʼlumotlar topilmadi</div>
+              <div className="talon-cut" />
+              <div className="p-4">
+                <Row label="Usta haqi">{money(data.labor)}</Row>
+                <Row label="Zapchast">{money(data.parts)}</Row>
+                <Row label="Xarajatlar">−{money(data.operatingExpenses)}</Row>
+                <div className="mt-1 border-t pt-1"><Row label="Foyda" strong>{money(data.profit)}</Row></div>
+              </div>
+            </section>
+            <section className="rounded-lg border bg-white p-4">
+              <h2 className="mb-2 font-semibold">Kassa</h2>
+              <Row label="Tushgan pul">{money(data.cashIn)}</Row>
+              <Row label="Qaytarilgan">−{money(data.refunds)}</Row>
+              <Row label="Sof" strong>{money(data.netCash)}</Row>
+            </section>
+            {data.expenses.length > 0 && (
+              <section className="rounded-lg border bg-white p-4">
+                <div className="mb-2 flex items-baseline justify-between"><h2 className="font-semibold">Xarajatlar</h2><Link href="/expenses" className="text-sm text-mute hover:text-ink">Yozish</Link></div>
+                {data.expenses.map(e => <Row key={e.category} label={EXPENSE_CATEGORIES[e.category] ?? e.category}>{money(e.amount)}</Row>)}
+              </section>
             )}
-          </CardContent>
-        </Card>
+            <section id="debtors">
+              <div className="mb-2 flex items-baseline justify-between"><h2 className="font-semibold">Qarzdorlar</h2><span className="num font-mono text-sm font-semibold text-amber-700">{money(data.debt)}</span></div>
+              {data.debtors.length === 0 ? <p className="rounded-lg border bg-white px-4 py-6 text-center text-sm text-mute">Qarz yo&apos;q</p> : (
+                <List>
+                  {data.debtors.map(d => (
+                    <ListRow key={d.id} href={`/orders/${d.id}`} title={`${d.customer.firstName} · ${d.device.brand} ${d.device.model}`}
+                      sub={<span className="num font-mono">{d.number} · {phone(d.customer.phone)}</span>} right={<span className="text-amber-700">{money(d.balance)}</span>} />
+                  ))}
+                </List>
+              )}
+            </section>
+            <p className="text-xs text-mute">{data.basis}</p>
+          </>
+        )}
       </div>
     </AppShell>
   );

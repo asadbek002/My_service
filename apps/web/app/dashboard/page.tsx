@@ -1,458 +1,129 @@
 'use client';
 
-import React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import {
-  Wrench,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  TrendingUp,
-  CreditCard,
-  Package,
-  Users,
-  PlusCircle,
-  ArrowRight,
-  ChevronRight,
-  Smartphone,
-  ShieldCheck,
-} from 'lucide-react';
-import { useMe, useDashboard, useOrders, useStaff } from '../../lib/queries';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { ChevronRight } from 'lucide-react';
 import { changePasswordSchema, type ChangePasswordInput } from '../../lib/schemas';
 import { api, setAccessToken } from '../../lib/api';
+import { errorText } from '../../lib/errors';
+import { deviceName, money, som, dateTime } from '../../lib/format';
+import { can, useDashboard, useMe } from '../../lib/queries';
 import { AppShell } from '../../components/layout/app-shell';
+import { AuthFrame } from '../../components/layout/auth-frame';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { FormField } from '../../components/ui/form-field';
 import { StatusBadge } from '../../components/ui/status-badge';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '../../components/ui/card';
+import { Empty, ErrorBox, Loading } from '../../components/ui/feedback';
 
 export default function Dashboard() {
-  const router = useRouter();
-  const { data: me, error: meError, isLoading: meLoading } = useMe();
-  // Only roles with reports.view get the aggregated report; others see figures from their own order list.
-  // Business data is blocked (403) until a temporary password is replaced, so do not ask for it yet.
-  const ready = !!me && !me.mustChangePassword;
-  const { data: report, isLoading: reportLoading } = useDashboard(ready && me.permissions.includes('reports.view'));
-  const { data: orders = [], isLoading: ordersLoading } = useOrders(ready);
+  const { data: me } = useMe();
+  if (me?.mustChangePassword) return <ChangePassword />;
+  return <Home />;
+}
 
-  const pwForm = useForm<ChangePasswordInput>({
-    resolver: zodResolver(changePasswordSchema),
-  });
-
-  if (meError?.message === 'SESSION_EXPIRED') {
-    router.replace('/login');
-    return null;
+function ChangePassword() {
+  const form = useForm<ChangePasswordInput>({ resolver: zodResolver(changePasswordSchema) });
+  const { errors, isSubmitting } = form.formState;
+  async function onSubmit(data: ChangePasswordInput) {
+    try {
+      const result = await api<{ accessToken: string; expiresIn: number }>('/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: data.currentPassword, newPassword: data.newPassword }) });
+      setAccessToken(result.accessToken, result.expiresIn);
+      window.location.reload();
+    } catch (e) {
+      form.setError('root', { message: errorText(e) });
+    }
   }
-
-  async function onChangePassword(data: ChangePasswordInput) {
-    const result = await api<{ accessToken: string; expiresIn: number }>('/auth/change-password', {
-      method: 'POST',
-      body: JSON.stringify({
-        currentPassword: data.currentPassword,
-        newPassword: data.newPassword,
-      }),
-    });
-    setAccessToken(result.accessToken, result.expiresIn);
-    window.location.reload();
-  }
-
-  if (me?.mustChangePassword) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
-        <Card className="w-full max-w-md shadow-xl border-zinc-200 dark:border-zinc-800">
-          <CardHeader className="space-y-1 text-center">
-            <CardTitle className="text-2xl font-bold">Parolni yangilang</CardTitle>
-            <CardDescription>
-              Xavfsizlik uchun vaqtinchalik parolni o'zgartirishingiz shart.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={pwForm.handleSubmit(onChangePassword)} className="space-y-4">
-              <FormField
-                label="Joriy parol"
-                error={pwForm.formState.errors.currentPassword?.message}
-                required
-              >
-                <Input {...pwForm.register('currentPassword')} type="password" />
-              </FormField>
-              <FormField
-                label="Yangi parol"
-                error={pwForm.formState.errors.newPassword?.message}
-                required
-              >
-                <Input
-                  {...pwForm.register('newPassword')}
-                  type="password"
-                  placeholder="Kamida 12 belgi"
-                />
-              </FormField>
-              <FormField
-                label="Yangi parolni tasdiqlang"
-                error={pwForm.formState.errors.confirmPassword?.message}
-                required
-              >
-                <Input {...pwForm.register('confirmPassword')} type="password" />
-              </FormField>
-              {pwForm.formState.errors.root && (
-                <div className="p-3 bg-red-50 text-red-700 text-xs rounded-lg">
-                  {pwForm.formState.errors.root.message}
-                </div>
-              )}
-              <Button type="submit" className="w-full" disabled={pwForm.formState.isSubmitting}>
-                Parolni yangilash
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  const isTechnician = me?.role === 'TECHNICIAN';
-  const recentOrders = orders.slice(0, 7);
-  const myAssignedOrders = orders.filter(o => o.assignments?.some(a => a.userId === me?.id));
-  if (isTechnician && me) return <TechnicianHome firstName={me.firstName} orders={myAssignedOrders} />;
-  const statusCount = (status: string) => report?.statuses?.find(s => s.status === status)?.count ?? orders.filter(o => o.status === status).length;
-  const todayStart = new Date(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date()) + 'T00:00:00+05:00');
-  const todayReceived = report?.todayReceived ?? orders.filter(o => new Date(o.createdAt) >= todayStart).length;
-
   return (
-    <AppShell
-      subtitle="Boshqaruv paneli"
-      title={isTechnician ? `Salom, ${me?.firstName || 'Usta'}` : 'Umumiy koʻrsatkichlar'}
-      action={
-        me?.permissions.includes('orders.create') ? (
-          <Link href="/orders/new">
-            <Button className="gap-2 shadow-sm">
-              <PlusCircle className="h-4 w-4" />
-              <span>Yangi qabul</span>
-            </Button>
-          </Link>
-        ) : null
-      }
-    >
-      <div className="space-y-6">
-        {/* Metric Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
-            <CardContent className="p-5 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                  Bugun qabul
-                </p>
-                <h3 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 mt-1">
-                  {todayReceived}
-                </h3>
-              </div>
-              <div className="h-11 w-11 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
-                <Smartphone className="h-5 w-5" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
-            <CardContent className="p-5 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                  Ta'mirda
-                </p>
-                <h3 className="text-3xl font-bold tracking-tight text-blue-600 dark:text-blue-400 mt-1">
-                  {statusCount('IN_REPAIR')}
-                </h3>
-              </div>
-              <div className="h-11 w-11 rounded-xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                <Wrench className="h-5 w-5" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
-            <CardContent className="p-5 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                  Tayyor
-                </p>
-                <h3 className="text-3xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-1">
-                  {statusCount('READY')}
-                </h3>
-              </div>
-              <div className="h-11 w-11 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="h-5 w-5" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
-            <CardContent className="p-5 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                  {report?.todayCash !== undefined ? 'Bugungi tushum' : 'Diagnostikada'}
-                </p>
-                <h3 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 mt-1">
-                  {report?.todayCash !== undefined
-                    ? `${Number(report.todayCash).toLocaleString('ru-RU')} soʻm`
-                    : statusCount('DIAGNOSING')}
-                </h3>
-              </div>
-              <div className="h-11 w-11 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
-                <TrendingUp className="h-5 w-5" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Debt Warning Banner (if any) */}
-        {!isTechnician && Number(report?.debt || 0) > 0 && (
-          <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200/80 dark:border-red-900/60 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-red-900 dark:text-red-200">
-                  Mijozlar qarzdorligi mavjud
-                </p>
-                <p className="text-xs text-red-700 dark:text-red-400">
-                  Umumiy toʻlanmagan summa:{' '}
-                  <strong className="font-bold">
-                    {Number(report?.debt).toLocaleString('uz-UZ')} soʻm
-                  </strong>
-                </p>
-              </div>
-            </div>
-            <Link href="/payments">
-              <Button size="sm" variant="outline" className="text-xs border-red-300 dark:border-red-800">
-                Toʻlovlar roʻyxati →
-              </Button>
-            </Link>
-          </div>
-        )}
-
-        {/* Main Grid: Orders & Side Widgets */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Recent Orders List (2 cols) */}
-          <div className="lg:col-span-2 space-y-6">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-3">
-                <div>
-                  <CardTitle className="text-base">
-                    {isTechnician ? 'Menga biriktirilgan buyurtmalar' : "So'nggi buyurtmalar"}
-                  </CardTitle>
-                  <CardDescription>
-                    {isTechnician
-                      ? 'Siz ishlayotgan yoki kutilayotgan qurilmalar'
-                      : "Eng so'nggi qabul qilingan va yangilangan ta'mirlar"}
-                  </CardDescription>
-                </div>
-                <Link href="/orders">
-                  <Button variant="ghost" size="sm" className="gap-1 text-xs text-zinc-500">
-                    Barchasi <ChevronRight className="h-3.5 w-3.5" />
-                  </Button>
-                </Link>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="divide-y divide-zinc-100 dark:divide-zinc-800/80">
-                  {(isTechnician ? myAssignedOrders.slice(0, 6) : recentOrders).map(order => (
-                    <Link
-                      key={order.id}
-                      href={`/orders/${order.id}`}
-                      className="p-4 flex items-center justify-between hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40 transition-colors block"
-                    >
-                      <div className="min-w-0 pr-4">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-zinc-900 dark:text-zinc-100">
-                            {order.number}
-                          </span>
-                          <span className="text-xs text-zinc-400">·</span>
-                          <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300 truncate">
-                            {order.device?.brand} {order.device?.model}
-                          </span>
-                        </div>
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate mt-1">
-                          {order.complaint || "Shikoyat ko'rsatilmagan"}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <StatusBadge status={order.status} />
-                        <ChevronRight className="h-4 w-4 text-zinc-400 hidden sm:block" />
-                      </div>
-                    </Link>
-                  ))}
-                  {recentOrders.length === 0 && (
-                    <div className="p-8 text-center text-sm text-zinc-400">
-                      Hozircha buyurtmalar yoʻq
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* 7-Day Revenue Trend Chart (Owner / Admin) */}
-            {!isTechnician && report?.revenueByDay && report.revenueByDay.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Haftalik tushum dinamikasi</CardTitle>
-                  <CardDescription>Soʻnggi 7 kunlik yopilgan taʼmirlar daromadi</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {report.revenueByDay.map(d => {
-                    const max = Math.max(...report.revenueByDay!.map(x => Number(x.revenue)));
-                    const pct = max > 0 ? Math.round((Number(d.revenue) / max) * 100) : 0;
-                    return (
-                      <div key={d.day} className="flex items-center gap-3 text-xs">
-                        <span className="w-14 font-medium text-zinc-500 shrink-0">
-                          {d.day.slice(5)}
-                        </span>
-                        <div className="flex-1 h-3 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-zinc-900 dark:bg-zinc-100 rounded-full transition-all duration-500"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <span className="w-28 text-right font-semibold text-zinc-900 dark:text-zinc-100 shrink-0">
-                          {Number(d.revenue).toLocaleString('uz-UZ')} soʻm
-                        </span>
-                      </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          {/* Side Panels: Low Stock & Technicians (1 col) */}
-          <div className="space-y-6">
-            {/* Low Stock Alerts */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Package className="h-4 w-4 text-amber-500" />
-                  <span>Kam qolgan ehtiyot qismlar</span>
-                </CardTitle>
-                <Link href="/inventory">
-                  <Button variant="ghost" size="sm" className="h-7 text-xs text-zinc-500">
-                    Ombor →
-                  </Button>
-                </Link>
-              </CardHeader>
-              <CardContent className="p-0 divide-y divide-zinc-100 dark:divide-zinc-800/80">
-                {report?.lowStock && report.lowStock.length > 0 ? (
-                  report.lowStock.map(s => (
-                    <div key={s.partId} className="p-3.5 flex items-center justify-between">
-                      <div className="min-w-0 pr-2">
-                        <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-                          {s.name}
-                        </p>
-                        <p className="text-[11px] text-zinc-400 truncate">{s.branch}</p>
-                      </div>
-                      <span className="px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 font-bold text-xs shrink-0">
-                        {s.free} dona (min: {s.minimum})
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-6 text-center text-xs text-zinc-400">
-                    Barcha qismlar yetarli miqdorda
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Technicians Workload (Owner/Manager view) */}
-            {!isTechnician && report?.workload && report.workload.length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Users className="h-4 w-4 text-zinc-600" />
-                    <span>Ustalar ish yuki</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0 divide-y divide-zinc-100 dark:divide-zinc-800/80">
-                  {report.workload.map(w => (
-                    <div key={w.id} className="p-3.5 flex items-center justify-between">
-                      <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200">
-                        {w.name}
-                      </span>
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
-                        {w.active} ta faol
-                      </span>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Quick Links / Help */}
-            <Card className="bg-gradient-to-br from-zinc-900 to-zinc-800 text-white border-0 shadow-md">
-              <CardContent className="p-5 space-y-3">
-                <div className="flex items-center gap-2 text-zinc-300 text-xs font-medium">
-                  <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                  <span>Kafolat va Hujjatlar</span>
-                </div>
-                <p className="text-xs text-zinc-300 leading-relaxed">
-                  Har bir yopilgan buyurtma uchun avtomatik QR-kodli kafolat taloni va kvitansiya PDF
-                  fayllari generatsiya qilinadi.
-                </p>
-                <Link href="/warranties" className="inline-block pt-1">
-                  <Button size="sm" variant="secondary" className="text-xs font-medium">
-                    Kafolatlarni tekshirish →
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </div>
-    </AppShell>
+    <AuthFrame eyebrow="Birinchi kirish" title="Yangi parol qo'ying">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4" noValidate>
+        <p className="text-sm text-mute">Sizga berilgan vaqtinchalik parolni o&apos;zingiz biladigan parolga almashtiring.</p>
+        <FormField label="Vaqtinchalik parol" error={errors.currentPassword?.message}><Input {...form.register('currentPassword')} type="password" autoComplete="current-password" /></FormField>
+        <FormField label="Yangi parol" error={errors.newPassword?.message} description="Kamida 12 belgi"><Input {...form.register('newPassword')} type="password" autoComplete="new-password" /></FormField>
+        <FormField label="Yangi parolni takrorlang" error={errors.confirmPassword?.message}><Input {...form.register('confirmPassword')} type="password" autoComplete="new-password" /></FormField>
+        <ErrorBox>{errors.root?.message}</ErrorBox>
+        <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>Parolni saqlash</Button>
+      </form>
+    </AuthFrame>
   );
 }
 
-// Spec §13: a technician sees their own queue, not the financial dashboard.
-function TechnicianHome({ firstName, orders }: { firstName: string; orders: { id: string; number: string; status: string; complaint?: string; device: { brand: string; model: string } }[] }) {
-  const tiles: [string, string, string][] = [
-    ['RECEIVED', 'Yangi', 'text-zinc-900 dark:text-zinc-50'],
-    ['DIAGNOSING', 'Diagnostikada', 'text-sky-600'],
-    ['WAITING_PART', 'Detal kutilmoqda', 'text-purple-600'],
-    ['IN_REPAIR', "Ta'mirda", 'text-blue-600'],
-    ['READY', 'Tayyor', 'text-emerald-600'],
-  ];
-  const active = orders.filter(o => !['DELIVERED', 'CANCELLED', 'UNREPAIRABLE'].includes(o.status));
-  const order = ['IN_REPAIR', 'WAITING_PART', 'DIAGNOSING', 'RECEIVED', 'WAITING_CUSTOMER_APPROVAL', 'READY'];
-  const sorted = [...active].sort((x, y) => order.indexOf(x.status) - order.indexOf(y.status));
+const QUEUE = [
+  ['RECEIVED', 'Qabul qilingan', 'Navbatda turibdi'],
+  ['IN_REPAIR', "Ta'mirda", 'Ustada'],
+  ['READY', 'Tayyor', 'Olib ketilishi kerak'],
+] as const;
+
+function Home() {
+  const { data: me } = useMe();
+  const { data, isLoading, error } = useDashboard(!!me && can(me, 'reports.view'));
+  const count = (s: string) => data?.statuses.find(x => x.status === s)?.count ?? 0;
+  const max = Math.max(1, ...(data?.revenueByDay ?? []).map(d => Number(d.revenue)));
+
   return (
-    <AppShell subtitle="Menga biriktirilgan" title={`Salom, ${firstName}`}>
-      <div className="space-y-6">
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {tiles.map(([status, label, color]) => (
-            <Card key={status}>
-              <CardContent className="p-4">
-                <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider">{label}</p>
-                <p className={`text-3xl font-bold mt-1 ${color}`}>{orders.filter(o => o.status === status).length}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Mening ishlarim</CardTitle>
-            <CardDescription>Avval ta&apos;mirdagi, keyin detal kutayotgan va yangi buyurtmalar</CardDescription>
-          </CardHeader>
-          <CardContent className="p-0 divide-y divide-zinc-100 dark:divide-zinc-800/80">
-            {sorted.map(o => (
-              <Link key={o.id} href={`/orders/${o.id}`} className="p-4 flex items-center justify-between hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40">
-                <div className="min-w-0 pr-4">
-                  <p className="font-mono text-xs font-bold">{o.number} <span className="font-sans font-medium text-zinc-600 dark:text-zinc-300">· {o.device.brand} {o.device.model}</span></p>
-                  <p className="text-xs text-zinc-500 truncate mt-1">{o.complaint}</p>
-                </div>
-                <StatusBadge status={o.status} />
+    <AppShell title={me ? `Salom, ${me.firstName}` : 'Asosiy'}>
+      {error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading || !data ? <Loading rows={4} /> : (
+        <div className="space-y-5">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            {QUEUE.map(([status, label, hint]) => (
+              <Link key={status} href={`/orders?status=${status}`} className="rounded-lg border bg-white p-3 hover:border-ink/40 sm:p-4">
+                <p className="num font-mono text-2xl font-semibold sm:text-3xl">{count(status)}</p>
+                <p className="mt-1 text-xs font-medium sm:text-sm">{label}</p>
+                <p className="hidden text-xs text-mute sm:block">{hint}</p>
               </Link>
             ))}
-            {sorted.length === 0 && <p className="p-8 text-center text-sm text-zinc-400">Sizga biriktirilgan faol buyurtma yo&apos;q</p>}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+
+          <section className="talon">
+            <div className="grid grid-cols-2 divide-x">
+              <div className="p-4"><p className="eyebrow">Bugun kassa</p><p className="num mt-1 font-mono text-lg font-semibold sm:text-xl">{money(data.todayCash)}</p><p className="text-xs text-mute">{data.todayReceived} ta qabul</p></div>
+              <div className="p-4"><p className="eyebrow">Shu oy</p><p className="num mt-1 font-mono text-lg font-semibold sm:text-xl">{money(data.monthCash)}</p><p className="text-xs text-mute">so&apos;m tushdi</p></div>
+            </div>
+            <div className="talon-cut" />
+            <div className="p-4">
+              <div className="flex h-20 items-end gap-1.5" aria-label="7 kunlik tushum">
+                {data.revenueByDay.map(d => (
+                  <div key={d.day} className="flex flex-1 flex-col items-center gap-1" title={`${d.day}: ${som(d.revenue)}`}>
+                    <div className="w-full rounded-sm bg-ink/80" style={{ height: `${Math.max(3, (Number(d.revenue) / max) * 64)}px` }} />
+                    <span className="num font-mono text-[10px] text-mute">{d.day.slice(8)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {Number(data.debt) > 0 && can(me, 'reports.finance') && (
+              <Link href="/reports#debtors" className="flex items-center justify-between border-t px-4 py-3 text-sm hover:bg-paper">
+                <span>Mijozlar qarzi</span>
+                <span className="num flex items-center gap-1 font-mono font-semibold text-amber-700">{money(data.debt)}<ChevronRight className="h-4 w-4" /></span>
+              </Link>
+            )}
+          </section>
+
+          <section>
+            <div className="mb-2 flex items-baseline justify-between">
+              <h2 className="font-semibold">Oxirgi buyurtmalar</h2>
+              <Link href="/orders?status=" className="text-sm text-mute hover:text-ink">Hammasi</Link>
+            </div>
+            {data.recent.length === 0 ? (
+              <Empty title="Hali buyurtma yo'q">{can(me, 'orders.create') && <Link href="/orders/new" className="font-medium text-ink underline">Birinchi qurilmani qabul qiling</Link>}</Empty>
+            ) : (
+              <ul className="divide-y overflow-hidden rounded-lg border bg-white">
+                {data.recent.map(o => (
+                  <li key={o.id}>
+                    <Link href={`/orders/${o.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-paper">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{deviceName(o.device)} <span className="font-normal text-mute">· {o.customer.firstName}</span></p>
+                        <p className="num font-mono text-xs text-mute">{o.number} · {dateTime(o.createdAt)}</p>
+                      </div>
+                      <StatusBadge status={o.status} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
     </AppShell>
   );
 }

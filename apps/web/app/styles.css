@@ -3,126 +3,40 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --background: 0 0% 98%;
-    --foreground: 240 10% 3.9%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
-
-    --radius: 0.75rem;
-  }
-
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-
-    --card: 240 10% 5.5%;
-    --card-foreground: 0 0% 98%;
-
-    --popover: 240 10% 5.5%;
-    --popover-foreground: 0 0% 98%;
-
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-  }
-}
-
-@layer base {
-  * {
-    @apply border-border;
-    box-sizing: border-box;
-  }
-
+  * { @apply border-line; box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
-    @apply bg-background text-foreground antialiased selection:bg-zinc-900 selection:text-white dark:selection:bg-white dark:selection:text-zinc-900;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    @apply bg-paper text-ink antialiased;
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    min-width: 320px;
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
   }
-
-  /* Custom subtle scrollbar */
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    @apply bg-zinc-300 dark:bg-zinc-700 rounded-full;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-zinc-400 dark:bg-zinc-600;
+  /* Numbers line up in columns: order numbers, amounts, phones. */
+  .num { font-variant-numeric: tabular-nums; }
+  :focus-visible { outline: 2px solid #111113; outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }
 }
 
-/* Custom UI utilities */
-.glass-panel {
-  @apply bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md border border-zinc-200/70 dark:border-zinc-800/70;
-}
-
-.gradient-text {
-  @apply bg-gradient-to-r from-zinc-900 via-zinc-700 to-zinc-900 dark:from-white dark:via-zinc-300 dark:to-white bg-clip-text text-transparent;
-}
-
-.badge-pulse {
-  position: relative;
-}
-.badge-pulse::before {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: 9999px;
-  background: currentColor;
-  opacity: 0.25;
-  animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-
-@keyframes ping {
-  75%, 100% {
-    transform: scale(1.6);
-    opacity: 0;
+@layer components {
+  /* The repair ticket: a paper talon with a torn-off stub, echoing the printed receipt. */
+  .talon { @apply relative rounded-lg border bg-white; }
+  .talon-cut {
+    @apply relative my-0 border-t border-dashed;
   }
+  .talon-cut::before, .talon-cut::after {
+    content: '';
+    @apply absolute h-4 w-4 rounded-full border bg-paper;
+    top: -0.5rem;
+  }
+  .talon-cut::before { left: -0.5rem; clip-path: inset(0 0 0 50%); }
+  .talon-cut::after { right: -0.5rem; clip-path: inset(0 50% 0 0); }
+  .eyebrow { @apply text-[11px] font-semibold uppercase tracking-[0.12em] text-mute; }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+@media print {
+  body { background: #fff; min-width: 0; }
 }

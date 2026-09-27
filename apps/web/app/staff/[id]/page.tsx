@@ -1,172 +1,114 @@
 'use client';
-import Link from 'next/link';
-import { use, useState } from 'react';
+
+import { useState } from 'react';
+import { useParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
 import { api } from '../../../lib/api';
-import { useMe, useBranches, useStaffActivity } from '../../../lib/queries';
+import { errorText } from '../../../lib/errors';
+import { dateTime, fullName, normalizePhone, phone } from '../../../lib/format';
+import { can, useMe, type Staff } from '../../../lib/queries';
 import { AppShell } from '../../../components/layout/app-shell';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
-import { Select } from '../../../components/ui/select';
 import { FormField } from '../../../components/ui/form-field';
 import { StatusBadge } from '../../../components/ui/status-badge';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '../../../components/ui/card';
+import { ErrorBox, Loading, Notice } from '../../../components/ui/feedback';
 
-type StaffUser = {
-  id: string; login: string; firstName: string; lastName?: string | null; phone: string; email?: string | null; status: string; mustChangePassword: boolean;
-  roles: { role: { name: string; systemKey?: string | null } }[]; branches: { branch: { id: string; name: string } }[];
+const ACTIONS: Record<string, string> = {
+  ORDER_RECEIVED: 'Qurilma qabul qildi', ORDER_IN_REPAIR: "Ta'mirga oldi", ORDER_READY: 'Tayyor deb belgiladi', ORDER_DELIVERED: 'Mijozga berdi',
+  ORDER_CANCELLED: 'Bekor qildi', PRICE_CHANGE: "Narxni o'zgartirdi", PAYMENT_RECEIVED: "To'lov oldi", PAYMENT_REFUNDED: 'Pul qaytardi',
+  CUSTOMER_CREATED: "Mijoz qo'shdi", DEVICE_CREATED: "Qurilma qo'shdi", EXPENSE_CREATED: "Xarajat yozdi", STAFF_CREATED: "Xodim qo'shdi",
+  STAFF_UPDATED: "Xodimni o'zgartirdi", STAFF_PASSWORD_RESET: 'Parolni yangiladi', SETTING_CHANGED: "Sozlamani o'zgartirdi",
 };
-type Stats = { assigned: number; completed: number; active: number; averageRepairSeconds: number; warrantyReturns: number; workRevenue: string | number; repairActions: number; commission: string | number };
-type Compensation = { type: string; salary?: string | null; percentage?: string | null; fixedPerJob?: string | null; effectiveFrom: string } | null;
 
-const ROLE_LABEL: Record<string, string> = { OWNER: 'Egasi', ADMIN: 'Administrator', MANAGER: 'Menejer', TECHNICIAN: 'Usta' };
-const ACTION_LABEL: Record<string, string> = {
-  AUTH_LOGIN: 'Tizimga kirdi', AUTH_LOGOUT: 'Tizimdan chiqdi', AUTH_PASSWORD_CHANGED: "Parolni o'zgartirdi",
-  ORDER_RECEIVED: 'Buyurtma qabul qildi', ORDER_DIAGNOSING: 'Diagnostikani boshladi', QUOTE_UPDATED: 'Smeta tuzdi', ORDER_WAITING_CUSTOMER_APPROVAL: 'Tasdiqqa yubordi',
-  ORDER_WAITING_PART: 'Detal kutishga o‘tkazdi', ORDER_IN_REPAIR: "Ta'mirga o'tkazdi", REPAIR_STARTED: "Ta'mirni boshladi", REPAIR_PAUSED: "Ta'mirni to'xtatdi",
-  REPAIR_ACTION_COMPLETED: 'Ish bajardi', ORDER_READY: "Ta'mirni yakunladi", ORDER_DELIVERED: 'Qurilmani topshirdi', ORDER_ASSIGNED: 'Usta biriktirdi',
-  PART_RESERVED: 'Detal rezerv qildi', PART_USED: "Detal o'rnatdi", PART_RELEASED: 'Rezervni bekor qildi', PART_RETURNED: 'Detalni omborga qaytardi',
-  PAYMENT_RECEIVED: "To'lov qabul qildi", PAYMENT_REFUNDED: 'Pul qaytardi', WARRANTY_CREATED: 'Kafolat berdi', ORDER_CANCELLED: 'Buyurtmani bekor qildi',
-};
-const money = (v: string | number | null | undefined) => Number(v ?? 0).toLocaleString('ru-RU') + " so'm";
-const hms = (s: number) => `${Math.floor(s / 3600)} soat ${Math.round((s % 3600) / 60)} daq`;
-
-export default function StaffDetail({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function StaffMember() {
+  const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const { data: me } = useMe();
-  const isOwner = me?.role === 'OWNER';
-  const { data: branches = [] } = useBranches();
-  const [days, setDays] = useState(30);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const [busy, setBusy] = useState(false);
-  const user = useQuery({ queryKey: ['staff', id], queryFn: () => api<StaffUser>('/staff/' + id) });
-  const stats = useQuery({ queryKey: ['staff', id, 'stats', days], queryFn: () => api<Stats>(`/staff/${id}/statistics?from=${new Date(Date.now() - days * 86400000).toISOString()}`) });
-  const activity = useStaffActivity(id);
-  const compensation = useQuery({ queryKey: ['staff', id, 'compensation'], queryFn: () => api<Compensation>('/staff/' + id + '/compensation') });
+  const { data: s, isLoading, error } = useQuery({ queryKey: ['staff', id], queryFn: () => api<Staff>('/staff/' + id) });
+  const { data: activity } = useQuery({ queryKey: ['staff', id, 'activity'], queryFn: () => api<{ id: string; action: string; createdAt: string }[]>('/staff/' + id + '/activity') });
+  const [state, setState] = useState<{ ok?: string; error?: string }>({});
+  const [password, setPassword] = useState('');
+  if (isLoading || !s) return <AppShell title="Xodim" back="/staff" narrow>{error ? <ErrorBox>{errorText(error)}</ErrorBox> : <Loading />}</AppShell>;
 
-  async function run(path: string, method: string, body: unknown, done: string) {
-    setBusy(true); setError(''); setNotice('');
-    try {
-      await api(path, { method, body: JSON.stringify(body) });
-      await Promise.all([qc.invalidateQueries({ queryKey: ['staff'] })]);
-      setNotice(done);
-    } catch (e) { setError(e instanceof Error ? e.message : 'Saqlanmadi'); } finally { setBusy(false); }
+  const owner = s.roles.some(r => r.role.systemKey === 'OWNER');
+  const self = me?.id === s.id;
+  // Colleagues manage each other; only the owner account is off-limits to them.
+  const editable = can(me, 'staff.manage') && (!owner || me?.role === 'OWNER');
+  async function run(fn: () => Promise<unknown>, ok: string) {
+    setState({});
+    try { await fn(); await qc.invalidateQueries({ queryKey: ['staff'] }); setState({ ok }); } catch (e) { setState({ error: errorText(e) }); }
+  }
+  async function saveProfile(d: FormData) {
+    const lastName = String(d.get('lastName') ?? '').trim();
+    await run(() => api('/staff/' + id, { method: 'PATCH', body: JSON.stringify({ firstName: String(d.get('firstName')).trim(), lastName, phone: normalizePhone(String(d.get('phone'))) }) }), 'Saqlandi');
   }
 
-  const back = <Link href="/staff"><Button variant="outline" size="sm" className="gap-1.5 text-xs"><ArrowLeft className="h-3.5 w-3.5" />Xodimlar</Button></Link>;
-  const u = user.data;
-  if (!u) return <AppShell title="Xodim" action={back}><p className="p-10 text-center text-sm text-zinc-400">{user.error?.message ?? 'Yuklanmoqda...'}</p></AppShell>;
-  const roleKey = u.roles[0]?.role.systemKey ?? '';
-  const isTechnician = u.roles.some(r => r.role.systemKey === 'TECHNICIAN');
-  const s = stats.data;
-
   return (
-    <AppShell title={`${u.firstName} ${u.lastName ?? ''}`.trim()} subtitle={ROLE_LABEL[roleKey] ?? roleKey} action={<div className="flex items-center gap-2"><StatusBadge status={u.status} />{back}</div>}>
-      <div className="space-y-6">
-        {error && <p role="alert" className="p-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-200">{error}</p>}
-        {notice && <p role="status" className="p-3 rounded-lg bg-emerald-50 text-emerald-700 text-sm border border-emerald-200">{notice}</p>}
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <CardTitle className="text-base">Statistika</CardTitle>
-            <Select value={days} onChange={e => setDays(Number(e.target.value))} className="w-36 h-9 text-xs" aria-label="Davr">
-              <option value={1}>Bugun</option><option value={7}>7 kun</option><option value={30}>30 kun</option><option value={90}>90 kun</option><option value={365}>Yil</option>
-            </Select>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-            {[
-              ['Biriktirilgan', s?.assigned], ['Tugatilgan', s?.completed], ['Faol', s?.active], ["O'rtacha vaqt", s ? hms(s.averageRepairSeconds) : undefined],
-              ['Kafolat qaytishi', s?.warrantyReturns], ['Ish daromadi', s ? money(s.workRevenue) : undefined], ['Bajarilgan ishlar', s?.repairActions], ['Komissiya', s ? money(s.commission) : undefined],
-            ].map(([k, v]) => <div key={String(k)} className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-900"><p className="text-[11px] text-zinc-500 uppercase">{k}</p><p className="font-bold text-base mt-0.5">{v ?? '…'}</p></div>)}
-          </CardContent>
-        </Card>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader><CardTitle className="text-base">Ma&apos;lumotlar</CardTitle>{!isOwner && <CardDescription>Faqat egasi tahrirlay oladi</CardDescription>}</CardHeader>
-            <CardContent>
-              <form className="space-y-3" onSubmit={e => {
-                e.preventDefault(); const d = new FormData(e.currentTarget);
-                const body: Record<string, unknown> = { firstName: d.get('firstName'), lastName: d.get('lastName') ?? '', phone: d.get('phone') };
-                const email = String(d.get('email') ?? '').trim(); if (email) body.email = email;
-                if (roleKey !== 'OWNER') { body.role = d.get('role'); body.branchIds = d.getAll('branchIds').map(String); }
-                void run('/staff/' + id, 'PATCH', body, "Ma'lumotlar saqlandi");
-              }}>
-                <p className="text-xs text-zinc-500">Login: <b>{u.login}</b>{u.mustChangePassword ? ' · vaqtinchalik parol' : ''}</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <FormField label="Ism" required><Input name="firstName" defaultValue={u.firstName} required disabled={!isOwner} /></FormField>
-                  <FormField label="Familiya"><Input name="lastName" defaultValue={u.lastName ?? ''} disabled={!isOwner} /></FormField>
-                  <FormField label="Telefon" required><Input name="phone" defaultValue={u.phone} required pattern="\+[1-9][0-9]{7,14}" disabled={!isOwner} /></FormField>
-                  <FormField label="Email"><Input name="email" type="email" defaultValue={u.email ?? ''} disabled={!isOwner} /></FormField>
-                </div>
-                {roleKey !== 'OWNER' && (
-                  <>
-                    <FormField label="Lavozim"><Select name="role" defaultValue={roleKey} disabled={!isOwner}>{['ADMIN', 'MANAGER', 'TECHNICIAN'].map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</Select></FormField>
-                    <fieldset className="text-sm space-y-1"><legend className="text-sm font-medium mb-1">Filiallar</legend>
-                      {branches.map(b => <label key={b.id} className="flex items-center gap-2"><input type="checkbox" name="branchIds" value={b.id} defaultChecked={u.branches.some(x => x.branch.id === b.id)} disabled={!isOwner} className="h-4 w-4" />{b.name}</label>)}
-                    </fieldset>
-                  </>
-                )}
-                {isOwner && <Button type="submit" size="sm" disabled={busy}>Saqlash</Button>}
-              </form>
-              {isOwner && roleKey !== 'OWNER' && (
-                <div className="flex flex-wrap gap-2 pt-4 mt-4 border-t border-zinc-100 dark:border-zinc-800">
-                  {u.status !== 'ACTIVE' && <Button size="sm" variant="outline" disabled={busy} onClick={() => run('/staff/' + id + '/status', 'PATCH', { status: 'ACTIVE' }, 'Xodim faollashtirildi')}>Faollashtirish</Button>}
-                  {u.status === 'ACTIVE' && <Button size="sm" variant="outline" disabled={busy} onClick={() => { if (window.confirm("Xodim to'xtatilsinmi? U tizimga kira olmaydi.")) void run('/staff/' + id + '/status', 'PATCH', { status: 'SUSPENDED' }, "Xodim to'xtatildi"); }}>To&apos;xtatish</Button>}
-                  {u.status !== 'ARCHIVED' && <Button size="sm" variant="destructive" disabled={busy} onClick={() => { if (window.confirm('Xodim arxivlansinmi? Uning tarixi saqlanib qoladi.')) void run('/staff/' + id + '/status', 'PATCH', { status: 'ARCHIVED' }, 'Xodim arxivlandi'); }}>Arxivlash</Button>}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="space-y-6">
-            {isTechnician && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Komissiya</CardTitle>
-                  <CardDescription>
-                    {compensation.data ? `Joriy: ${compensation.data.type}${compensation.data.percentage ? ' · ' + compensation.data.percentage + '%' : ''}${compensation.data.salary && Number(compensation.data.salary) > 0 ? ' · oylik ' + money(compensation.data.salary) : ''}${compensation.data.fixedPerJob && Number(compensation.data.fixedPerJob) > 0 ? ' · ' + money(compensation.data.fixedPerJob) + '/ish' : ''}` : 'Belgilanmagan'}
-                  </CardDescription>
-                </CardHeader>
-                {isOwner && (
-                  <CardContent>
-                    <form className="grid grid-cols-2 gap-3" onSubmit={async e => {
-                      e.preventDefault(); const d = new FormData(e.currentTarget);
-                      await run('/staff/' + id + '/compensation', 'POST', { type: d.get('type'), salary: d.get('salary') || '0', percentage: d.get('percentage') || '0', fixedPerJob: d.get('fixedPerJob') || '0' }, 'Komissiya saqlandi');
-                      await qc.invalidateQueries({ queryKey: ['staff', id, 'compensation'] });
-                    }}>
-                      <FormField label="Turi" className="col-span-2"><Select name="type" defaultValue={compensation.data?.type ?? 'PERCENTAGE'}>
-                        <option value="SALARY">Faqat oylik</option><option value="PERCENTAGE">Foiz</option><option value="FIXED_PER_JOB">Har ish uchun belgilangan</option><option value="SALARY_PLUS_PERCENTAGE">Oylik + foiz</option>
-                      </Select></FormField>
-                      <FormField label="Oylik"><Input name="salary" inputMode="decimal" pattern="\d{1,12}(\.\d{1,2})?" placeholder="0" /></FormField>
-                      <FormField label="Foiz (%)"><Input name="percentage" inputMode="decimal" pattern="\d{1,3}(\.\d{1,2})?" placeholder="30" /></FormField>
-                      <FormField label="Har ish uchun"><Input name="fixedPerJob" inputMode="decimal" pattern="\d{1,12}(\.\d{1,2})?" placeholder="0" /></FormField>
-                      <Button type="submit" size="sm" className="self-end h-10" disabled={busy}>Saqlash</Button>
-                    </form>
-                  </CardContent>
-                )}
-              </Card>
-            )}
-
-            <Card>
-              <CardHeader><CardTitle className="text-base">Faollik</CardTitle></CardHeader>
-              <CardContent>
-                <ol className="space-y-2 text-sm max-h-96 overflow-y-auto">
-                  {(activity.data ?? []).map((a, i) => (
-                    <li key={i} className="flex gap-3">
-                      <span className="text-xs text-zinc-400 w-28 shrink-0">{new Date(a.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-                      <span>{ACTION_LABEL[a.action] ?? a.action}</span>
-                    </li>
-                  ))}
-                  {activity.data?.length === 0 && <li className="text-zinc-400">Faollik yo&apos;q</li>}
-                </ol>
-              </CardContent>
-            </Card>
+    <AppShell title={fullName(s)} back="/staff" narrow>
+      <div className="space-y-4">
+        <section className="rounded-lg border bg-white p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold">{owner ? 'Boshliq' : 'Xodim'}</p>
+              <p className="num font-mono text-sm text-mute">{s.login} · {phone(s.phone)}</p>
+            </div>
+            <StatusBadge status={s.status} />
           </div>
-        </div>
+          {s.mustChangePassword && <p className="mt-2 text-sm text-amber-700">Hali vaqtinchalik parol bilan. Birinchi kirishda o&apos;z parolini qo&apos;yadi.</p>}
+        </section>
+
+        <ErrorBox>{state.error}</ErrorBox><Notice>{state.ok}</Notice>
+
+        {editable && (
+          <section className="rounded-lg border bg-white p-4">
+            <h2 className="mb-3 font-semibold">Ma&apos;lumotlar</h2>
+            <form onSubmit={e => { e.preventDefault(); void saveProfile(new FormData(e.currentTarget)); }} className="grid gap-3">
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Ism"><Input name="firstName" defaultValue={s.firstName} required /></FormField>
+                <FormField label="Familiya"><Input name="lastName" defaultValue={s.lastName ?? ''} /></FormField>
+              </div>
+              <FormField label="Telefon"><Input name="phone" defaultValue={s.phone} inputMode="tel" required /></FormField>
+              <Button className="sm:w-fit">Saqlash</Button>
+            </form>
+          </section>
+        )}
+
+        {editable && !self && (
+          <section className="rounded-lg border bg-white p-4">
+            <h2 className="font-semibold">Parolni unutdimi?</h2>
+            <p className="mt-0.5 text-sm text-mute">Yangi vaqtinchalik parol bering. Barcha qurilmalardan chiqib ketadi.</p>
+            <div className="mt-3 flex gap-2">
+              <Input value={password} onChange={e => setPassword(e.target.value)} placeholder="Kamida 12 belgi" autoCapitalize="none" autoComplete="new-password" aria-label="Vaqtinchalik parol" />
+              <Button variant="secondary" disabled={password.length < 12} onClick={() => run(() => api(`/staff/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ temporaryPassword: password }) }).then(() => setPassword('')), `Yangi parol o'rnatildi. Xodimga ayting.`)}>O&apos;rnatish</Button>
+            </div>
+          </section>
+        )}
+
+        {editable && !self && !owner && (
+          <section className="rounded-lg border bg-white p-4">
+            <h2 className="font-semibold">{s.status === 'ACTIVE' ? "Ishdan ketdimi?" : 'Qayta faollashtirish'}</h2>
+            <p className="mt-0.5 text-sm text-mute">{s.status === 'ACTIVE' ? "To'xtatilgan xodim tizimga kira olmaydi. Uning yozuvlari saqlanadi." : 'Xodim yana tizimga kira oladi.'}</p>
+            <Button className="mt-3" variant={s.status === 'ACTIVE' ? 'destructive' : 'default'}
+              onClick={() => run(() => api(`/staff/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: s.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE' }) }), s.status === 'ACTIVE' ? "To'xtatildi" : 'Faollashtirildi')}>
+              {s.status === 'ACTIVE' ? "To'xtatish" : 'Faollashtirish'}
+            </Button>
+          </section>
+        )}
+
+        <section className="rounded-lg border bg-white">
+          <h2 className="border-b px-4 py-3 font-semibold">Oxirgi amallar</h2>
+          {activity?.length ? (
+            <ul className="divide-y">
+              {activity.slice(0, 50).map(a => (
+                <li key={a.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                  <span className="min-w-0 truncate">{ACTIONS[a.action] ?? a.action}</span>
+                  <span className="shrink-0 text-xs text-mute">{dateTime(a.createdAt)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="px-4 py-6 text-sm text-mute">Hali amal yo&apos;q</p>}
+        </section>
       </div>
     </AppShell>
   );

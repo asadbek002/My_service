@@ -4,307 +4,190 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  LayoutDashboard,
-  ClipboardList,
-  Users,
-  UserCheck,
-  Package,
-  CreditCard,
-  Receipt,
-  ShieldCheck,
-  BarChart3,
-  Bell,
-  Settings,
-  Search,
-  PlusCircle,
-  LogOut,
-  Menu,
-  X,
-  Smartphone,
-  CheckCircle2,
-  Building2,
+  Home, ClipboardList, Users, CreditCard, BarChart3, Receipt, ShieldCheck, Bell, UserCog, Settings,
+  Plus, Menu, X, LogOut, Search, ChevronLeft, LifeBuoy,
 } from 'lucide-react';
-import { useMe } from '../../lib/queries';
+import { useMe, can } from '../../lib/queries';
 import { logout } from '../../lib/api';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+import { cn } from '../../lib/utils';
+import { Mark } from './mark';
 
 interface AppShellProps {
   children: React.ReactNode;
   title?: string;
-  subtitle?: string;
+  /** Where the back arrow leads; shown instead of the logo on phones. */
+  back?: string;
   action?: React.ReactNode;
+  /** Narrow reading column for forms and single records. */
+  narrow?: boolean;
 }
 
-const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, permission: null },
+const NAV = [
+  { href: '/dashboard', label: 'Asosiy', icon: Home, permission: null },
   { href: '/orders', label: 'Buyurtmalar', icon: ClipboardList, permission: 'orders.view' },
   { href: '/customers', label: 'Mijozlar', icon: Users, permission: 'customers.view' },
-  { href: '/staff', label: 'Xodimlar', icon: UserCheck, permission: 'staff.view' },
-  { href: '/inventory', label: 'Ombor', icon: Package, permission: 'inventory.view' },
   { href: '/payments', label: "To'lovlar", icon: CreditCard, permission: 'payments.view' },
+  { href: '/reports', label: 'Hisobot', icon: BarChart3, permission: 'reports.view' },
   { href: '/expenses', label: 'Xarajatlar', icon: Receipt, permission: 'reports.finance' },
   { href: '/warranties', label: 'Kafolatlar', icon: ShieldCheck, permission: 'orders.view' },
-  { href: '/reports', label: 'Hisobotlar', icon: BarChart3, permission: 'reports.view' },
-  { href: '/notifications', label: 'Xabarnomalar', icon: Bell, permission: 'orders.view' },
+  { href: '/notifications', label: 'Xabarlar', icon: Bell, permission: 'orders.view' },
+  { href: '/staff', label: 'Xodimlar', icon: UserCog, permission: 'staff.view' },
   { href: '/settings', label: 'Sozlamalar', icon: Settings, permission: 'settings.manage' },
-];
+] as const;
 
-export function AppShell({ children, title, subtitle, action }: AppShellProps) {
-  const pathname = usePathname();
+const isActive = (pathname: string, href: string) =>
+  href === '/dashboard' ? pathname === href : pathname === href || (pathname.startsWith(href + '/') && !(href === '/orders' && pathname === '/orders/new'));
+
+export function AppShell({ children, title, back, action, narrow }: AppShellProps) {
+  const pathname = usePathname() ?? '';
   const router = useRouter();
-  const { data: me } = useMe();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { data: me, error } = useMe();
+  const [menuOpen, setMenuOpen] = useState(false);
+
   // A temporary password blocks every business request; the dashboard hosts the change form.
   useEffect(() => {
     if (me?.mustChangePassword && pathname !== '/dashboard') router.replace('/dashboard');
   }, [me?.mustChangePassword, pathname, router]);
+  useEffect(() => {
+    if (error?.message === 'SESSION_EXPIRED') router.replace('/login');
+  }, [error, router]);
+  useEffect(() => { setMenuOpen(false); }, [pathname]);
 
   const onLogout = async () => {
-    try {
-      await logout();
-    } finally {
-      router.replace('/login');
-    }
+    try { await logout(); } finally { router.replace(me?.support ? '/platform' : '/login'); }
   };
-
-  const filteredNav = navItems.filter(item => {
-    if (!item.permission) return true;
-    return me?.permissions?.includes(item.permission);
-  });
+  const nav = NAV.filter(item => !item.permission || can(me, item.permission));
+  const canCreate = can(me, 'orders.create');
 
   return (
-    <div className="min-h-screen bg-zinc-50/60 dark:bg-zinc-950 flex flex-col md:flex-row">
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-64 flex-col border-r border-zinc-200/80 dark:border-zinc-800/80 bg-white dark:bg-zinc-900/90 shrink-0 sticky top-0 h-screen z-30">
-        {/* Brand Header */}
-        <div className="p-5 border-b border-zinc-100 dark:border-zinc-800/60 flex items-center justify-between">
-          <Link href="/dashboard" className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-lg bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900 flex items-center justify-center font-bold text-sm shadow-sm">
-              MS
-            </div>
-            <div>
-              <span className="font-bold text-sm tracking-tight text-zinc-900 dark:text-zinc-50 block leading-tight">
-                MY SERVICE
-              </span>
-              <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-medium tracking-wider uppercase">
-                Premium CRM
-              </span>
-            </div>
-          </Link>
-        </div>
-
-        {/* Navigation Items */}
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-          {filteredNav.map(item => {
-            const Icon = item.icon;
-            const isActive =
-              pathname === item.href || (item.href !== '/dashboard' && pathname?.startsWith(item.href));
+    <div className="min-h-[100dvh] lg:flex">
+      {/* Desktop sidebar */}
+      <aside className="sticky top-0 hidden h-[100dvh] w-60 shrink-0 flex-col border-r bg-white lg:flex">
+        <Link href="/dashboard" className="flex h-16 items-center gap-2.5 border-b px-5">
+          <Mark />
+          <span className="text-sm font-bold tracking-[0.14em]">MY SERVICE</span>
+        </Link>
+        {canCreate && (
+          <div className="px-3 pt-4">
+            <Link href="/orders/new" className="flex h-10 items-center justify-center gap-2 rounded-md bg-ink text-sm font-semibold text-white hover:bg-ink-soft">
+              <Plus className="h-4 w-4" /> Yangi qabul
+            </Link>
+          </div>
+        )}
+        <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
+          {nav.map(item => {
+            const active = isActive(pathname, item.href);
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                  isActive
-                    ? 'bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900 shadow-sm'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 hover:text-zinc-900 dark:hover:text-zinc-50'
-                }`}
-              >
-                <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-white dark:text-zinc-900' : 'text-zinc-500 dark:text-zinc-400'}`} />
-                <span>{item.label}</span>
+              <Link key={item.href} href={item.href} aria-current={active ? 'page' : undefined}
+                className={cn('flex items-center gap-3 rounded-md px-3 py-2 text-sm', active ? 'bg-black/[0.06] font-semibold text-ink' : 'text-mute hover:bg-black/[0.03] hover:text-ink')}>
+                <item.icon className="h-4 w-4 shrink-0" />{item.label}
               </Link>
             );
           })}
         </nav>
-
-        {/* User Info & Logout Footer */}
-        <div className="p-3 border-t border-zinc-100 dark:border-zinc-800/60 bg-zinc-50/50 dark:bg-zinc-900/50">
-          <div className="flex items-center justify-between p-2 rounded-lg">
-            <div className="min-w-0 flex-1 mr-2">
-              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 truncate">
-                {me?.firstName || 'Foydalanuvchi'}
-              </p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
-                  {me?.role || 'Xodim'}
-                </span>
-              </div>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-zinc-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
-              onClick={onLogout}
-              title="Chiqish"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
+        <div className="flex items-center gap-2 border-t p-3">
+          <div className="min-w-0 flex-1 px-2">
+            <p className="truncate text-sm font-semibold">{me?.firstName ?? '…'}</p>
+            <p className="text-xs text-mute">{me?.role === 'OWNER' ? 'Boshliq' : 'Xodim'}</p>
           </div>
+          <button onClick={onLogout} className="rounded-md p-2 text-mute hover:bg-red-50 hover:text-red-600" aria-label="Chiqish" title="Chiqish">
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 pb-20 md:pb-8">
-        {/* Top Navbar */}
-        <header className="sticky top-0 z-20 h-16 border-b border-zinc-200/80 dark:border-zinc-800/80 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
-              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </Button>
-
-            <Link href="/dashboard" className="md:hidden flex items-center gap-2">
-              <div className="h-7 w-7 rounded bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900 flex items-center justify-center font-bold text-xs">
-                MS
-              </div>
-              <span className="font-bold text-sm tracking-tight text-zinc-900 dark:text-zinc-50">
-                MY SERVICE
-              </span>
-            </Link>
-
-            {/* Quick Search Shortcut */}
-            <Link
-              href="/search"
-              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 text-xs hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors w-48 md:w-64"
-            >
-              <Search className="h-3.5 w-3.5" />
-              <span>Qidiruv (telefon, IMEI...)...</span>
-              <kbd className="ml-auto text-[10px] bg-zinc-200/60 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-600 dark:text-zinc-400 font-mono">
-                ⌘K
-              </kbd>
-            </Link>
+      <div className="flex min-w-0 flex-1 flex-col">
+        {me?.support && (
+          <div className="flex items-center justify-center gap-2 bg-amber-100 px-4 py-1.5 text-center text-xs font-medium text-amber-900">
+            <LifeBuoy className="h-3.5 w-3.5 shrink-0" /> Yordam rejimi: siz servisga boshliq nomidan kirdingiz. Amallar jurnalga yoziladi.
           </div>
-
-          <div className="flex items-center gap-3">
-            {me?.permissions?.includes('orders.create') && (
-              <Link href="/orders/new">
-                <Button size="sm" className="gap-1.5 shadow-sm font-semibold">
-                  <PlusCircle className="h-4 w-4" />
-                  <span className="hidden sm:inline">Yangi qabul</span>
-                </Button>
-              </Link>
+        )}
+        <header className="sticky top-0 z-20 border-b bg-paper/95 backdrop-blur supports-[backdrop-filter]:bg-paper/80">
+          <div className={cn('mx-auto flex h-14 items-center gap-2 px-4 lg:h-16 lg:px-8', narrow ? 'max-w-3xl' : 'max-w-6xl')}>
+            {back ? (
+              <Link href={back} className="-ml-2 rounded-md p-2 hover:bg-black/[0.04]" aria-label="Orqaga"><ChevronLeft className="h-5 w-5" /></Link>
+            ) : (
+              <Link href="/dashboard" className="lg:hidden" aria-label="Asosiy"><Mark /></Link>
+            )}
+            <h1 className="min-w-0 flex-1 truncate text-lg font-semibold lg:text-xl">{title}</h1>
+            {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
+            {can(me, 'orders.view') && (
+              <Link href="/search" className="rounded-md p-2 text-mute hover:bg-black/[0.04] hover:text-ink" aria-label="Qidirish"><Search className="h-5 w-5" /></Link>
             )}
           </div>
         </header>
 
-        {/* Mobile Navigation Drawer */}
-        {mobileMenuOpen && (
-          <div className="fixed inset-0 z-40 md:hidden bg-zinc-900/60 backdrop-blur-sm">
-            <div className="fixed inset-y-0 left-0 w-4/5 max-w-xs bg-white dark:bg-zinc-900 p-5 shadow-2xl flex flex-col">
-              <div className="flex items-center justify-between pb-4 border-b border-zinc-100 dark:border-zinc-800">
-                <span className="font-bold text-base text-zinc-900 dark:text-zinc-50">Menyu</span>
-                <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(false)}>
-                  <X className="h-5 w-5" />
-                </Button>
-              </div>
-              <nav className="flex-1 overflow-y-auto py-4 space-y-1">
-                {filteredNav.map(item => {
-                  const Icon = item.icon;
-                  const isActive = pathname === item.href;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${
-                        isActive
-                          ? 'bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900'
-                          : 'text-zinc-600 dark:text-zinc-400'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      <span>{item.label}</span>
-                    </Link>
-                  );
-                })}
-              </nav>
-              <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800">
-                <Button variant="destructive" className="w-full gap-2" onClick={onLogout}>
-                  <LogOut className="h-4 w-4" />
-                  Chiqish
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Page Header (Title + Subtitle + Action) */}
-        {(title || action) && (
-          <div className="px-4 sm:px-8 pt-6 pb-2">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                {subtitle && (
-                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">
-                    {subtitle}
-                  </p>
-                )}
-                {title && (
-                  <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-                    {title}
-                  </h1>
-                )}
-              </div>
-              {action && <div className="flex items-center gap-2.5">{action}</div>}
-            </div>
-          </div>
-        )}
-
-        {/* Main Body */}
-        <main className="flex-1 px-4 sm:px-8 py-6 max-w-7xl w-full mx-auto">{children}</main>
+        <main className={cn('mx-auto w-full flex-1 px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 lg:px-8 lg:pb-12 lg:pt-6', narrow ? 'max-w-3xl' : 'max-w-6xl')}>
+          {children}
+        </main>
       </div>
 
-      {/* Mobile Bottom Navigation Bar (PWA Style) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 h-16 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-lg border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-around px-2">
-        <Link
-          href="/dashboard"
-          className={`flex flex-col items-center justify-center w-14 py-1 rounded-lg text-xs font-medium transition-colors ${
-            pathname === '/dashboard' ? 'text-zinc-950 dark:text-zinc-50' : 'text-zinc-400'
-          }`}
-        >
-          <LayoutDashboard className="h-5 w-5 mb-0.5" />
-          <span className="text-[10px]">Asosiy</span>
-        </Link>
-        <Link
-          href="/orders"
-          className={`flex flex-col items-center justify-center w-14 py-1 rounded-lg text-xs font-medium transition-colors ${
-            pathname?.startsWith('/orders') && pathname !== '/orders/new'
-              ? 'text-zinc-950 dark:text-zinc-50'
-              : 'text-zinc-400'
-          }`}
-        >
-          <ClipboardList className="h-5 w-5 mb-0.5" />
-          <span className="text-[10px]">Buyurtma</span>
-        </Link>
-        {me?.permissions?.includes('orders.create') && (
-          <Link
-            href="/orders/new"
-            className="flex flex-col items-center justify-center -mt-4 bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900 h-12 w-12 rounded-full shadow-lg"
-          >
-            <PlusCircle className="h-6 w-6" />
-          </Link>
-        )}
-        <Link
-          href="/inventory"
-          className={`flex flex-col items-center justify-center w-14 py-1 rounded-lg text-xs font-medium transition-colors ${
-            pathname?.startsWith('/inventory') ? 'text-zinc-950 dark:text-zinc-50' : 'text-zinc-400'
-          }`}
-        >
-          <Package className="h-5 w-5 mb-0.5" />
-          <span className="text-[10px]">Ombor</span>
-        </Link>
-        <button
-          onClick={() => setMobileMenuOpen(true)}
-          className="flex flex-col items-center justify-center w-14 py-1 rounded-lg text-xs font-medium text-zinc-400"
-        >
-          <Menu className="h-5 w-5 mb-0.5" />
-          <span className="text-[10px]">Menyu</span>
-        </button>
+      {/* Phone tab bar */}
+      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t bg-white/95 backdrop-blur lg:hidden" aria-label="Asosiy menyu">
+        <div className="mx-auto grid h-16 max-w-md grid-cols-5">
+          <Tab href="/dashboard" label="Asosiy" icon={Home} active={isActive(pathname, '/dashboard')} />
+          <Tab href="/orders" label="Buyurtma" icon={ClipboardList} active={isActive(pathname, '/orders')} />
+          {canCreate ? (
+            <Link href="/orders/new" className="flex flex-col items-center justify-center gap-0.5" aria-label="Yangi qabul">
+              <span className={cn('flex h-10 w-10 items-center justify-center rounded-full', pathname === '/orders/new' ? 'bg-ink-soft' : 'bg-ink', 'text-white')}><Plus className="h-5 w-5" /></span>
+              <span className="text-[10px] font-medium">Qabul</span>
+            </Link>
+          ) : <span />}
+          <Tab href="/customers" label="Mijozlar" icon={Users} active={isActive(pathname, '/customers')} />
+          <button onClick={() => setMenuOpen(true)} className="flex flex-col items-center justify-center gap-1 text-mute" aria-haspopup="dialog">
+            <Menu className="h-5 w-5" /><span className="text-[10px] font-medium">Menyu</span>
+          </button>
+        </div>
       </nav>
+
+      {menuOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Menyu">
+          <button className="absolute inset-0 bg-black/40" onClick={() => setMenuOpen(false)} aria-label="Yopish" />
+          <div className="safe-bottom absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-2xl bg-white">
+            <div className="flex items-center justify-between border-b px-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate font-semibold">{me?.firstName}</p>
+                <p className="text-xs text-mute">{me?.login} · {me?.role === 'OWNER' ? 'Boshliq' : 'Xodim'}</p>
+              </div>
+              <button onClick={() => setMenuOpen(false)} className="rounded-md p-2 hover:bg-black/[0.04]" aria-label="Yopish"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="grid grid-cols-3 gap-2 p-3">
+              {nav.map(item => (
+                <Link key={item.href} href={item.href}
+                  className={cn('flex min-h-[4.5rem] flex-col items-center justify-center gap-1.5 rounded-lg border px-1 text-center text-xs', isActive(pathname, item.href) ? 'border-ink font-semibold' : 'text-ink')}>
+                  <item.icon className="h-5 w-5" />{item.label}
+                </Link>
+              ))}
+            </div>
+            <div className="px-3 pb-4">
+              <button onClick={onLogout} className="flex h-11 w-full items-center justify-center gap-2 rounded-md border text-sm font-semibold text-red-600">
+                <LogOut className="h-4 w-4" /> Chiqish
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function Tab({ href, label, icon: Icon, active }: { href: string; label: string; icon: React.ComponentType<{ className?: string }>; active: boolean }) {
+  return (
+    <Link href={href} aria-current={active ? 'page' : undefined} className={cn('flex flex-col items-center justify-center gap-1', active ? 'text-ink' : 'text-mute')}>
+      <Icon className="h-5 w-5" />
+      <span className={cn('text-[10px]', active ? 'font-semibold' : 'font-medium')}>{label}</span>
+    </Link>
+  );
+}
+
+
+/** Primary action pinned above the tab bar on phones, inline at the end of the form on desktop. */
+export function ActionBar({ children }: { children: React.ReactNode }) {
+  return (<>
+    {/* Keeps the last field clear of the pinned bar on phones. */}
+    <div className="h-20 lg:hidden" aria-hidden="true" />
+    <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 border-t bg-white/95 px-4 py-3 backdrop-blur lg:static lg:mt-6 lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
+      <div className="mx-auto flex max-w-3xl gap-2 [&>*]:flex-1 lg:justify-end lg:[&>*]:flex-none">{children}</div>
+    </div>
+  </>);
 }

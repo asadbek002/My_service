@@ -1,5 +1,5 @@
 const rawBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-const API_BASE = rawBase.endsWith('/api') ? rawBase : rawBase.replace(/\/+$/, '') + '/api';
+export const API_BASE = rawBase.endsWith('/api') ? rawBase : rawBase.replace(/\/+$/, '') + '/api';
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message); }
@@ -114,18 +114,4 @@ export async function login(loginId: string, password: string): Promise<void> {
 
 export async function logout(): Promise<void> {
   try { await api('/auth/logout', { method: 'POST' }); } finally { clearAccess(); }
-}
-
-export async function uploadAttachment(orderId: string, file: File, kind: string): Promise<void> {
-  const sha256 = await computeSha256(file);
-  const { uploadId, url, headers } = await api<{ uploadId: string; url: string; headers: Record<string, string> }>('/orders/' + orderId + '/attachments/presign', { method: 'POST', body: JSON.stringify({ kind, contentType: file.type, size: file.size, sha256 }) });
-  const put = await fetch(url, { method: 'PUT', headers: { ...headers }, body: file });
-  if (!put.ok) throw new ApiError('UPLOAD_FAILED', put.status);
-  await api('/orders/' + orderId + '/attachments/confirm', { method: 'POST', body: JSON.stringify({ uploadId }) });
-}
-
-async function computeSha256(file: File): Promise<string> {
-  const buf = await file.arrayBuffer();
-  const hash = await crypto.subtle.digest('SHA-256', buf);
-  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
 }

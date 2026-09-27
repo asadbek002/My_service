@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import * as argon2 from 'argon2';
@@ -81,7 +81,8 @@ export class AuthService implements OnModuleInit {
 
   async changePassword(actor: Actor, currentPassword: string, newPassword: string) {
     const user = await this.db.user.findUniqueOrThrow({ where: { id: actor.userId } });
-    if (!await argon2.verify(user.passwordHash, currentPassword)) throw new UnauthorizedException();
+    // 400, not 401: a wrong current password must not look like an expired session to the client.
+    if (!await argon2.verify(user.passwordHash, currentPassword)) throw new BadRequestException('Current password is incorrect');
     const passwordHash = await argon2.hash(newPassword, { type: argon2.argon2id });
     const token = this.mint();
     const expiresAt = new Date(Date.now() + 30 * 86400000);

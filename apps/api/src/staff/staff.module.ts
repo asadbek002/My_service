@@ -21,6 +21,9 @@ class UpdateStaffDto {
   @ApiProperty() @IsOptional() @IsString() @Matches(/^\+[1-9][0-9]{7,14}$/) phone?: string;
   @ApiProperty() @IsOptional() @IsEmail() email?: string;
 }
+class ResetPasswordDto {
+  @ApiProperty() @IsString() @Length(12, 128) temporaryPassword!: string;
+}
 class StatusDto {
   @ApiProperty() @IsIn(['ACTIVE', 'SUSPENDED', 'ARCHIVED']) status!: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
 }
@@ -91,6 +94,21 @@ class StaffController {
       await tx.auditLog.create({ data: { organizationId: actor.organizationId, actorId: actor.userId, action: 'STAFF_UPDATED', entityId: id, oldValue: { firstName: user.firstName, lastName: user.lastName, phone: user.phone, email: user.email }, newValue: JSON.parse(JSON.stringify(dto)) } });
       return result;
     });
+  }
+  // A colleague forgot their password: set a temporary one; they must change it at next login.
+  @Post(':id/reset-password') @Permissions('staff.manage')
+  async resetPassword(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: ResetPasswordDto) {
+    if (id === actor.userId) throw new ForbiddenException('Use change password for your own account');
+    const user = await this.db.user.findFirst({ where: { id, organizationId: actor.organizationId }, include: { roles: { include: { role: true } } } });
+    if (!user) throw new NotFoundException();
+    if (isOwnerUser(user) && !actor.owner) throw new ForbiddenException('Only the owner can edit the owner account');
+    const passwordHash = await argon2.hash(dto.temporaryPassword, { type: argon2.argon2id });
+    await this.db.$transaction([
+      this.db.user.update({ where: { id }, data: { passwordHash, mustChangePassword: true } }),
+      this.db.session.updateMany({ where: { userId: id, status: 'ACTIVE' }, data: { status: 'REVOKED', revokedAt: new Date() } }),
+      this.db.auditLog.create({ data: { organizationId: actor.organizationId, actorId: actor.userId, action: 'STAFF_PASSWORD_RESET', entityId: id } }),
+    ]);
+    return { ok: true };
   }
   @Patch(':id/status') @Permissions('staff.manage')
   async status(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: StatusDto) {
