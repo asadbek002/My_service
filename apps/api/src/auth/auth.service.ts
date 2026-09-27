@@ -104,8 +104,8 @@ export class AuthService implements OnModuleInit {
     }).then(({ roles, ...user }) => {
       const keys = roles.map(r => r.role.systemKey).filter((k): k is string => !!k);
       // Highest role decides which dashboard the UI shows.
-      const role = ['OWNER', 'ADMIN', 'MANAGER', 'TECHNICIAN'].find(k => keys.includes(k)) ?? null;
-      return { ...user, role, roles: keys, permissions: actor.permissions, branchIds: actor.branchIds };
+      const role = ['OWNER', 'STAFF'].find(k => keys.includes(k)) ?? null;
+      return { ...user, role, roles: keys, permissions: actor.permissions, branchIds: actor.branchIds, support: !!actor.support, ...(actor.support ? { mustChangePassword: false } : {}) };
     });
   }
 }

@@ -22,21 +22,6 @@ services:
     volumes:
       - redis_data:/data
 
-  minio:
-    image: quay.io/minio/minio:latest
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    env_file: .env
-    environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
-      # Browsers upload photos directly with presigned URLs from the web origin.
-      MINIO_API_CORS_ALLOW_ORIGIN: ${WEB_URL}
-    ports:
-      - "127.0.0.1:9000:9000"
-    volumes:
-      - minio_data:/data
-
   api:
     build:
       context: .
@@ -51,8 +36,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
-      minio:
         condition: service_started
 
   web:
@@ -70,4 +53,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  minio_data:

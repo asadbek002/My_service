@@ -33,37 +33,12 @@ jobs:
       JWT_ACCESS_SECRET: ci-only-ephemeral-secret-not-for-production-93841
       NODE_ENV: test
       NEXT_TELEMETRY_DISABLED: 1
-      S3_ENDPOINT: http://localhost:9000
-      S3_REGION: us-east-1
-      S3_BUCKET: myservice-test
-      S3_ACCESS_KEY: testaccess
-      S3_SECRET_KEY: testsecret123
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Start S3 test storage
-        run: |
-          # quay.io/minio/minio no longer serves anonymous pulls; use a pinned Docker Hub
-          # release and fall back to an S3-compatible mock so CI never depends on one registry.
-          if docker run -d --name minio-ci -p 9000:9000 -e MINIO_ROOT_USER=testaccess -e MINIO_ROOT_PASSWORD=testsecret123 minio/minio:RELEASE.2025-04-22T22-12-26Z server /data; then
-            for attempt in {1..60}; do
-              if curl --fail --silent http://localhost:9000/minio/health/live; then echo "MinIO ready"; exit 0; fi
-              sleep 1
-            done
-            docker logs minio-ci; docker rm -f minio-ci
-          fi
-          echo "MinIO unavailable, starting moto S3 server"
-          python3 -m venv /tmp/moto && /tmp/moto/bin/pip install --quiet "moto[server]"
-          nohup /tmp/moto/bin/moto_server -H 0.0.0.0 -p 9000 > /tmp/moto.log 2>&1 &
-          for attempt in {1..60}; do
-            if curl --fail --silent -o /dev/null http://localhost:9000/; then echo "moto ready"; exit 0; fi
-            sleep 1
-          done
-          cat /tmp/moto.log
-          exit 1
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm db:validate
       - run: pnpm db:generate

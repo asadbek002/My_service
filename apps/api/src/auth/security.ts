@@ -16,6 +16,8 @@ export interface Actor {
   branchIds: string[];
   permissions: string[];
   owner: boolean;
+  /** Platform support session (the platform admin acting as the owner). */
+  support?: boolean;
   ip?: string;
 }
 export type AuthRequest = Request & { actor: Actor };
@@ -50,14 +52,16 @@ export class SecurityGuard implements CanActivate {
     if (!session || session.userId !== payload.sub || session.status !== 'ACTIVE' ||
         session.expiresAt <= new Date() || session.user.status !== 'ACTIVE') throw new UnauthorizedException();
     const user = session.user;
-    if (user.mustChangePassword && !this.reflector.getAllAndOverride<boolean>('allowPasswordChange', targets)) {
+    const support = session.tokenFamilyId.startsWith('support:');
+    // Support sessions are not blocked by the owner's pending password change.
+    if (user.mustChangePassword && !support && !this.reflector.getAllAndOverride<boolean>('allowPasswordChange', targets)) {
       throw new ForbiddenException('PASSWORD_CHANGE_REQUIRED');
     }
     const permissions = [...new Set(user.roles.flatMap(r => r.role.permissions.map(p => p.permission.key)))];
     req.actor = {
       userId: user.id, organizationId: user.organizationId, sessionId: session.id,
       branchIds: user.branches.map(b => b.branchId), permissions,
-      owner: user.roles.some(r => r.role.systemKey === 'OWNER'), ...(req.ip ? { ip: req.ip } : {}),
+      owner: user.roles.some(r => r.role.systemKey === 'OWNER'), ...(support ? { support: true } : {}), ...(req.ip ? { ip: req.ip } : {}),
     };
     const required = this.reflector.getAllAndOverride<string[]>('permissions', targets) ?? [];
     if (!required.every(p => permissions.includes(p))) throw new ForbiddenException();

@@ -9,6 +9,8 @@ import { Public, allowedOrigins } from '../auth/security';
 import { LoginRateGuard } from '../auth/rate-limit';
 import { LoginDto } from '../auth/auth.dto';
 import { SubscriptionCache } from '../auth/subscription-cache';
+import { ALL_PERMISSIONS } from '../auth/permissions';
+import { JwtModule, JwtService } from '@nestjs/jwt';
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 type AdminRequest = Request & { adminId: string; platformSessionId: string };
 @Injectable()
@@ -40,17 +42,16 @@ class OrganizationDto {
   @IsString() @Length(1,100) ownerName!: string;
   @IsString() @Matches(/^\+[1-9][0-9]{7,14}$/) phone!: string;
 }
+class ResetPasswordDto {
+  @IsString() @Length(12,128) temporaryPassword!: string;
+}
 class SubscriptionDto {
   @IsString() @Length(1,100) planId!: string;
   @IsIn(['TRIAL','ACTIVE','SUSPENDED','EXPIRED']) status!: string;
   @IsISO8601() expiresAt!: string;
 }
-const rolePermissions: Record<string,string[]> = {
- OWNER: ['orders.view','orders.create','orders.edit','orders.assign','orders.change_status','customers.view','customers.edit','diagnostics.create','inventory.view','inventory.use','inventory.manage','inventory.view_cost','payments.view','payments.create','payments.refund','payments.deliver_with_debt','reports.view','reports.finance','staff.view','staff.manage','settings.manage','expenses.manage'],
- ADMIN: ['orders.view','orders.create','orders.edit','orders.assign','orders.change_status','customers.view','customers.edit','diagnostics.create','inventory.view','inventory.use','inventory.manage','payments.view','payments.create','reports.view','staff.view'],
- MANAGER: ['orders.view','orders.create','orders.edit','orders.assign','orders.change_status','customers.view','customers.edit','payments.view','payments.create'],
- TECHNICIAN: ['orders.view','orders.change_status','diagnostics.create','inventory.view','inventory.use'],
-};
+// Simplified product: the owner and staff share every business permission.
+const rolePermissions: Record<string, readonly string[]> = { OWNER: ALL_PERMISSIONS, STAFF: ALL_PERMISSIONS };
 @Controller('platform/auth') @Public()
 class PlatformAuthController {
   constructor(private readonly db: Database) {}
@@ -72,7 +73,7 @@ class PlatformAuthController {
 }
 @Controller('platform') @Public() @UseGuards(PlatformGuard)
 class PlatformController {
-  constructor(private readonly db: Database, private readonly subCache: SubscriptionCache) {}
+  constructor(private readonly db: Database, private readonly subCache: SubscriptionCache, private readonly jwt: JwtService) {}
   @Get('organizations')
   organizations() {
     return this.db.organization.findMany({ select: { id:true,name:true,slug:true,createdAt:true,subscription:{include:{plan:true}},_count:{select:{users:true,branches:true,orders:true}} }, take:100, orderBy:{createdAt:'desc'} });
@@ -125,6 +126,38 @@ class PlatformController {
       return sub;
     });
   }
+  @Get('organizations/:id/users')
+  async users(@Param('id') id: string) {
+    if (!await this.db.organization.findUnique({ where: { id } })) throw new NotFoundException();
+    return this.db.user.findMany({ where: { organizationId: id }, select: { id: true, login: true, firstName: true, lastName: true, phone: true, status: true, mustChangePassword: true, roles: { select: { role: { select: { systemKey: true } } } } }, orderBy: { createdAt: 'asc' } });
+  }
+  // Platform support: reset any member's password (it becomes temporary) and end their sessions.
+  @Post('users/:id/reset-password')
+  async resetPassword(@Param('id') id: string, @Body() d: ResetPasswordDto, @Req() req: AdminRequest) {
+    const user = await this.db.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException();
+    const passwordHash = await argon2.hash(d.temporaryPassword, { type: argon2.argon2id });
+    await this.db.$transaction([
+      this.db.user.update({ where: { id }, data: { passwordHash, mustChangePassword: true } }),
+      this.db.session.updateMany({ where: { userId: id, status: 'ACTIVE' }, data: { status: 'REVOKED', revokedAt: new Date() } }),
+      this.db.auditLog.create({ data: { organizationId: user.organizationId, actorId: 'platform:' + req.adminId, action: 'PLATFORM_PASSWORD_RESET', entityId: id } }),
+    ]);
+    return { ok: true, login: user.login };
+  }
+  // Platform support: enter an organization as its owner to investigate and fix problems.
+  // Short-lived (2 h), no refresh token, and audited in the organization's own log.
+  @Post('organizations/:id/support')
+  async support(@Param('id') id: string, @Req() req: AdminRequest) {
+    const owner = await this.db.user.findFirst({ where: { organizationId: id, status: 'ACTIVE', roles: { some: { role: { systemKey: 'OWNER' } } } }, orderBy: { createdAt: 'asc' } });
+    if (!owner) throw new NotFoundException('Active owner not found');
+    const sessionId = randomBytes(16).toString('hex');
+    await this.db.$transaction([
+      this.db.session.create({ data: { id: sessionId, userId: owner.id, tokenFamilyId: 'support:' + sessionId, refreshTokenHash: hash(randomBytes(32).toString('hex')), expiresAt: new Date(Date.now() + 2 * 3600000) } }),
+      this.db.auditLog.create({ data: { organizationId: id, actorId: 'platform:' + req.adminId, action: 'PLATFORM_SUPPORT_LOGIN', entityId: owner.id } }),
+    ]);
+    const accessToken = await this.jwt.signAsync({ sub: owner.id, sid: sessionId }, { algorithm: 'HS256', issuer: 'myservice', audience: 'myservice-api', expiresIn: '2h' });
+    return { accessToken, expiresIn: 7200, owner: { login: owner.login, firstName: owner.firstName } };
+  }
   @Get('analytics')
   async analytics() {
     const now=new Date(),since=new Date(Date.now()-30*86400000);
@@ -144,5 +177,5 @@ class PlatformController {
   @Get('system')
   async system() { await this.db.$queryRaw`SELECT 1`; return {database:'ok',organizations:await this.db.organization.count(),activeSubscriptions:await this.db.subscription.count({where:{status:'ACTIVE',expiresAt:{gt:new Date()}}}),pendingOutbox:await this.db.outboxEvent.count({where:{publishedAt:null}}),failedNotifications:await this.db.notification.count({where:{status:'FAILED'}})}; }
 }
-@Module({controllers:[PlatformAuthController,PlatformController],providers:[PlatformGuard,LoginRateGuard,SubscriptionCache]})
+@Module({imports:[JwtModule.registerAsync({useFactory:()=>({secret:process.env.JWT_ACCESS_SECRET!})})],controllers:[PlatformAuthController,PlatformController],providers:[PlatformGuard,LoginRateGuard,SubscriptionCache]})
 export class PlatformModule {}

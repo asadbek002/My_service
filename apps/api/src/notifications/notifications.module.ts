@@ -15,17 +15,12 @@ class TestSmsDto {
 }
 
 function render(template:string,values:Record<string,string>){return template.replace(/{{([a-z_]+)}}/g,(_,key:string)=>values[key]??'');}
+// Only "ready" is sent (SMS costs money); other events stay in the audit trail.
 const labels: Record<string,string> = {
-  ORDER_RECEIVED: 'Qurilmangiz qabul qilindi.',
-  ORDER_WAITING_CUSTOMER_APPROVAL: 'Diagnostika yakunlandi. Narxni tasdiqlashingiz kerak.',
-  ORDER_WAITING_PART: 'Buyurtmangiz uchun detal kutilmoqda.',
-  REPAIR_STARTED: 'Qurilmangizni ta’mirlash boshlandi.',
-  ORDER_READY: 'Qurilmangiz tayyor.',
-  ORDER_DELIVERED: 'Qurilmangiz topshirildi.',
-  WARRANTY_CREATED: 'Kafolat rasmiylashtirildi.',
+  ORDER_READY: 'Qurilmangiz tayyor, olib ketishingiz mumkin.',
 };
 // Status the order must still be in for the event to be worth sending (skip stale events after an outage).
-const expectedStatusFor = (type: string) => type === 'REPAIR_STARTED' ? 'IN_REPAIR' : type === 'WARRANTY_CREATED' ? 'DELIVERED' : type.slice('ORDER_'.length);
+const expectedStatusFor = (type: string) => type.slice('ORDER_'.length);
 @Injectable()
 export class Notifications implements OnModuleInit, OnModuleDestroy {
   private queue?: Queue;
@@ -70,14 +65,16 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
       await this.db.notification.update({ where: { id: notification.id }, data: { status: 'SKIPPED', errorCode: 'STALE_EVENT' } }); return;
     }
     const flags = order.organization.subscription?.plan.features as Record<string, unknown> | undefined;
-    const tracking = await createLink(this.db, order.organizationId, order.id, 'TRACK');
-    const approval = order.status === 'WAITING_CUSTOMER_APPROVAL' ? await createLink(this.db, order.organizationId, order.id, 'APPROVAL', order.quoteVersion) : null;
-    const link = process.env.WEB_URL + (approval ? '/approve/' + approval : '/track/' + tracking);
+    const link = process.env.WEB_URL + '/track/' + await createLink(this.db, order.organizationId, order.id, 'TRACK');
     const warrantyEnd = order.warranty ? order.warranty.endDate.toISOString().slice(0, 10) : '';
-    const defaultText = 'MyService · ' + order.number + '\n' + labels[event.type] + '\n' + order.device.brand + ' ' + order.device.model + '\nJami: ' + order.total.toString() + ' so‘m' + (warrantyEnd ? '\nKafolat: ' + warrantyEnd + ' gacha' : '') + '\n' + link;
     const payments = await this.db.payment.findMany({ where: { organizationId: order.organizationId, orderId: order.id }, select: { kind: true, amount: true } });
     const paid = payments.reduce((sum, p) => p.kind === 'REFUND' ? sum.minus(p.amount) : sum.plus(p.amount), order.total.minus(order.total));
-    const variables = { customer_name: order.customer.firstName, order_number: order.number, device: order.device.brand+' '+order.device.model, repair: order.requiredWork??'', price: order.total.toString(), paid: paid.toString(), balance: order.total.minus(paid).toString(), status: order.status, warranty_end: warrantyEnd, link };
+    const due = order.total.minus(paid);
+    const sum = (v: { toString(): string }) => Number(v.toString()).toLocaleString('ru-RU').replace(/\u00a0/g, ' ') + ' so‘m';
+    // The service's own name: each organization sends messages under its brand.
+    const defaultText = order.organization.name + ' · ' + order.number + '\n' + labels[event.type] + '\n' + order.device.brand + ' ' + order.device.model
+      + (due.greaterThan(0) ? '\nTo‘lov: ' + sum(due) : '') + '\n' + link;
+    const variables = { customer_name: order.customer.firstName, order_number: order.number, device: order.device.brand+' '+order.device.model, repair: order.complaint, price: order.total.toString(), paid: paid.toString(), balance: order.total.minus(paid).toString(), status: order.status, warranty_end: warrantyEnd, link };
     const templates = await this.db.notificationTemplate.findMany({ where: { organizationId: order.organizationId, type: event.type, active: true } });
     const message = (channel:string) => { const template=templates.find(t=>t.channel===channel); return template?render(template.body,variables):defaultText; };
     let channel = 'SMS';
@@ -87,7 +84,7 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
         const telegramUrl = new URL('bot' + process.env.TELEGRAM_BOT_TOKEN + '/sendMessage', telegramBase);
         const response = await fetch(telegramUrl, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(10000),
-          body: JSON.stringify({ chat_id: order.customer.telegramChatId, text: message('TELEGRAM'), ...(approval ? { reply_markup: { inline_keyboard: [[{ text: 'Narxni ko‘rish va tasdiqlash', url: link }]] } } : {}) }),
+          body: JSON.stringify({ chat_id: order.customer.telegramChatId, text: message('TELEGRAM') }),
         });
         const result = await response.json() as { ok?: boolean; error_code?: number; result?: { message_id?: number } };
         if (response.ok && result.ok) {

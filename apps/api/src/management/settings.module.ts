@@ -1,10 +1,9 @@
-import{BadRequestException,Body,Controller,Get,Module,Param,Put,ForbiddenException}from'@nestjs/common';
-import{ArrayUnique,IsArray,IsBoolean,IsObject,IsString,Length,Matches}from'class-validator';
+import{BadRequestException,Body,Controller,Get,Module,Param,Put}from'@nestjs/common';
+import{IsBoolean,IsObject,IsString,Length,Matches}from'class-validator';
 import{Prisma}from'@prisma/client';
 import{Database}from'../database';
 import{CurrentActor,Permissions}from'../auth/security';
 import type{Actor}from'../auth/security';
-class RoleDto{@IsArray()@ArrayUnique()@IsString({each:true})permissions!:string[]}
 class SettingsDto{@IsObject()value!:Record<string,unknown>}
 class TemplateDto{@IsString()@Length(1,4000)body!:string;@IsBoolean()active!:boolean}
 class PaymentMethodDto{@IsString()@Length(1,64)@Matches(/^[A-Z0-9_]+$/)key!:string;@IsString()@Length(1,100)label!:string}
@@ -15,7 +14,7 @@ class SettingsController{
  notifications(@CurrentActor()a:Actor){return this.db.notificationTemplate.findMany({where:{organizationId:a.organizationId}})}
  @Put('notifications/:type/:channel')@Permissions('settings.manage')
  async notification(@CurrentActor()a:Actor,@Param('type')type:string,@Param('channel')channel:string,@Body()d:TemplateDto){
-  const types=['ORDER_RECEIVED','ORDER_WAITING_CUSTOMER_APPROVAL','ORDER_WAITING_PART','REPAIR_STARTED','ORDER_READY','ORDER_DELIVERED','WARRANTY_CREATED'];
+  const types=['ORDER_READY'];
   if(!types.includes(type)||!['TELEGRAM','SMS'].includes(channel))throw new BadRequestException();
   const variables=[...d.body.matchAll(/{{([a-z_]+)}}/g)].map(x=>x[1]);
   const allowed=['customer_name','order_number','device','repair','price','paid','balance','status','warranty_end','link'];
@@ -30,33 +29,15 @@ class SettingsController{
   if(key!==d.key)throw new BadRequestException();
   return this.db.paymentMethod.upsert({where:{organizationId_key:{organizationId:a.organizationId,key}},create:{organizationId:a.organizationId,key,label:d.label},update:{label:d.label,active:true}});
  }
- @Get('roles')@Permissions('settings.manage')
- roles(@CurrentActor()a:Actor){return this.db.role.findMany({where:{organizationId:a.organizationId},include:{permissions:{include:{permission:true}}},orderBy:{name:'asc'}})}
- @Get('permissions')@Permissions('settings.manage')
- permissions(){return this.db.permission.findMany({orderBy:{key:'asc'},select:{key:true}})}
- @Put('roles/:id')@Permissions('settings.manage')
- async role(@CurrentActor()a:Actor,@Param('id')id:string,@Body()d:RoleDto){
-  if(!a.owner)throw new ForbiddenException();
-  return this.db.$transaction(async tx=>{
-   const role=await tx.role.findFirst({where:{id,organizationId:a.organizationId}});
-   if(!role||role.systemKey==='OWNER')throw new ForbiddenException('Owner role is immutable');
-   if(d.permissions.some(p=>['staff.manage','settings.manage'].includes(p)))throw new ForbiddenException('Owner-only permission');
-   const permissions=await tx.permission.findMany({where:{key:{in:d.permissions}}});
-   if(permissions.length!==d.permissions.length)throw new BadRequestException('Unknown permission');
-   await tx.rolePermission.deleteMany({where:{roleId:id}});
-   await tx.rolePermission.createMany({data:permissions.map(p=>({roleId:id,permissionId:p.id}))});
-   await tx.auditLog.create({data:{organizationId:a.organizationId,actorId:a.userId,action:'ROLE_PERMISSIONS_CHANGED',entityId:id}});return{ok:true};
-  });
- }
- // Non-sensitive defaults every staff member needs (expense form, delivery form).
+ // Non-sensitive defaults every staff member needs (expense form, delivery form, receipt).
  @Get('defaults')
  async defaults(@CurrentActor()a:Actor){
-  const rows=await this.db.organizationSetting.findMany({where:{organizationId:a.organizationId,key:{in:['warranty_terms','expense_categories']}}});
+  const rows=await this.db.organizationSetting.findMany({where:{organizationId:a.organizationId,key:{in:['warranty_terms','expense_categories','receipt']}}});
   const value=(key:string)=>rows.find(r=>r.key===key)?.value as Record<string,unknown>|undefined;
   const items=value('expense_categories')?.items;
   const categories=Array.isArray(items)?items.filter((x):x is string=>typeof x==='string'&&x.trim().length>0):[];
   const text=value('warranty_terms')?.text;
-  return{warrantyTerms:typeof text==='string'?text:'',expenseCategories:categories.length?categories:['RENT','SALARY','DELIVERY','ADVERTISEMENT','UTILITY','TRANSPORT','PURCHASE','OTHER']};
+  return{warrantyTerms:typeof text==='string'?text:'',expenseCategories:categories.length?categories:['RENT','SALARY','DELIVERY','ADVERTISEMENT','UTILITY','TRANSPORT','PURCHASE','OTHER'],receiptWidth:value('receipt')?.width===58?58:80};
  }
  @Get('telegram')@Permissions('settings.manage')
  async telegram(@CurrentActor()a:Actor){
@@ -68,7 +49,7 @@ class SettingsController{
  general(@CurrentActor()a:Actor){return this.db.organizationSetting.findMany({where:{organizationId:a.organizationId}})}
  @Put('general/:key')@Permissions('settings.manage')
  async setting(@CurrentActor()a:Actor,@Param('key')key:string,@Body()d:SettingsDto){
-  if(!['general','expense_categories','warranty_terms','final_test_checklist'].includes(key))throw new BadRequestException('Unknown setting');
+  if(!['general','expense_categories','warranty_terms','receipt'].includes(key))throw new BadRequestException('Unknown setting');
   if(JSON.stringify(d.value).length>16000)throw new BadRequestException('Setting too large');
   const result=await this.db.organizationSetting.upsert({where:{organizationId_key:{organizationId:a.organizationId,key}},create:{organizationId:a.organizationId,key,value:d.value as Prisma.InputJsonObject},update:{value:d.value as Prisma.InputJsonObject}});
   await this.db.auditLog.create({data:{organizationId:a.organizationId,actorId:a.userId,action:'SETTING_CHANGED',entityId:key}});return result;

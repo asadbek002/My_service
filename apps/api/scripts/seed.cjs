@@ -3,9 +3,8 @@ const { PrismaClient } = require('@prisma/client');
 const argon2 = require('argon2');
 const db = new PrismaClient();
 const permissionKeys = [
-  'orders.view','orders.create','orders.edit','orders.assign','orders.change_status',
-  'customers.view','customers.edit','diagnostics.create','inventory.view','inventory.use',
-  'inventory.manage','inventory.view_cost','payments.view','payments.create','payments.refund','payments.deliver_with_debt',
+  'orders.view','orders.create','orders.edit','orders.change_status','customers.view','customers.edit',
+  'payments.view','payments.create','payments.refund','payments.deliver_with_debt',
   'reports.view','reports.finance','expenses.manage','staff.view','staff.manage','settings.manage',
 ];
 async function main() {
@@ -23,14 +22,11 @@ async function main() {
     const permissions = [];
     for (const key of permissionKeys) permissions.push(await tx.permission.upsert({ where: { key }, update: {}, create: { key } }));
     const roleIds = {};
-    for (const systemKey of ['OWNER','ADMIN','MANAGER','TECHNICIAN']) {
+    // Simplified product: owner and staff share every business permission.
+    for (const systemKey of ['OWNER','STAFF']) {
       const role = await tx.role.create({ data: { organizationId: org.id, name: systemKey, systemKey } });
       roleIds[systemKey] = role.id;
-      const allowed = systemKey === 'OWNER' ? permissionKeys :
-        systemKey === 'ADMIN' ? permissionKeys.filter(k => !['staff.manage','settings.manage'].includes(k)) :
-        systemKey === 'MANAGER' ? ['orders.view','orders.create','orders.edit','orders.assign','orders.change_status','customers.view','customers.edit','payments.view','payments.create'] :
-        ['orders.view','orders.change_status','diagnostics.create','inventory.view','inventory.use'];
-      await tx.rolePermission.createMany({ data: permissions.filter(p => allowed.includes(p.key)).map(p => ({ roleId: role.id, permissionId: p.id })) });
+      await tx.rolePermission.createMany({ data: permissions.map(p => ({ roleId: role.id, permissionId: p.id })) });
     }
     const user = await tx.user.create({ data: { organizationId: org.id, login, passwordHash, phone, firstName: 'Asadbek', mustChangePassword: true } });
     await tx.userRole.create({ data: { organizationId: org.id, userId: user.id, roleId: roleIds.OWNER } });
