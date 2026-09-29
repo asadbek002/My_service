@@ -50,7 +50,8 @@ class ReportsController {
     const [groups, recent, open, payments] = await Promise.all([
       this.db.order.groupBy({ by: ['status'], where: { ...scope, status: { in: OPEN_STATUSES } }, _count: true }),
       this.db.order.findMany({ where: scope, include: { customer: { select: { firstName: true, phone: true } }, device: { select: { brand: true, model: true } } }, orderBy: { createdAt: 'desc' }, take: 8 }),
-      this.db.order.findMany({ where: { ...scope, status: { not: 'CANCELLED' } }, select: { total: true, payments: { select: { kind: true, amount: true } } } }),
+      // Debt = handed over but not fully paid (unpaid work still in the shop is not a debt yet).
+      this.db.order.findMany({ where: { ...scope, status: 'DELIVERED' }, select: { total: true, payments: { select: { kind: true, amount: true } } } }),
       this.db.payment.findMany({ where: { organizationId: a.organizationId, order: scope, createdAt: { gte: monthStart < week ? monthStart : week } }, select: { kind: true, amount: true, createdAt: true } }),
     ]);
     const debt = open.reduce((s, o) => { const left = o.total.minus(paidOf(o.payments)); return left.greaterThan(0) ? s.plus(left) : s; }, new Prisma.Decimal(0));
@@ -73,13 +74,15 @@ class ReportsController {
     const period = range(from, to);
     return this.db.$transaction(async tx => {
       const scope = orderScope(a);
-      const [delivered, payments, expenses, received, debtors, shopDebt] = await Promise.all([
+      const [delivered, payments, expenses, received, debtors, shopDebt, expenseItems] = await Promise.all([
         tx.order.findMany({ where: { ...scope, status: 'DELIVERED', history: { some: { toStatus: 'DELIVERED', createdAt: period } } }, select: { labor: true, partsTotal: true, total: true } }),
         tx.payment.groupBy({ by: ['kind'], where: { organizationId: a.organizationId, createdAt: period, order: scope }, _sum: { amount: true } }),
         tx.expense.groupBy({ by: ['category'], where: { organizationId: a.organizationId, createdAt: period }, _sum: { amount: true } }),
         tx.order.count({ where: { ...scope, createdAt: period } }),
         tx.order.findMany({ where: { ...scope, status: { not: 'CANCELLED' } }, include: { customer: { select: { firstName: true, lastName: true, phone: true } }, device: { select: { brand: true, model: true } }, payments: { select: { kind: true, amount: true } } }, orderBy: { createdAt: 'desc' } }),
         tx.sourcedPart.aggregate({ where: { organizationId: a.organizationId, status: 'TAKEN' }, _sum: { cost: true } }),
+        // Every expense of the period, so the report can list and filter them, not only the totals.
+        tx.expense.findMany({ where: { organizationId: a.organizationId, createdAt: period }, select: { id: true, category: true, amount: true, note: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1000 }),
       ]);
       const sum = (xs: Prisma.Decimal[]) => xs.reduce((s, x) => s.plus(x), new Prisma.Decimal(0));
       const revenue = sum(delivered.map(o => o.total)), labor = sum(delivered.map(o => o.labor)), parts = sum(delivered.map(o => o.partsTotal));
@@ -87,8 +90,8 @@ class ReportsController {
       const refunds = payments.find(p => p.kind === 'REFUND')?._sum.amount ?? new Prisma.Decimal(0);
       // Parts bought for repairs (PURCHASE) are already covered by the parts amount charged to the customer.
       const operating = sum(expenses.filter(e => e.category !== 'PURCHASE').map(e => e._sum.amount ?? new Prisma.Decimal(0)));
-      const debtorRows = debtors.map(o => ({ id: o.id, number: o.number, status: o.status, createdAt: o.createdAt, customer: o.customer, device: o.device, balance: o.total.minus(paidOf(o.payments)) }))
-        .filter(o => o.balance.greaterThan(0)).slice(0, 100);
+      const debtorRows = debtors.map(o => ({ id: o.id, number: o.number, status: o.status, createdAt: o.createdAt, customer: o.customer, device: o.device, total: o.total, paid: paidOf(o.payments), balance: o.total.minus(paidOf(o.payments)) }))
+        .filter(o => o.balance.greaterThan(0)).slice(0, 500);
       return {
         from: period.gte, to: period.lte,
         received, delivered: delivered.length,
@@ -99,6 +102,7 @@ class ReportsController {
         debt: sum(debtorRows.map(o => o.balance)), debtors: debtorRows,
         // What the shop still owes nearby stores for parts taken on credit (not yet paid or returned).
         shopDebt: shopDebt._sum.cost ?? new Prisma.Decimal(0),
+        expenseItems,
         basis: "Tushum — shu davrda topshirilgan buyurtmalar. Foyda = usta haqi − xarajatlar (zapchast xaridi hisobga olinmaydi).",
       };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });

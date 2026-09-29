@@ -31,6 +31,7 @@ model Organization {
   orders Order[]
   parts Part[]
   sourcedParts SourcedPart[]
+  shops Shop[]
   subscription Subscription?
   branches Branch[]
   users    User[]
@@ -615,7 +616,9 @@ model SourcedPart {
   organizationId String
   orderId String?
   name String
+  /// Shop name as it was when the part was taken (kept even if the shop is renamed).
   shop String
+  shopId String?
   cost Decimal @db.Decimal(18, 2)
   status String @default("TAKEN") // TAKEN → PAID | RETURNED
   note String?
@@ -625,7 +628,9 @@ model SourcedPart {
   settledAt DateTime?
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   order Order? @relation(fields: [organizationId, orderId], references: [organizationId, id], onDelete: Restrict)
+  shopRef Shop? @relation(fields: [organizationId, shopId], references: [organizationId, id], onDelete: Restrict)
   @@index([organizationId, status, createdAt])
+  @@index([organizationId, shopId])
   @@index([organizationId, orderId])
 }
 
@@ -638,4 +643,20 @@ model TelegramLink {
   expiresAt DateTime
   consumedAt DateTime?
   createdAt DateTime @default(now())
+}
+
+/// A nearby shop the service takes parts from on credit.
+model Shop {
+  id String @id @default(cuid())
+  organizationId String
+  name String
+  phone String?
+  address String?
+  note String?
+  archived Boolean @default(false)
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  parts SourcedPart[]
+  @@unique([organizationId, id])
+  @@unique([organizationId, name])
 }

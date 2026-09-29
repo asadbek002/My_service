@@ -276,6 +276,26 @@ test('parts taken from a shop are paid (as a purchase expense) or returned, once
   assert.equal((await json(await request('/parts', other_))).items.length, 0);
   assert.equal((await request('/parts/' + other.id + '/pay', { ...other_, method: 'POST' })).status, 404);
   assert.equal((await request('/parts', { ...other_, method: 'POST', body: { name: 'x', shop: 'y', cost: '1', orderId: order.id } })).status, 404);
+
+  // Shops: typed names became saved shops; parts can be picked by shopId and filtered by shop/period.
+  const shops = await json(await request('/shops', auth));
+  const malika = shops.find(x => x.name === 'Malika 12');
+  assert.ok(malika); assert.equal(malika.debt, '0'); assert.equal(malika.paid, '350000');
+  assert.equal((await request('/shops', { ...auth, method: 'POST', body: { name: 'Malika 12' } })).status, 409);
+  const newShop = await json(await request('/shops', { ...auth, method: 'POST', body: { name: 'Texnomart', phone: '+998901234567' } }));
+  const lens = await json(await take({ name: 'Kamera oynasi', shopId: newShop.id, cost: '45000' }));
+  assert.equal(lens.shop, 'Texnomart');
+  const filtered = await json(await request('/parts?shopId=' + newShop.id, auth));
+  assert.equal(filtered.items.length, 1); assert.equal(filtered.totals.taken, '45000'); assert.equal(filtered.totals.count, 1);
+  const future = await json(await request('/parts?from=' + encodeURIComponent(new Date(Date.now() + 86400000).toISOString()), auth));
+  assert.equal(future.items.length, 0);
+  assert.equal((await request('/parts?from=nonsense', auth)).status, 400);
+  assert.equal((await request('/parts', { ...auth, method: 'POST', body: { name: 'x', cost: '1' } })).status, 400);
+  // Another service can neither use nor rename this shop.
+  assert.equal((await request('/parts', { ...other_, method: 'POST', body: { name: 'x', shopId: newShop.id, cost: '1' } })).status, 404);
+  assert.equal((await request('/shops/' + newShop.id, { ...other_, method: 'PATCH', body: { name: 'Hacked' } })).status, 404);
+  assert.equal((await request('/shops/' + newShop.id, { ...auth, method: 'PATCH', body: { name: 'Texnomart', archived: true } })).status, 200);
+  assert.ok(!(await json(await request('/parts', auth))).shops.some(x => x.id === newShop.id));
 });
 test('finance report splits labor and parts and computes profit', async () => {
   const auth = await owner(b);
@@ -288,6 +308,8 @@ test('finance report splits labor and parts and computes profit', async () => {
   const r = await json(await request('/reports/finance', auth));
   assert.equal(r.revenue, '500000'); assert.equal(r.labor, '200000'); assert.equal(r.parts, '300000');
   assert.equal(r.operatingExpenses, '50000'); assert.equal(r.profit, '150000'); assert.equal(r.netCash, '500000');
+  // Each expense of the period is listed for filtering in the report.
+  assert.ok(r.expenseItems.some(e => e.category === 'PURCHASE' && e.amount === '280000' && e.note === 'Zapchast xaridi'));
   const dash = await json(await request('/reports/dashboard', auth));
   assert.equal(dash.todayCash, '500000');
 });

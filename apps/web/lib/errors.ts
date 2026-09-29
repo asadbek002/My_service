@@ -25,6 +25,10 @@ const TEXT: Record<string, string> = {
   CUSTOMER_BLOCKED_BOT: "Mijoz botni to'xtatib qo'ygan.",
   TELEGRAM_FAILED: "Telegram javob bermadi. Birozdan keyin qayta urinib ko'ring.",
   'PNG image required': "Chek rasmini tayyorlab bo'lmadi.",
+  'Shop exists': "Bu nomli do'kon allaqachon bor.",
+  'Shop required': "Do'konni tanlang.",
+  'Shop not found': "Do'kon topilmadi. Sahifani yangilang.",
+  'Invalid date': "Sana noto'g'ri.",
   FORBIDDEN: "Bu amal uchun ruxsat yo'q.",
   NETWORK_ERROR: "Server bilan aloqa yo'q. Internetni tekshiring.",
 };

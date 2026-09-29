@@ -12,8 +12,8 @@ Bitta ustaxona uchun sodda jarayon (filial, usta biriktirish, diagnostika va omb
 2. **Holatlar** — Qabul qilindi → Ta'mirda → Tayyor → Berildi (yoki Bekor qilindi). Narx berilguncha o'zgartiriladi, har o'zgarish jurnalga yoziladi.
 3. **Tayyor** bo'lganda mijozga bitta xabar ketadi: Telegram, bo'lmasa SMS.
 4. **Berish** — qoldiq to'lanadi (yoki qarzga), kafolat necha kun ekani so'raladi, berish cheki chiqariladi.
-5. **Zapchastlar** — do'kondan qarzga olingan zapchast: nima, kimdan, narxi, qaysi buyurtma uchun. Keyin "Pulini berdim" (xarajatga "Zapchast xaridi" bo'lib yoziladi) yoki ishlatilmasa "Qaytardim". Do'konlar bo'yicha qarz ko'rinib turadi.
-6. **Hisobot** — bugungi/oylik tushum, usta haqi va zapchastga bo'lingan, xarajatlar, foyda, mijozlar qarzi va do'konlarga qarz.
+5. **Zapchastlar** — avval zapchast olinadigan do'konlar saqlanadi ("Do'konlar" bo'limi), keyin zapchast yozishda do'kon ro'yxatdan tanlanadi: nima, kimdan, narxi, qaysi buyurtma uchun. Holat, do'kon va davr bo'yicha saralanadi, PDF hisobot olinadi. Keyin "Pulini berdim" (xarajatga "Zapchast xaridi" bo'lib yoziladi) yoki ishlatilmasa "Qaytardim". Do'konlar bo'yicha qarz ko'rinib turadi.
+6. **Hisobot** — tushum (usta haqi va zapchastga bo'lingan), kassa, foyda; xarajatlar turi va izohi bo'yicha, qarzdorlar ("qarzga berilgan" / "ustaxonada, to'lanmagan") qidiruv va tartib bilan saralanadi; PDF va CSV.
 
 Mijoz chekida faqat umumiy narx chiqadi (usta haqi va zapchast alohida ko'rsatilmaydi); pastida Telegram va Instagram (Sozlamalarda o'zgartiriladi).
 
