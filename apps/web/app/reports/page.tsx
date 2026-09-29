@@ -129,7 +129,7 @@ export default function Reports() {
               <div className="p-4">
                 <Row label="Usta haqi">{money(data.labor)}</Row>
                 <Row label="Zapchast">{money(data.parts)}</Row>
-                <Row label="Xarajatlar">−{money(data.operatingExpenses)}</Row>
+                <Row label="Xarajatlar">{Number(data.operatingExpenses) > 0 ? "−" : ""}{money(data.operatingExpenses)}</Row>
                 <div className="mt-1 border-t pt-1"><Row label="Foyda" strong>{money(data.profit)}</Row></div>
                 <p className="mt-2 text-xs text-mute">Tushum — shu davrda mijozga berilgan qurilmalar summasi. Foyda = usta haqi − xarajatlar (zapchast xaridi mijoz to&apos;lagan zapchast pulidan qoplanadi).</p>
               </div>
@@ -139,7 +139,7 @@ export default function Reports() {
               <h2 className="font-semibold">Kassa</h2>
               <p className="mb-2 text-xs text-mute">Shu davrda qo&apos;lga tushgan pul (oldindan to&apos;lovlar ham).</p>
               <Row label="Tushgan pul">{money(data.cashIn)}</Row>
-              <Row label="Qaytarilgan">−{money(data.refunds)}</Row>
+              <Row label="Qaytarilgan">{Number(data.refunds) > 0 ? "−" : ""}{money(data.refunds)}</Row>
               <Row label="Sof" strong>{money(data.netCash)}</Row>
             </section>
 
