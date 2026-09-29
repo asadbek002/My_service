@@ -41,4 +41,4 @@ docker compose -f docker-compose.prod.yml run --rm api pnpm db:migrate
 
 ## Telegram from Docker
 
-Some servers reach `api.telegram.org` from the host but not from containers (connections time out). The production compose therefore runs `tg-proxy` — nginx in the host's network (`docker/tg-proxy.conf`, port 8089, only local and Docker addresses allowed) — and the API sends Telegram calls to `http://host.docker.internal:8089/`. If a firewall (ufw) blocks Docker → host traffic, allow it: `ufw allow from 172.16.0.0/12 to any port 8089 proto tcp`. To call Telegram directly instead, set `TELEGRAM_API_BASE=https://api.telegram.org/` in `.env`.
+On some servers containers cannot reach `api.telegram.org` while the host can. The production API therefore runs with `network_mode: host`: it listens on `127.0.0.1:3004` (host nginx proxies to it) and reaches PostgreSQL and Redis on loopback ports `127.0.0.1:5432` / `127.0.0.1:6379`; the names `postgres` and `redis` in `DATABASE_URL`/`REDIS_URL` resolve to 127.0.0.1. Nothing else on the host may use ports 5432, 6379 or 3004.

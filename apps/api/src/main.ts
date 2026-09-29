@@ -34,6 +34,7 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   const spec = new DocumentBuilder().setTitle('MyService API').setVersion('0.2').addBearerAuth().build();
   if (process.env.NODE_ENV !== 'production') SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, spec));
-  await app.listen(Number(process.env.PORT ?? 3001));
+  // API_HOST=127.0.0.1 keeps the port private when the container shares the host network.
+  await app.listen(Number(process.env.PORT ?? 3001), process.env.API_HOST ?? '0.0.0.0');
 }
 void bootstrap();

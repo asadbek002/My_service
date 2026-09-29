@@ -7,6 +7,9 @@ services:
       POSTGRES_DB: myservice
       POSTGRES_USER: myservice
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # Loopback only: the API runs in the host network (see api below).
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,6 +22,8 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    ports:
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
 
@@ -28,28 +33,22 @@ services:
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     env_file: .env
+    # Host network: outbound calls (Telegram, SMS) leave exactly like the server's own, which
+    # matters on hosts where container traffic to Telegram times out. Listens on 127.0.0.1:3004.
+    network_mode: host
     environment:
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
-      # Telegram calls go through tg-proxy (host network). Set TELEGRAM_API_BASE=https://api.telegram.org/
-      # in .env to talk to Telegram directly when the container can reach it.
-      TELEGRAM_API_BASE: ${TELEGRAM_API_BASE:-http://host.docker.internal:8089/}
+      PORT: "3004"
+      API_HOST: 127.0.0.1
+    # DATABASE_URL / REDIS_URL may keep the service names: they point at the loopback ports above.
     extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "127.0.0.1:3004:3001"
+      - "postgres:127.0.0.1"
+      - "redis:127.0.0.1"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
-
-  # Forwards the API's Telegram Bot API calls from the host's network (docker/tg-proxy.conf).
-  tg-proxy:
-    image: nginx:1.27-alpine
-    restart: unless-stopped
-    network_mode: host
-    volumes:
-      - ./docker/tg-proxy.conf:/etc/nginx/conf.d/default.conf:ro
 
   web:
     build:
