@@ -30,6 +30,11 @@ services:
     env_file: .env
     environment:
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      # Telegram calls go through tg-proxy (host network). Set TELEGRAM_API_BASE=https://api.telegram.org/
+      # in .env to talk to Telegram directly when the container can reach it.
+      TELEGRAM_API_BASE: ${TELEGRAM_API_BASE:-http://host.docker.internal:8089/}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:3004:3001"
     depends_on:
@@ -37,6 +42,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+
+  # Forwards the API's Telegram Bot API calls from the host's network (docker/tg-proxy.conf).
+  tg-proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./docker/tg-proxy.conf:/etc/nginx/conf.d/default.conf:ro
 
   web:
     build:

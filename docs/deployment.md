@@ -38,3 +38,7 @@ docker compose -f docker-compose.prod.yml run --rm api pnpm db:migrate
 ```
 
 `--remove-orphans` also stops the old `minio` container, which is no longer used; its volume can be deleted with `docker volume ls` / `docker volume rm` once you are sure nothing else needs it.
+
+## Telegram from Docker
+
+Some servers reach `api.telegram.org` from the host but not from containers (connections time out). The production compose therefore runs `tg-proxy` — nginx in the host's network (`docker/tg-proxy.conf`, port 8089, only local and Docker addresses allowed) — and the API sends Telegram calls to `http://host.docker.internal:8089/`. If a firewall (ufw) blocks Docker → host traffic, allow it: `ufw allow from 172.16.0.0/12 to any port 8089 proto tcp`. To call Telegram directly instead, set `TELEGRAM_API_BASE=https://api.telegram.org/` in `.env`.
