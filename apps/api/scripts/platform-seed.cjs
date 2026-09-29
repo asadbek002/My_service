@@ -6,4 +6,4 @@ async function main(){
  if(await db.platformAdmin.findUnique({where:{login}})){console.log('Platform admin exists; no changes');return;}
  await db.platformAdmin.create({data:{login,passwordHash:await argon2.hash(password,{type:argon2.argon2id})}});console.log('Platform admin created');
 }
-main().catch(()=>{console.error('Platform seed failed; check environment');process.exitCode=1;}).finally(()=>db.$disconnect());
+main().catch(e=>{console.error('Platform seed failed: '+(e instanceof Error?e.message.split('\n').pop():'check environment'));process.exitCode=1;}).finally(()=>db.$disconnect());

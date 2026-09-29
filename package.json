@@ -14,7 +14,8 @@
     "db:validate": "prisma validate --schema prisma/schema.prisma",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
     "db:migrate": "prisma migrate deploy",
-    "db:seed": "pnpm --filter @myservice/api seed"
+    "db:seed": "pnpm --filter @myservice/api seed",
+    "seed:platform": "pnpm --filter @myservice/api seed:platform"
   },
   "devDependencies": {
     "prettier": "^3.0.0",

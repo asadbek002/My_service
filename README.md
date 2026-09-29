@@ -35,7 +35,7 @@ Interfeys telefon uchun qilingan (320 px dan boshlab), pastki menyu va asosiy tu
 1. `.env.example` faylini `.env` sifatida nusxalang va barcha secretlarni almashtiring.
 2. `corepack enable` va `pnpm install` ni bajaring.
 3. `docker compose up -d postgres redis` bilan dependency servislarni boshlang.
-4. `pnpm db:migrate`, `pnpm db:seed` va kerak bo'lsa `pnpm --filter @myservice/api seed:platform` ni bajaring.
+4. `pnpm db:migrate`, `pnpm db:seed` va kerak bo'lsa `pnpm seed:platform` (platforma egasi; parol kamida 16 belgi) ni bajaring.
 5. `pnpm dev` bilan web va API servislarini ishga tushiring.
 
 Parol esdan chiqsa (serverda): `docker compose -f docker-compose.prod.yml exec api node scripts/reset-password.cjs <login> <yangi-parol>`.
