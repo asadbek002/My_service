@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     # Loopback only: the API runs in the host network (see api below).
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:55432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:56379:6379"
     volumes:
       - redis_data:/data
 
@@ -40,10 +40,8 @@ services:
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
       PORT: "3004"
       API_HOST: 127.0.0.1
-    # DATABASE_URL / REDIS_URL may keep the service names: they point at the loopback ports above.
-    extra_hosts:
-      - "postgres:127.0.0.1"
-      - "redis:127.0.0.1"
+    # In .env: DATABASE_URL=...@127.0.0.1:55432/..., REDIS_URL=redis://:<password>@127.0.0.1:56379
+    # (unusual ports so they never collide with a PostgreSQL/Redis installed on the host itself).
     depends_on:
       postgres:
         condition: service_healthy
