@@ -369,7 +369,7 @@ test('ready event: permanent Telegram failure falls back to idempotent SMS', asy
   });
   await new Promise(resolve => mock.listen(0, '127.0.0.1', resolve));
   const port = mock.address().port; const old = { telegram: process.env.TELEGRAM_API_URL, sms: process.env.SMS_API_URL, key: process.env.SMS_API_KEY, provider: process.env.SMS_PROVIDER, token: process.env.TELEGRAM_BOT_TOKEN };
-  process.env.TELEGRAM_API_URL = 'http://127.0.0.1:' + port + '/'; process.env.SMS_API_URL = 'http://127.0.0.1:' + port + '/sms'; process.env.SMS_API_KEY = 'test-key'; process.env.SMS_PROVIDER = 'webhook'; process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+  process.env.TELEGRAM_API_URL = 'http://127.0.0.1:' + port + '/'; process.env.SMS_API_URL = 'http://127.0.0.1:' + port + '/sms'; process.env.SMS_API_KEY = 'test-key'; process.env.SMS_PROVIDER = 'webhook'; process.env.TELEGRAM_BOT_TOKEN = '123456789:AAHtestTokenWithTheSameShapeAsReal_1';
   try {
     const subscription = await db.subscription.findUnique({ where: { organizationId: a.org.id } });
     await db.plan.update({ where: { id: subscription.planId }, data: { features: { telegram: true, sms: true } } });

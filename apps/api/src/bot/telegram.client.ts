@@ -22,7 +22,9 @@ export class TelegramClient {
     const custom = TelegramClient.clean(process.env.TELEGRAM_API_BASE);
     const base = process.env.NODE_ENV === 'test' && process.env.TELEGRAM_API_URL ? process.env.TELEGRAM_API_URL
       : /^https?:\/\/[^\s]+$/.test(custom) ? custom.replace(/\/?$/, '/') : 'https://api.telegram.org/';
-    return new URL('bot' + this.token + '/' + method, base);
+    // Concatenate, never resolve: a real token has a colon ("123456:ABC..."), so "bot123456:..."
+    // would be parsed as a URL scheme.
+    return new URL(base.replace(/\/?$/, '/') + 'bot' + this.token + '/' + method);
   }
 
   async call<T = unknown>(method: string, body: Record<string, unknown> | FormData, timeoutMs = 15000): Promise<TelegramResult<T>> {

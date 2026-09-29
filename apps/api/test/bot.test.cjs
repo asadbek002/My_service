@@ -50,7 +50,7 @@ before(async () => {
     });
   });
   await new Promise(r => mock.listen(0, '127.0.0.1', r));
-  Object.assign(process.env, { TELEGRAM_BOT_TOKEN: 'test-token', TELEGRAM_BOT_USERNAME: 'myservice_test_bot', TELEGRAM_WEBHOOK_SECRET: SECRET, TELEGRAM_API_URL: 'http://127.0.0.1:' + mock.address().port + '/' });
+  Object.assign(process.env, { TELEGRAM_BOT_TOKEN: '123456789:AAHtestTokenWithTheSameShapeAsReal_1', TELEGRAM_BOT_USERNAME: 'myservice_test_bot', TELEGRAM_WEBHOOK_SECRET: SECRET, TELEGRAM_API_URL: 'http://127.0.0.1:' + mock.address().port + '/' });
   server = spawn(process.execPath, [path.resolve(__dirname, '..', 'dist', 'main.js')], { cwd: path.resolve(__dirname, '..'), env: process.env });
   server.stdout.on('data', d => { output += d; }); server.stderr.on('data', d => { output += d; });
   for (let i = 0; i < 60; i++) { try { if ((await fetch(base + '/health')).ok) return; } catch {} await new Promise(r => setTimeout(r, 500)); }
