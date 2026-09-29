@@ -7,8 +7,13 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import type { Express, NextFunction, Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
+import { setDefaultResultOrder } from 'node:dns';
 import { AppModule } from './app.module';
 import { allowedOrigins } from './auth/security';
+
+// Docker networks often have no IPv6 route; resolving IPv4 first avoids outbound calls
+// (Telegram, SMS) hanging on an unreachable IPv6 address.
+setDefaultResultOrder('ipv4first');
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);

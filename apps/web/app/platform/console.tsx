@@ -252,7 +252,7 @@ function OrgRow({ org, onError }: { org: Org; onError: (e: unknown) => void }) {
   );
 }
 
-type BotStatus = { configured: boolean; username: string | null; secretSet: boolean; expectedUrl: string | null; webhook: { url: string; pending_update_count: number; last_error_message?: string } | null; adminLinked: boolean; customersLinked: number; staffLinked: number };
+type BotStatus = { reachable: boolean; error: string | null; configured: boolean; username: string | null; secretSet: boolean; expectedUrl: string | null; webhook: { url: string; pending_update_count: number; last_error_message?: string } | null; adminLinked: boolean; customersLinked: number; staffLinked: number };
 
 /** Telegram bot: what is missing on the server, one-tap webhook setup, and connecting the admin's own chat. */
 function BotCard({ onError }: { onError: (e: unknown) => void }) {
@@ -280,15 +280,23 @@ function BotCard({ onError }: { onError: (e: unknown) => void }) {
       <h2 className="font-semibold">Telegram bot {bot.username && <span className="font-normal text-mute">@{bot.username}</span>}</h2>
       <Line ok={bot.configured && !!bot.username}>Serverda TELEGRAM_BOT_TOKEN va TELEGRAM_BOT_USERNAME {bot.configured && bot.username ? 'bor' : 'yo‘q — @BotFather da bot yarating va .env ga yozing'}</Line>
       <Line ok={bot.secretSet}>TELEGRAM_WEBHOOK_SECRET {bot.secretSet ? 'bor' : 'yo‘q — tasodifiy uzun satr yozing'}</Line>
-      {bot.webhook?.url ? (
+      {bot.configured && !bot.reachable ? (
+        <Line ok={false}>Server Telegramga ulana olmayapti ({bot.error}). Bot xabar ololmaydi va yubora olmaydi — server tarmog‘ini tekshiring (pastdagi yo‘riqnoma).</Line>
+      ) : bot.webhook?.url ? (
         <Line ok={hookOk && !bot.webhook.last_error_message}>Webhook: {bot.webhook.url}{bot.webhook.last_error_message ? ' · xato: ' + bot.webhook.last_error_message + ' — «Pollingga o‘tish» ni bosing' : ''}</Line>
       ) : (
         <Line ok={bot.configured}>Polling rejimi: server xabarlarni o‘zi olib turadi (webhook shart emas)</Line>
       )}
+      {bot.configured && !bot.reachable && (
+        <div className="rounded-md bg-amber-50 p-3 text-xs text-amber-900 space-y-1">
+          <p>Serverda tekshiring: <code className="font-mono">curl -sS -o /dev/null -w &quot;%&#123;http_code&#125;\n&quot; https://api.telegram.org</code> — 302 yoki 200 chiqishi kerak.</p>
+          <p>ENOTFOUND / EAI_AGAIN — DNS ishlamayapti; TIMEOUT / ECONNREFUSED — hosting Telegramni to‘sib qo‘ygan. Bunday holda .env ga TELEGRAM_API_BASE (ishonchli Bot API proksi manzili) yozing.</p>
+        </div>
+      )}
       <p className="text-xs text-mute">Ulangan: {bot.customersLinked} mijoz · {bot.staffLinked} xodim</p>
       {notice && <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
       <div className="flex flex-wrap gap-2 pt-1">
-        <button onClick={setup} disabled={!bot.configured || !bot.secretSet} className={button}>Webhookni o‘rnatish</button>
+        <button onClick={setup} disabled={!bot.configured || !bot.secretSet || !bot.reachable} className={button}>Webhookni o‘rnatish</button>
         {bot.webhook?.url && <button onClick={polling} className="h-11 sm:h-10 px-4 rounded-md border text-sm font-semibold">Pollingga o‘tish</button>}
         <button onClick={link} disabled={!bot.configured || !bot.username} className="h-11 sm:h-10 px-4 rounded-md border text-sm font-semibold disabled:opacity-50">{bot.adminLinked ? 'Telegram ulangan · qayta ulash' : 'Telegramimni ulash'}</button>
       </div>

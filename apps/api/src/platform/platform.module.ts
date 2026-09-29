@@ -172,6 +172,8 @@ class PlatformController {
     return {
       configured: this.bot.telegram.enabled, username: this.bot.telegram.username, secretSet: !!process.env.TELEGRAM_WEBHOOK_SECRET,
       expectedUrl: process.env.WEB_URL ? process.env.WEB_URL.replace(/\/$/, '') + '/api/telegram/webhook' : null,
+      // Whether this server can talk to Telegram at all (outbound HTTPS to api.telegram.org).
+      reachable: info.ok, error: info.ok ? null : info.description ?? 'HTTP ' + info.status,
       webhook: info.ok ? info.result : null, adminLinked: !!admin.telegramChatId,
       customersLinked: await this.db.customer.count({ where: { telegramChatId: { not: null } } }),
       staffLinked: await this.db.user.count({ where: { telegramChatId: { not: null } } }),
