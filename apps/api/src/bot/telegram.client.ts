@@ -19,12 +19,12 @@ export class TelegramClient {
     return new URL('bot' + process.env.TELEGRAM_BOT_TOKEN + '/' + method, base);
   }
 
-  async call<T = unknown>(method: string, body: Record<string, unknown> | FormData): Promise<TelegramResult<T>> {
+  async call<T = unknown>(method: string, body: Record<string, unknown> | FormData, timeoutMs = 15000): Promise<TelegramResult<T>> {
     if (!this.enabled) return { ok: false, status: 0, description: 'BOT_NOT_CONFIGURED' };
     try {
       const form = body instanceof FormData;
       const response = await fetch(this.url(method), {
-        method: 'POST', signal: AbortSignal.timeout(15000),
+        method: 'POST', signal: AbortSignal.timeout(timeoutMs),
         ...(form ? { body } : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
       });
       const data = await response.json().catch(() => ({})) as { ok?: boolean; result?: T; description?: string };

@@ -4,7 +4,8 @@
 
 @layer base {
   * { @apply border-line; box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
+  /* Scrolling yes, pinch-zoom no (also double-tap zoom). */
+  html { -webkit-text-size-adjust: 100%; touch-action: pan-x pan-y; }
   /* Grid children never grow a track past the screen: long names truncate instead of widening the page. */
   .grid > * { min-width: 0; }
   body {

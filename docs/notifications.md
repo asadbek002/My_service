@@ -6,7 +6,8 @@ BullMQ dispatches committed outbox events. Jobs retry five times with exponentia
 
 Telegram bot (one for the whole platform):
 - Create the bot with @BotFather; set TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME (without @) and TELEGRAM_WEBHOOK_SECRET; set NOTIFICATIONS_ENABLED=true.
-- Platform console → Tizim → "Webhookni o'rnatish" registers WEB_URL/api/telegram/webhook with the secret, the command menu and the description. The same card shows what is missing and connects the admin's own chat.
+- Without a webhook the API long-polls Telegram (getUpdates) by itself, so the bot answers as soon as the token is set — no HTTPS or nginx route needed. Set TELEGRAM_POLLING=false to turn this off. Run a single API instance in polling mode.
+- Optional: platform console → Tizim → "Webhookni o'rnatish" registers WEB_URL/api/telegram/webhook with the secret, the command menu and the description. Polling pauses while a webhook exists; "Pollingga o'tish" removes a broken webhook. The same card shows what is missing and connects the admin's own chat.
 - Only private chats where the sender is the chat are handled; every request must carry the secret header.
 - Customers: /start → "share phone" button. Only the sender's own contact (contact.user_id = from.id) links; the chat is attached to that phone in every service. An order's one-time link (/start <token>) also works. Menu: my orders, warranties, service contacts, help; /stop disconnects.
 - Staff: Settings → "Telegramni ulash" opens a one-time link (/start u_<token>, 1 day). They get "new order" (not their own) and "ready" alerts, a daily report at 20:00 Tashkent, ready devices, and search by number/phone/name inside their own service.

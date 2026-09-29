@@ -266,6 +266,10 @@ function BotCard({ onError }: { onError: (e: unknown) => void }) {
     setNotice('');
     try { const r = await platformApi<{ url: string }>('/bot/setup', { method: 'POST' }); setNotice('Webhook o‘rnatildi: ' + r.url); await load(); } catch (e) { onError(e); }
   }
+  async function polling() {
+    setNotice('');
+    try { await platformApi('/bot/polling', { method: 'POST' }); setNotice('Webhook o‘chirildi: bir daqiqada bot xabarlarni o‘zi olishni boshlaydi.'); await load(); } catch (e) { onError(e); }
+  }
   async function link() {
     const tab = window.open('about:blank', '_blank');
     try { const { url } = await platformApi<{ url: string }>('/bot/link', { method: 'POST' }); if (tab) tab.location.href = url; else window.location.href = url; } catch (e) { tab?.close(); onError(e); }
@@ -276,11 +280,16 @@ function BotCard({ onError }: { onError: (e: unknown) => void }) {
       <h2 className="font-semibold">Telegram bot {bot.username && <span className="font-normal text-mute">@{bot.username}</span>}</h2>
       <Line ok={bot.configured && !!bot.username}>Serverda TELEGRAM_BOT_TOKEN va TELEGRAM_BOT_USERNAME {bot.configured && bot.username ? 'bor' : 'yo‘q — @BotFather da bot yarating va .env ga yozing'}</Line>
       <Line ok={bot.secretSet}>TELEGRAM_WEBHOOK_SECRET {bot.secretSet ? 'bor' : 'yo‘q — tasodifiy uzun satr yozing'}</Line>
-      <Line ok={hookOk}>Webhook {hookOk ? 'o‘rnatilgan' : 'o‘rnatilmagan'}{bot.webhook?.last_error_message ? ' · oxirgi xato: ' + bot.webhook.last_error_message : ''}</Line>
+      {bot.webhook?.url ? (
+        <Line ok={hookOk && !bot.webhook.last_error_message}>Webhook: {bot.webhook.url}{bot.webhook.last_error_message ? ' · xato: ' + bot.webhook.last_error_message + ' — «Pollingga o‘tish» ni bosing' : ''}</Line>
+      ) : (
+        <Line ok={bot.configured}>Polling rejimi: server xabarlarni o‘zi olib turadi (webhook shart emas)</Line>
+      )}
       <p className="text-xs text-mute">Ulangan: {bot.customersLinked} mijoz · {bot.staffLinked} xodim</p>
       {notice && <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
       <div className="flex flex-wrap gap-2 pt-1">
         <button onClick={setup} disabled={!bot.configured || !bot.secretSet} className={button}>Webhookni o‘rnatish</button>
+        {bot.webhook?.url && <button onClick={polling} className="h-11 sm:h-10 px-4 rounded-md border text-sm font-semibold">Pollingga o‘tish</button>}
         <button onClick={link} disabled={!bot.configured || !bot.username} className="h-11 sm:h-10 px-4 rounded-md border text-sm font-semibold disabled:opacity-50">{bot.adminLinked ? 'Telegram ulangan · qayta ulash' : 'Telegramimni ulash'}</button>
       </div>
     </section>

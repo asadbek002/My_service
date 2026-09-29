@@ -192,6 +192,13 @@ class PlatformController {
     await this.bot.telegram.call('setMyDescription', { description: "Qurilmangiz ta'mirini kuzating: holat, narx, kafolat. Telefon raqamingizni yuboring — buyurtmalaringizni topamiz." });
     return { ok: true, url };
   }
+  /** Remove the webhook: the API then fetches updates itself (polling). For servers without working HTTPS. */
+  @Post('bot/polling')
+  async botPolling() {
+    const res = await this.bot.telegram.call('deleteWebhook', { drop_pending_updates: false });
+    if (!res.ok) throw new BadRequestException('deleteWebhook: ' + (res.description ?? res.status));
+    return { ok: true };
+  }
   /** One-time link that connects this admin's Telegram. */
   @Post('bot/link')
   async botLink(@Req() req: AdminRequest) {

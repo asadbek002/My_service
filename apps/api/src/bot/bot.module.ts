@@ -110,9 +110,56 @@ export class BotScheduler implements OnModuleInit, OnModuleDestroy {
   }
 }
 
+/**
+ * Long polling when no webhook is registered: the bot answers as soon as the token is set,
+ * without HTTPS or nginx routing. Registering a webhook (platform console) switches it off,
+ * because Telegram refuses getUpdates while a webhook exists.
+ */
+@Injectable()
+export class BotPoller implements OnModuleInit, OnModuleDestroy {
+  private running = false;
+  private offset = 0;
+  private readonly logger = new Logger('BotPoller');
+  constructor(private readonly bot: BotService) {}
+  onModuleInit() {
+    // Tests drive the webhook directly against a fake API; polling would race them.
+    if (!this.bot.telegram.enabled || process.env.NODE_ENV === 'test' || process.env.TELEGRAM_POLLING === 'false') return;
+    this.running = true;
+    void this.loop();
+  }
+  onModuleDestroy() { this.running = false; }
+  private sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+  private async loop() {
+    let announced = '';
+    while (this.running) {
+      try {
+        const info = await this.bot.telegram.call<{ url: string }>('getWebhookInfo', {});
+        if (!info.ok) { await this.sleep(30_000); continue; }
+        if (info.result?.url) {
+          if (announced !== 'webhook') { this.logger.log('Webhook is set; polling paused'); announced = 'webhook'; }
+          await this.sleep(60_000); continue;
+        }
+        if (announced !== 'polling') { this.logger.log('No webhook: polling Telegram for updates'); announced = 'polling'; }
+        // Long poll: Telegram holds the request up to 25 s until a message arrives.
+        for (let i = 0; i < 20 && this.running; i++) {
+          const res = await this.bot.telegram.call<Update[]>('getUpdates', { offset: this.offset, timeout: 25, allowed_updates: ['message'] }, 35_000);
+          if (!res.ok || !Array.isArray(res.result)) { await this.sleep(res.status === 409 ? 60_000 : 5_000); break; }
+          for (const update of res.result) {
+            this.offset = Math.max(this.offset, (update.update_id ?? 0) + 1);
+            await this.bot.handle(update);
+          }
+        }
+      } catch {
+        this.logger.warn('Polling failed; retrying');
+        await this.sleep(10_000);
+      }
+    }
+  }
+}
+
 @Module({
   controllers: [TelegramWebhookController, BotController, ReceiptPhotoController],
-  providers: [TelegramClient, BotService, BotScheduler],
+  providers: [TelegramClient, BotService, BotScheduler, BotPoller],
   exports: [TelegramClient, BotService],
 })
 export class BotModule {}
