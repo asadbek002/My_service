@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Injectable, Module, OnModuleInit, OnModuleDestroy, Logger, Optional } from '@nestjs/common';
 import { BotModule } from '../bot/bot.module';
 import { BotService } from '../bot/bot.service';
-import { esc, fmtDate, som as fmtSom } from '../bot/telegram.client';
+import { esc, fmtDate, som as fmtSom, TelegramClient } from '../bot/telegram.client';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { IsOptional, IsString, Length, Matches } from 'class-validator';
 import { EskizClient } from './eskiz.client';
@@ -105,20 +105,16 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
     const message = (channel:string) => { const template=templates.find(t=>t.channel===channel); return template?render(template.body,variables):defaultText; };
     let channel = 'SMS';
     try {
-      if (order.customer.telegramChatId && process.env.TELEGRAM_BOT_TOKEN && flags?.telegram) {
-        const telegramBase = process.env.NODE_ENV === 'test' && process.env.TELEGRAM_API_URL ? new URL(process.env.TELEGRAM_API_URL) : new URL('https://api.telegram.org/');
-        const telegramUrl = new URL('bot' + process.env.TELEGRAM_BOT_TOKEN + '/sendMessage', telegramBase);
-        const response = await fetch(telegramUrl, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(10000),
-          body: JSON.stringify({ chat_id: order.customer.telegramChatId, text: message('TELEGRAM') }),
-        });
-        const result = await response.json() as { ok?: boolean; error_code?: number; result?: { message_id?: number } };
-        if (response.ok && result.ok) {
+      // Same client as the bot: token clean-up, TELEGRAM_API_BASE and error reasons apply here too.
+      const telegram = this.bot?.telegram ?? new TelegramClient();
+      if (order.customer.telegramChatId && telegram.enabled && flags?.telegram) {
+        const result = await telegram.call<{ message_id?: number }>('sendMessage', { chat_id: order.customer.telegramChatId, text: message('TELEGRAM') }, 10000);
+        if (result.ok) {
           channel = 'TELEGRAM';
           await this.db.notification.update({ where: { id: notification.id }, data: { status: 'SENT', channel, providerId: String(result.result?.message_id ?? ''), sentAt: new Date(), errorCode: null } }); return;
         }
-        // Retry transient Telegram failures. Permanent rejection falls through to SMS.
-        if (response.status >= 500 || response.status === 429) throw new Error('TELEGRAM_RETRY');
+        // Retry transient Telegram failures (unreachable, 5xx, rate limit). Permanent rejection falls through to SMS.
+        if (result.status === 0 || result.status >= 500 || result.status === 429) throw new Error('TELEGRAM_RETRY');
       }
       if (TELEGRAM_ONLY.includes(event.type)) {
         // Courtesy messages are never worth an SMS.

@@ -8,17 +8,21 @@ export type TelegramResult<T = unknown> = { ok: boolean; status: number; result?
 export class TelegramClient {
   private readonly logger = new Logger('Telegram');
 
-  get enabled() { return !!process.env.TELEGRAM_BOT_TOKEN; }
-  get username() { return process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, '') || null; }
+  // Values pasted into .env often carry quotes, spaces or a Windows line ending.
+  private static clean(value: string | undefined) { return (value ?? '').trim().replace(/^['"]|['"]$/g, '').trim(); }
+  private get token() { return TelegramClient.clean(process.env.TELEGRAM_BOT_TOKEN); }
+  get enabled() { return !!this.token; }
+  get username() { return TelegramClient.clean(process.env.TELEGRAM_BOT_USERNAME).replace(/^@/, '') || null; }
   /** t.me deep link that opens the bot with a /start payload. */
   deepLink(payload: string) { return this.username ? `https://t.me/${this.username}?start=${payload}` : null; }
 
   private url(method: string) {
     // Tests point the client at a local mock. TELEGRAM_API_BASE lets a server that cannot reach
     // api.telegram.org directly use a Bot API mirror/proxy it trusts.
+    const custom = TelegramClient.clean(process.env.TELEGRAM_API_BASE);
     const base = process.env.NODE_ENV === 'test' && process.env.TELEGRAM_API_URL ? process.env.TELEGRAM_API_URL
-      : process.env.TELEGRAM_API_BASE || 'https://api.telegram.org/';
-    return new URL('bot' + process.env.TELEGRAM_BOT_TOKEN + '/' + method, base);
+      : /^https?:\/\/[^\s]+$/.test(custom) ? custom.replace(/\/?$/, '/') : 'https://api.telegram.org/';
+    return new URL('bot' + this.token + '/' + method, base);
   }
 
   async call<T = unknown>(method: string, body: Record<string, unknown> | FormData, timeoutMs = 15000): Promise<TelegramResult<T>> {
@@ -33,8 +37,11 @@ export class TelegramClient {
       return { ok: response.ok && !!data.ok, status: response.status, ...(data.result !== undefined ? { result: data.result } : {}), ...(data.description ? { description: data.description } : {}) };
     } catch (error) {
       // Say why (DNS, timeout, refused, TLS) so the operator can fix the network; never the URL, it holds the token.
-      const cause = (error as { cause?: { code?: string } })?.cause?.code;
-      const reason = error instanceof Error && error.name === 'TimeoutError' ? 'TIMEOUT' : cause || (error instanceof Error ? error.name : 'ERROR');
+      const cause = (error as { cause?: { code?: string; message?: string } })?.cause;
+      const token = this.token;
+      const raw = error instanceof Error && error.name === 'TimeoutError' ? 'TIMEOUT'
+        : cause?.code || cause?.message || (error instanceof Error ? `${error.name}: ${error.message}` : 'ERROR');
+      const reason = (token ? raw.split(token).join('***') : raw).slice(0, 200);
       this.logger.warn(`Telegram ${method} unreachable: ${reason}`);
       return { ok: false, status: 0, description: 'UNREACHABLE: ' + reason };
     }

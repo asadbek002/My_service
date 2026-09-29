@@ -2,6 +2,7 @@ import{BadRequestException,Body,Controller,Get,Module,Param,Put}from'@nestjs/com
 import{IsBoolean,IsObject,IsString,Length,Matches}from'class-validator';
 import{Prisma}from'@prisma/client';
 import{Database}from'../database';
+import{TelegramClient}from'../bot/telegram.client';
 import{CurrentActor,Permissions}from'../auth/security';
 import type{Actor}from'../auth/security';
 class SettingsDto{@IsObject()value!:Record<string,unknown>}
@@ -42,7 +43,8 @@ class SettingsController{
  @Get('telegram')@Permissions('settings.manage')
  async telegram(@CurrentActor()a:Actor){
   const [linked,total]=await Promise.all([this.db.customer.count({where:{organizationId:a.organizationId,telegramChatId:{not:null}}}),this.db.customer.count({where:{organizationId:a.organizationId}})]);
-  return{botConfigured:!!process.env.TELEGRAM_BOT_TOKEN,botUsername:process.env.TELEGRAM_BOT_USERNAME||null,webhookConfigured:!!process.env.TELEGRAM_WEBHOOK_SECRET,linkedCustomers:linked,totalCustomers:total};
+  const tg=new TelegramClient();
+  return{botConfigured:tg.enabled,botUsername:tg.username,webhookConfigured:!!process.env.TELEGRAM_WEBHOOK_SECRET,linkedCustomers:linked,totalCustomers:total};
  }
  @Get('subscription')subscription(@CurrentActor()a:Actor){return this.db.subscription.findUnique({where:{organizationId:a.organizationId},include:{plan:true}})}
  @Get('general')@Permissions('settings.manage')
