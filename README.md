@@ -17,6 +17,8 @@ Bitta ustaxona uchun sodda jarayon (filial, usta biriktirish, diagnostika va omb
 
 Mijoz chekida faqat umumiy narx chiqadi (usta haqi va zapchast alohida ko'rsatilmaydi); pastida Telegram va Instagram (Sozlamalarda o'zgartiriladi).
 
+**Telegram bot** (bitta, butun platforma uchun): mijoz telefon raqamini yuborib hamma servislardagi buyurtmalari, holati va kafolatini ko'radi; "qabul qilindi / tayyor / berildi" xabarlari keladi; chek printer buzilsa, chek rasm bo'lib botga yuboriladi. Xodimlar Sozlamalardan ulanadi: yangi qabul va tayyor qurilma haqida xabar, har kuni 20:00 da kunlik hisobot, raqam yoki telefon bo'yicha qidiruv. Platforma egasi yangi servislar va obunalar haqida xabar oladi. Sozlash: [docs/notifications.md](docs/notifications.md).
+
 Rollar: **Boshliq** va **Xodim** — xodim hamma ishni qila oladi (xodim qo'shish va sozlamalar ham), faqat boshliq akkauntini o'zgartira olmaydi. Platforma egasi servis ochadi, har qanday parolni tiklaydi va "Servisga kirish" (yordam rejimi, 2 soat, jurnalga yoziladi) orqali muammoni tuzatadi.
 
 Interfeys telefon uchun qilingan (320 px dan boshlab), pastki menyu va asosiy tugma barmoq ostida.

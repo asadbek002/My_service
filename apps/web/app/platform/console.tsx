@@ -174,6 +174,7 @@ export default function PlatformConsole({ tab }: { tab: PlatformTab }) {
 
         {tab === 'system' && system && (
           <>
+            <BotCard onError={fail} />
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <Stat label="Database" value={system.database} />
               <Stat label="Faol obunalar" value={system.activeSubscriptions} />
@@ -248,5 +249,40 @@ function OrgRow({ org, onError }: { org: Org; onError: (e: unknown) => void }) {
         </ul>
       )}
     </li>
+  );
+}
+
+type BotStatus = { configured: boolean; username: string | null; secretSet: boolean; expectedUrl: string | null; webhook: { url: string; pending_update_count: number; last_error_message?: string } | null; adminLinked: boolean; customersLinked: number; staffLinked: number };
+
+/** Telegram bot: what is missing on the server, one-tap webhook setup, and connecting the admin's own chat. */
+function BotCard({ onError }: { onError: (e: unknown) => void }) {
+  const [bot, setBot] = useState<BotStatus | null>(null);
+  const [notice, setNotice] = useState('');
+  const load = useCallback(() => platformApi<BotStatus>('/bot').then(setBot).catch(onError), [onError]);
+  useEffect(() => { void load(); }, [load]);
+  if (!bot) return null;
+  const hookOk = !!bot.webhook?.url && bot.webhook.url === bot.expectedUrl;
+  async function setup() {
+    setNotice('');
+    try { const r = await platformApi<{ url: string }>('/bot/setup', { method: 'POST' }); setNotice('Webhook o‘rnatildi: ' + r.url); await load(); } catch (e) { onError(e); }
+  }
+  async function link() {
+    const tab = window.open('about:blank', '_blank');
+    try { const { url } = await platformApi<{ url: string }>('/bot/link', { method: 'POST' }); if (tab) tab.location.href = url; else window.location.href = url; } catch (e) { tab?.close(); onError(e); }
+  }
+  const Line = ({ ok, children }: { ok: boolean; children: React.ReactNode }) => <p className="flex gap-2 text-sm"><span className={ok ? 'text-emerald-600' : 'text-red-500'}>{ok ? '✓' : '✕'}</span><span>{children}</span></p>;
+  return (
+    <section className={card + ' space-y-2'}>
+      <h2 className="font-semibold">Telegram bot {bot.username && <span className="font-normal text-mute">@{bot.username}</span>}</h2>
+      <Line ok={bot.configured && !!bot.username}>Serverda TELEGRAM_BOT_TOKEN va TELEGRAM_BOT_USERNAME {bot.configured && bot.username ? 'bor' : 'yo‘q — @BotFather da bot yarating va .env ga yozing'}</Line>
+      <Line ok={bot.secretSet}>TELEGRAM_WEBHOOK_SECRET {bot.secretSet ? 'bor' : 'yo‘q — tasodifiy uzun satr yozing'}</Line>
+      <Line ok={hookOk}>Webhook {hookOk ? 'o‘rnatilgan' : 'o‘rnatilmagan'}{bot.webhook?.last_error_message ? ' · oxirgi xato: ' + bot.webhook.last_error_message : ''}</Line>
+      <p className="text-xs text-mute">Ulangan: {bot.customersLinked} mijoz · {bot.staffLinked} xodim</p>
+      {notice && <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
+      <div className="flex flex-wrap gap-2 pt-1">
+        <button onClick={setup} disabled={!bot.configured || !bot.secretSet} className={button}>Webhookni o‘rnatish</button>
+        <button onClick={link} disabled={!bot.configured || !bot.username} className="h-11 sm:h-10 px-4 rounded-md border text-sm font-semibold disabled:opacity-50">{bot.adminLinked ? 'Telegram ulangan · qayta ulash' : 'Telegramimni ulash'}</button>
+      </div>
+    </section>
   );
 }

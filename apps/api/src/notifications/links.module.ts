@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Header, Headers, HttpCode, Module, Param, Post, ForbiddenException, NotFoundException, ServiceUnavailableException, UseGuards } from '@nestjs/common';
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { Controller, Get, Header, Module, Param, Post, NotFoundException, UseGuards } from '@nestjs/common';
+import { createHash, randomBytes } from 'node:crypto';
 import { Database } from '../database';
 import { CurrentActor, Permissions, Public } from '../auth/security';
 import type { Actor } from '../auth/security';
@@ -43,31 +43,5 @@ class TrackingController {
     return { number: order.number, status: order.status, device: order.device.brand + ' ' + order.device.model, total: order.total, paid: order.total.minus(balance), balance, receivedAt: order.createdAt, warrantyEnd: order.warranty?.endDate ?? null };
   }
 }
-@Controller('telegram')
-class TelegramController {
-  constructor(private readonly db: Database) {}
-  @Post('webhook') @Public() @HttpCode(200)
-  async webhook(@Headers('x-telegram-bot-api-secret-token') provided: string | undefined, @Body() body: unknown) {
-    const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
-    if (!secret) throw new ServiceUnavailableException();
-    if (!provided || Buffer.byteLength(provided) !== Buffer.byteLength(secret) || !timingSafeEqual(Buffer.from(provided), Buffer.from(secret))) throw new ForbiddenException();
-    const message = (body as { message?: { text?: unknown; chat?: { id?: unknown; type?: unknown }; from?: { id?: unknown } } })?.message;
-    if (!message || typeof message.text !== 'string' || message.chat?.type !== 'private' ||
-        typeof message.chat.id !== 'number' || message.chat.id !== message.from?.id) return { ok: true };
-    const raw = /^\/start ([A-Za-z0-9_-]{43})$/.exec(message.text)?.[1];
-    if (!raw) return { ok: true };
-    await this.db.$transaction(async tx => {
-      const link = await tx.customerLink.findUnique({ where: { tokenHash: hashLink(raw) } });
-      if (!link || link.purpose !== 'TELEGRAM' || link.expiresAt <= new Date()) return;
-      const used = await tx.customerLink.updateMany({ where: { id: link.id, consumedAt: null }, data: { consumedAt: new Date() } });
-      if (!used.count) return;
-      const order = await tx.order.findFirst({ where: { id: link.orderId, organizationId: link.organizationId } });
-      if (!order) throw new NotFoundException();
-      await tx.customer.update({ where: { organizationId_id: { organizationId: link.organizationId, id: order.customerId } }, data: { telegramChatId: String(message.chat!.id) } });
-      await tx.auditLog.create({ data: { organizationId: link.organizationId, action: 'TELEGRAM_LINKED', entityId: order.customerId } });
-    });
-    return { ok: true };
-  }
-}
-@Module({ controllers: [LinkController, TrackingController, TelegramController], providers: [LoginRateGuard] })
+@Module({ controllers: [LinkController, TrackingController], providers: [LoginRateGuard] })
 export class LinksModule {}

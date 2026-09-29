@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -10,7 +11,9 @@ import { AppModule } from './app.module';
 import { allowedOrigins } from './auth/security';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Room for a receipt image sent to Telegram (base64 PNG); everything else is small JSON.
+  app.useBodyParser('json', { limit: '2mb' });
   app.enableShutdownHooks();
   // Behind a reverse proxy set TRUST_PROXY_HOPS so rate limits and audit logs see the client IP; default trusts none.
   (app.getHttpAdapter().getInstance() as Express).set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 0));

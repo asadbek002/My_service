@@ -1,4 +1,7 @@
-import { Controller, Get, Post, Body, Injectable, Module, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Injectable, Module, OnModuleInit, OnModuleDestroy, Logger, Optional } from '@nestjs/common';
+import { BotModule } from '../bot/bot.module';
+import { BotService } from '../bot/bot.service';
+import { esc, fmtDate, som as fmtSom } from '../bot/telegram.client';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { IsOptional, IsString, Length, Matches } from 'class-validator';
 import { EskizClient } from './eskiz.client';
@@ -15,12 +18,17 @@ class TestSmsDto {
 }
 
 function render(template:string,values:Record<string,string>){return template.replace(/{{([a-z_]+)}}/g,(_,key:string)=>values[key]??'');}
-// Only "ready" is sent (SMS costs money); other events stay in the audit trail.
+// Customer messages. "Ready" goes by Telegram, else SMS; the others are Telegram-only (SMS costs money).
 const labels: Record<string,string> = {
+  ORDER_RECEIVED: 'Qurilmangiz qabul qilindi.',
   ORDER_READY: 'Qurilmangiz tayyor, olib ketishingiz mumkin.',
+  ORDER_DELIVERED: 'Qurilma sizga topshirildi. Rahmat!',
 };
-// Status the order must still be in for the event to be worth sending (skip stale events after an outage).
-const expectedStatusFor = (type: string) => type.slice('ORDER_'.length);
+const TELEGRAM_ONLY = ['ORDER_RECEIVED', 'ORDER_DELIVERED'];
+// Events the service's own staff hear about in the bot.
+const STAFF_ALERTS = ['ORDER_RECEIVED', 'ORDER_READY'];
+// Statuses in which the event is still worth sending (skip stale events after an outage).
+const stillValid = (type: string, status: string) => type === 'ORDER_RECEIVED' ? ['RECEIVED', 'IN_REPAIR', 'READY'].includes(status) : status === type.slice('ORDER_'.length);
 @Injectable()
 export class Notifications implements OnModuleInit, OnModuleDestroy {
   private queue?: Queue;
@@ -28,13 +36,13 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
   private timer?: ReturnType<typeof setInterval>;
   private dispatching = false;
   private readonly logger = new Logger('Notifications');
-  constructor(private readonly db: Database, private readonly eskiz: EskizClient) {}
+  constructor(private readonly db: Database, private readonly eskiz: EskizClient, @Optional() private readonly bot?: BotService) {}
   async onModuleInit() {
     if (process.env.NOTIFICATIONS_ENABLED !== 'true') return;
     const url = new URL(process.env.REDIS_URL!);
     const connection = { host: url.hostname, port: Number(url.port || 6379), ...(url.password ? { password: decodeURIComponent(url.password) } : {}), ...(url.protocol === 'rediss:' ? { tls: {} } : {}) };
     this.queue = new Queue('notifications', { connection });
-    this.worker = new Worker('notifications', async job => { await this.deliver(String(job.data.eventId)); }, { connection, concurrency: 2 });
+    this.worker = new Worker('notifications', async job => { if (job.data.kind === 'staff') await this.deliverStaff(String(job.data.eventId)); else await this.deliver(String(job.data.eventId)); }, { connection, concurrency: 2 });
     this.worker.on('error', () => this.logger.error('Notification worker connection failed'));
     this.timer = setInterval(() => { void this.dispatch().catch(() => this.logger.error('Outbox dispatch failed')); }, 3000);
   }
@@ -49,19 +57,35 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
     try {
       const events = await this.db.outboxEvent.findMany({ where: { publishedAt: null }, take: 50, orderBy: { createdAt: 'asc' } });
       for (const event of events) {
-        if (labels[event.type]) await this.queue.add('send', { eventId: event.id }, { jobId: event.id, attempts: 5, backoff: { type: 'exponential', delay: 10000 }, removeOnComplete: { age: 604800 }, removeOnFail: { age: 2592000 } });
+        const retention = { removeOnComplete: { age: 604800 }, removeOnFail: { age: 2592000 } };
+        if (labels[event.type]) await this.queue.add('send', { eventId: event.id }, { jobId: event.id, attempts: 5, backoff: { type: 'exponential', delay: 10000 }, ...retention });
+        if (STAFF_ALERTS.includes(event.type) && this.bot?.telegram.enabled) await this.queue.add('staff', { eventId: event.id, kind: 'staff' }, { jobId: event.id + '-staff', attempts: 2, backoff: { type: 'fixed', delay: 30000 }, ...retention });
         await this.db.outboxEvent.update({ where: { id: event.id }, data: { publishedAt: new Date() } });
       }
     } finally { this.dispatching = false; }
   }
-  private async deliver(eventId: string) {
+  /** Alert the service's connected staff about a new or ready order. Best effort, at most once per event. */
+  async deliverStaff(eventId: string) {
+    if (!this.bot) return;
+    const event = await this.db.outboxEvent.findUniqueOrThrow({ where: { id: eventId } });
+    const order = await this.db.order.findFirst({ where: { id: event.entityId, organizationId: event.organizationId }, include: { customer: true, device: true } });
+    if (!order) return;
+    const actorId = typeof (event.payload as Record<string, unknown> | null)?.actorId === 'string' ? String((event.payload as Record<string, unknown>).actorId) : undefined;
+    const actor = actorId ? await this.db.user.findFirst({ where: { id: actorId, organizationId: event.organizationId }, select: { firstName: true } }) : null;
+    const web = process.env.WEB_URL ? '\n' + process.env.WEB_URL + '/orders/' + order.id : '';
+    const text = event.type === 'ORDER_RECEIVED'
+      ? `📥 <b>Yangi qabul</b> ${esc(order.number)}\n${esc(order.device.brand + ' ' + order.device.model)} · ${esc(order.customer.firstName)}\n${esc(order.complaint)}\nNarx: ${fmtSom(order.total)}${actor ? '\nQabul qildi: ' + esc(actor.firstName) : ''}${web}`
+      : `✅ <b>Tayyor</b> ${esc(order.number)}\n${esc(order.device.brand + ' ' + order.device.model)}\n${esc(order.customer.firstName)} ${esc(order.customer.phone)}${actor ? '\nUsta: ' + esc(actor.firstName) : ''}${web}`;
+    await this.bot.notifyStaff(event.organizationId, text, actorId);
+  }
+  async deliver(eventId: string) {
     const event = await this.db.outboxEvent.findUniqueOrThrow({ where: { id: eventId } });
     const notification = await this.db.notification.upsert({ where: { eventId }, create: { eventId, organizationId: event.organizationId, orderId: event.entityId, type: event.type }, update: {} });
     if (notification.status === 'SENT' || notification.status === 'SKIPPED') return;
     const order = await this.db.order.findFirst({ where: { id: event.entityId, organizationId: event.organizationId }, include: { customer: true, device: true, warranty: true, organization: { include: { subscription: { include: { plan: true } } } } } });
     if (!order) return;
     // Do not send a stale status after a worker outage.
-    if (order.status !== expectedStatusFor(event.type)) {
+    if (!stillValid(event.type, order.status)) {
       await this.db.notification.update({ where: { id: notification.id }, data: { status: 'SKIPPED', errorCode: 'STALE_EVENT' } }); return;
     }
     const flags = order.organization.subscription?.plan.features as Record<string, unknown> | undefined;
@@ -73,7 +97,9 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
     const sum = (v: { toString(): string }) => Number(v.toString()).toLocaleString('ru-RU').replace(/\u00a0/g, ' ') + ' so‘m';
     // The service's own name: each organization sends messages under its brand.
     const defaultText = order.organization.name + ' · ' + order.number + '\n' + labels[event.type] + '\n' + order.device.brand + ' ' + order.device.model
-      + (due.greaterThan(0) ? '\nTo‘lov: ' + sum(due) : '') + '\n' + link;
+      + (event.type === 'ORDER_RECEIVED' ? '\nNosozlik: ' + order.complaint + '\nNarx: ' + sum(order.total) : '')
+      + (event.type === 'ORDER_DELIVERED' && order.warranty ? '\nKafolat: ' + fmtDate(order.warranty.endDate) + ' gacha' : '')
+      + (event.type !== 'ORDER_RECEIVED' && due.greaterThan(0) ? '\nTo‘lov: ' + sum(due) : '') + '\n' + link;
     const variables = { customer_name: order.customer.firstName, order_number: order.number, device: order.device.brand+' '+order.device.model, repair: order.complaint, price: order.total.toString(), paid: paid.toString(), balance: order.total.minus(paid).toString(), status: order.status, warranty_end: warrantyEnd, link };
     const templates = await this.db.notificationTemplate.findMany({ where: { organizationId: order.organizationId, type: event.type, active: true } });
     const message = (channel:string) => { const template=templates.find(t=>t.channel===channel); return template?render(template.body,variables):defaultText; };
@@ -93,6 +119,10 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
         }
         // Retry transient Telegram failures. Permanent rejection falls through to SMS.
         if (response.status >= 500 || response.status === 429) throw new Error('TELEGRAM_RETRY');
+      }
+      if (TELEGRAM_ONLY.includes(event.type)) {
+        // Courtesy messages are never worth an SMS.
+        await this.db.notification.update({ where: { id: notification.id }, data: { status: 'SKIPPED', errorCode: order.customer.telegramChatId ? 'TELEGRAM_REJECTED' : 'NO_TELEGRAM' } }); return;
       }
       if (!flags?.sms || !process.env.SMS_PROVIDER || !process.env.SMS_API_KEY) throw new Error('SMS_NOT_CONFIGURED');
       let smsProviderId = '';
@@ -122,7 +152,7 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
 @ApiTags('notifications') @ApiBearerAuth()
 @Controller('notifications')
 class NotificationsController {
-  constructor(private readonly db: Database, private readonly eskiz: EskizClient) {}
+  constructor(private readonly db: Database, private readonly eskiz: EskizClient, @Optional() private readonly bot?: BotService) {}
   @Get() @Permissions('orders.view')
   async list(@CurrentActor() actor: Actor) {
     const orders = await this.db.order.findMany({ where: orderScope(actor), select: { id: true } });
@@ -155,5 +185,5 @@ class NotificationsController {
     return { ok: true, result, message };
   }
 }
-@Module({ controllers: [NotificationsController], providers: [Notifications, EskizClient], exports: [EskizClient] })
+@Module({ imports: [BotModule], controllers: [NotificationsController], providers: [Notifications, EskizClient], exports: [EskizClient] })
 export class NotificationsModule {}

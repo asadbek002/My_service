@@ -294,13 +294,15 @@ function ShareLink({ orderId }: { orderId: string }) {
   async function share() {
     setState('');
     try {
-      const { tracking } = await api<{ tracking: string }>(`/orders/${orderId}/links`, { method: 'POST' });
-      if (navigator.share) { await navigator.share({ title: 'Buyurtma holati', url: tracking }).catch(() => undefined); return; }
-      await navigator.clipboard.writeText(tracking);
+      // Tracking page for everyone; the bot link also connects the customer to Telegram (one tap on Start).
+      const { tracking, telegram } = await api<{ tracking: string; telegram: string | null }>(`/orders/${orderId}/links`, { method: 'POST' });
+      const text = `Qurilmangiz holati: ${tracking}` + (telegram ? `\nTelegramda xabar olish: ${telegram}` : '');
+      if (navigator.share) { await navigator.share({ title: 'Buyurtma holati', text }).catch(() => undefined); return; }
+      await navigator.clipboard.writeText(text);
       setState('Nusxalandi');
     } catch (e) { setState(errorText(e)); }
   }
-  return <Button variant="secondary" size="sm" onClick={share}><Share2 className="h-4 w-4" /> {state || 'Holat havolasi'}</Button>;
+  return <Button variant="secondary" size="sm" onClick={share}><Share2 className="h-4 w-4" /> {state || 'Mijozga havola'}</Button>;
 }
 
 function Payments({ order, canRefund }: { order: OrderDetail; canRefund: boolean }) {

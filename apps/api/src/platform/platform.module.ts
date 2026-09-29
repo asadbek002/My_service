@@ -11,6 +11,9 @@ import { LoginDto } from '../auth/auth.dto';
 import { SubscriptionCache } from '../auth/subscription-cache';
 import { ALL_PERMISSIONS } from '../auth/permissions';
 import { JwtModule, JwtService } from '@nestjs/jwt';
+import { BotModule } from '../bot/bot.module';
+import { BotService } from '../bot/bot.service';
+import { esc } from '../bot/telegram.client';
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 type AdminRequest = Request & { adminId: string; platformSessionId: string };
 @Injectable()
@@ -73,7 +76,7 @@ class PlatformAuthController {
 }
 @Controller('platform') @Public() @UseGuards(PlatformGuard)
 class PlatformController {
-  constructor(private readonly db: Database, private readonly subCache: SubscriptionCache, private readonly jwt: JwtService) {}
+  constructor(private readonly db: Database, private readonly subCache: SubscriptionCache, private readonly jwt: JwtService, private readonly bot: BotService) {}
   @Get('organizations')
   organizations() {
     return this.db.organization.findMany({ select: { id:true,name:true,slug:true,createdAt:true,subscription:{include:{plan:true}},_count:{select:{users:true,branches:true,orders:true}} }, take:100, orderBy:{createdAt:'desc'} });
@@ -95,7 +98,7 @@ class PlatformController {
   async onboard(@Body() d: OrganizationDto, @Req() req: AdminRequest) {
     const passwordHash=await argon2.hash(d.temporaryPassword,{type:argon2.argon2id});
     try {
-      return await this.db.$transaction(async tx => {
+      const created = await this.db.$transaction(async tx => {
         if(!await tx.plan.findUnique({where:{id:d.planId}})) throw new NotFoundException('Plan not found');
         const org=await tx.organization.create({data:{name:d.name,slug:d.slug}});
         const branch=await tx.branch.create({data:{organizationId:org.id,name:'Asosiy filial'}});
@@ -113,6 +116,8 @@ class PlatformController {
         await tx.auditLog.create({data:{organizationId:org.id,actorId:req.adminId,action:'PLATFORM_ORGANIZATION_CREATED',entityId:org.id}});
         return {id:org.id,name:org.name,ownerLogin:user.login};
       },{timeout:15000});
+      void this.bot.notifyAdmins(`🆕 Yangi servis: <b>${esc(created.name)}</b> (egasi: ${esc(created.ownerLogin)}, ${esc(d.phone)})`).catch(() => undefined);
+      return created;
     } catch(e) { if(e instanceof Prisma.PrismaClientKnownRequestError&&e.code==='P2002') throw new ConflictException('Organization slug or login exists');throw e; }
   }
   @Patch('organizations/:id/subscription')
@@ -158,6 +163,42 @@ class PlatformController {
     const accessToken = await this.jwt.signAsync({ sub: owner.id, sid: sessionId }, { algorithm: 'HS256', issuer: 'myservice', audience: 'myservice-api', expiresIn: '2h' });
     return { accessToken, expiresIn: 7200, owner: { login: owner.login, firstName: owner.firstName } };
   }
+  // ---- Telegram bot ----
+  /** Bot health as Telegram sees it: token, username, webhook URL and pending errors. */
+  @Get('bot')
+  async botStatus(@Req() req: AdminRequest) {
+    const admin = await this.db.platformAdmin.findUniqueOrThrow({ where: { id: req.adminId }, select: { telegramChatId: true } });
+    const info = await this.bot.telegram.call<{ url: string; pending_update_count: number; last_error_message?: string }>('getWebhookInfo', {});
+    return {
+      configured: this.bot.telegram.enabled, username: this.bot.telegram.username, secretSet: !!process.env.TELEGRAM_WEBHOOK_SECRET,
+      expectedUrl: process.env.WEB_URL ? process.env.WEB_URL.replace(/\/$/, '') + '/api/telegram/webhook' : null,
+      webhook: info.ok ? info.result : null, adminLinked: !!admin.telegramChatId,
+      customersLinked: await this.db.customer.count({ where: { telegramChatId: { not: null } } }),
+      staffLinked: await this.db.user.count({ where: { telegramChatId: { not: null } } }),
+    };
+  }
+  /** Register the webhook and the command menu with Telegram (run once after setting the token). */
+  @Post('bot/setup')
+  async botSetup() {
+    if (!this.bot.telegram.enabled) throw new BadRequestException('TELEGRAM_BOT_TOKEN is not set');
+    if (!process.env.TELEGRAM_WEBHOOK_SECRET || !process.env.WEB_URL) throw new BadRequestException('TELEGRAM_WEBHOOK_SECRET and WEB_URL are required');
+    const url = process.env.WEB_URL.replace(/\/$/, '') + '/api/telegram/webhook';
+    const hook = await this.bot.telegram.call('setWebhook', { url, secret_token: process.env.TELEGRAM_WEBHOOK_SECRET, allowed_updates: ['message'], drop_pending_updates: false });
+    if (!hook.ok) throw new BadRequestException('setWebhook: ' + (hook.description ?? hook.status));
+    await this.bot.telegram.call('setMyCommands', { commands: [
+      { command: 'start', description: 'Boshlash' }, { command: 'orders', description: 'Buyurtmalarim' },
+      { command: 'warranty', description: 'Kafolatlarim' }, { command: 'help', description: 'Yordam' }, { command: 'stop', description: "Xabarlarni o'chirish" },
+    ] });
+    await this.bot.telegram.call('setMyDescription', { description: "Qurilmangiz ta'mirini kuzating: holat, narx, kafolat. Telefon raqamingizni yuboring — buyurtmalaringizni topamiz." });
+    return { ok: true, url };
+  }
+  /** One-time link that connects this admin's Telegram. */
+  @Post('bot/link')
+  async botLink(@Req() req: AdminRequest) {
+    const url = await this.bot.connectLink('ADMIN', req.adminId);
+    if (!url) throw new BadRequestException('TELEGRAM_BOT_TOKEN and TELEGRAM_BOT_USERNAME are required');
+    return { url };
+  }
   @Get('analytics')
   async analytics() {
     const now=new Date(),since=new Date(Date.now()-30*86400000);
@@ -177,5 +218,5 @@ class PlatformController {
   @Get('system')
   async system() { await this.db.$queryRaw`SELECT 1`; return {database:'ok',organizations:await this.db.organization.count(),activeSubscriptions:await this.db.subscription.count({where:{status:'ACTIVE',expiresAt:{gt:new Date()}}}),pendingOutbox:await this.db.outboxEvent.count({where:{publishedAt:null}}),failedNotifications:await this.db.notification.count({where:{status:'FAILED'}})}; }
 }
-@Module({imports:[JwtModule.registerAsync({useFactory:()=>({secret:process.env.JWT_ACCESS_SECRET!})})],controllers:[PlatformAuthController,PlatformController],providers:[PlatformGuard,LoginRateGuard,SubscriptionCache]})
+@Module({imports:[BotModule,JwtModule.registerAsync({useFactory:()=>({secret:process.env.JWT_ACCESS_SECRET!})})],controllers:[PlatformAuthController,PlatformController],providers:[PlatformGuard,LoginRateGuard,SubscriptionCache]})
 export class PlatformModule {}

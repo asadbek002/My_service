@@ -20,6 +20,11 @@ const TEXT: Record<string, string> = {
   'Owner cannot be suspended': "Boshliqni to'xtatib bo'lmaydi.",
   'You cannot change your own status': "O'zingizni to'xtatib bo'lmaydi.",
   'Current password is incorrect': "Joriy parol noto'g'ri.",
+  CUSTOMER_NOT_ON_TELEGRAM: 'Mijoz botga ulanmagan.',
+  BOT_NOT_CONFIGURED: "Telegram bot hali sozlanmagan (platforma egasi token qo'shishi kerak).",
+  CUSTOMER_BLOCKED_BOT: "Mijoz botni to'xtatib qo'ygan.",
+  TELEGRAM_FAILED: "Telegram javob bermadi. Birozdan keyin qayta urinib ko'ring.",
+  'PNG image required': "Chek rasmini tayyorlab bo'lmadi.",
   FORBIDDEN: "Bu amal uchun ruxsat yo'q.",
   NETWORK_ERROR: "Server bilan aloqa yo'q. Internetni tekshiring.",
 };

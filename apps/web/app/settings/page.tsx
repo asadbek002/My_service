@@ -25,6 +25,7 @@ export default function Settings() {
     <AppShell title="Sozlamalar" narrow>
       {error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading ? <Loading rows={4} /> : (
         <div className="space-y-4">
+          <MyTelegram />
           <ServiceForm general={value('general')} receipt={value('receipt')} />
           <WarrantyForm terms={str(value('warranty_terms').text)} />
           <ExpenseCategories items={value('expense_categories').items} />
@@ -222,6 +223,44 @@ function Subscription() {
   return (
     <Block title="Obuna">
       <p className="text-sm">{sub.plan.name} · {SUB_STATUS[sub.status] ?? sub.status} · <b>{date(sub.graceUntil ?? sub.expiresAt)}</b> gacha</p>
+    </Block>
+  );
+}
+
+type BotMe = { configured: boolean; botUsername: string | null; linked: boolean };
+/** Connect the signed-in person's own Telegram: alerts, daily report at 20:00, order search. */
+function MyTelegram() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ['bot', 'me'], queryFn: () => api<BotMe>('/bot/me'), refetchInterval: 15000 });
+  const [state, setState] = useState<{ ok?: string; error?: string }>({});
+  if (!data) return null;
+  async function connect() {
+    setState({});
+    // Open the tab inside the tap, so the phone does not block it.
+    const tab = window.open('about:blank', '_blank');
+    try {
+      const { url } = await api<{ url: string }>('/bot/link', { method: 'POST' });
+      if (tab) tab.location.href = url; else window.location.href = url;
+      setState({ ok: "Telegramda Start ni bosing — keyin shu yerda «Ulangan» chiqadi." });
+    } catch (e) { tab?.close(); setState({ error: errorText(e) }); }
+  }
+  async function disconnect() {
+    try { await api('/bot/link', { method: 'DELETE' }); await qc.invalidateQueries({ queryKey: ['bot'] }); setState({ ok: 'Uzildi' }); }
+    catch (e) { setState({ error: errorText(e) }); }
+  }
+  return (
+    <Block title="Mening Telegramim" hint="Yangi qabul va tayyor qurilmalar haqida xabar, har kuni 20:00 da kunlik hisobot, buyurtma qidirish.">
+      {!data.configured ? (
+        <p className="text-sm text-mute">Bot hali ishga tushirilmagan. Platforma egasi bot tokenini qo&apos;shgach, shu yerdan ulaysiz.</p>
+      ) : data.linked ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="flex items-center gap-2 text-sm font-medium text-emerald-700"><CheckCircle2 className="h-4 w-4" /> Ulangan{data.botUsername ? ' · @' + data.botUsername : ''}</p>
+          <Button variant="secondary" size="sm" onClick={disconnect}>Uzish</Button>
+        </div>
+      ) : (
+        <Button onClick={connect} className="bg-[#229ED9] hover:bg-[#1c8cc2]">Telegramni ulash</Button>
+      )}
+      <ErrorBox className="mt-3">{state.error}</ErrorBox><Notice className="mt-3">{state.ok}</Notice>
     </Block>
   );
 }

@@ -65,6 +65,7 @@ model User {
   email              String?
   status             StaffStatus @default(ACTIVE)
   mustChangePassword Boolean     @default(true)
+  telegramChatId     String?
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
 
@@ -79,6 +80,7 @@ model User {
 
   @@unique([organizationId, id])
   @@index([organizationId, status])
+  @@index([telegramChatId])
 }
 
 model UserBranch {
@@ -212,6 +214,7 @@ model Customer {
   orders Order[]
   @@unique([organizationId, id])
   @@unique([organizationId, phone])
+  @@index([telegramChatId])
 }
 model Device {
   id String @id @default(cuid())
@@ -499,6 +502,7 @@ model PlatformAdmin {
   login String @unique
   passwordHash String
   active Boolean @default(true)
+  telegramChatId String?
   sessions PlatformSession[]
 }
 model PlatformSession {
@@ -623,4 +627,15 @@ model SourcedPart {
   order Order? @relation(fields: [organizationId, orderId], references: [organizationId, id], onDelete: Restrict)
   @@index([organizationId, status, createdAt])
   @@index([organizationId, orderId])
+}
+
+/// One-time deep link (t.me/<bot>?start=...) that connects a staff member's or platform admin's Telegram.
+model TelegramLink {
+  id String @id @default(cuid())
+  tokenHash String @unique
+  kind String // USER | ADMIN
+  targetId String
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
 }

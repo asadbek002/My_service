@@ -1,11 +1,12 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, Printer } from 'lucide-react';
-import { api } from '../../../../lib/api';
+import { ChevronLeft, Printer, Send, Share2 } from 'lucide-react';
+import { toPng } from 'html-to-image';
+import { api, ApiError } from '../../../../lib/api';
 import { errorText } from '../../../../lib/errors';
 import { date, dateTime, money, phone } from '../../../../lib/format';
 import { statusLabel } from '../../../../components/ui/status-badge';
@@ -37,6 +38,36 @@ function PrintReceipt() {
   const [width, setWidth] = useState<58 | 80 | null>(null);
   const paper = width ?? data?.width ?? 80;
   useEffect(() => { document.title = data ? data.order.number : 'Chek'; }, [data]);
+  const paperRef = useRef<HTMLDivElement>(null);
+  const [sendState, setSendState] = useState<{ busy?: boolean; ok?: string; error?: string; link?: string }>({});
+
+  // When the printer is broken: the same receipt as a picture, drawn at printer resolution.
+  async function image() {
+    return toPng(paperRef.current!, { pixelRatio: 2, backgroundColor: '#ffffff', cacheBust: true });
+  }
+  async function sendTelegram() {
+    setSendState({ busy: true });
+    try {
+      await api(`/orders/${id}/receipt/telegram`, { method: 'POST', body: JSON.stringify({ image: await image() }) });
+      setSendState({ ok: 'Chek mijozning Telegramiga yuborildi' });
+    } catch (e) {
+      if (e instanceof ApiError && e.message === 'CUSTOMER_NOT_ON_TELEGRAM') {
+        // Offer the order's bot link: once the customer presses Start, sending works.
+        const links = await api<{ telegram: string | null }>(`/orders/${id}/links`, { method: 'POST' }).catch(() => ({ telegram: null }));
+        setSendState({ error: 'Mijoz botga ulanmagan. Unga havolani yuboring yoki rasmni ulashing.', ...(links.telegram ? { link: links.telegram } : {}) });
+      } else setSendState({ error: errorText(e) });
+    }
+  }
+  async function shareImage() {
+    setSendState({ busy: true });
+    try {
+      const url = await image();
+      const file = new File([await (await fetch(url)).blob()], `${data?.order.number ?? 'chek'}.png`, { type: 'image/png' });
+      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: 'Chek' }).catch(() => undefined);
+      else Object.assign(document.createElement('a'), { href: url, download: file.name }).click();
+      setSendState({});
+    } catch (e) { setSendState({ error: errorText(e) }); }
+  }
 
   return (
     <div className="min-h-[100dvh] bg-[#EDEDEA] print:bg-white">
@@ -56,10 +87,33 @@ function PrintReceipt() {
         </div>
       </div>
 
+      {data && (
+        <div className="no-print mx-auto mt-4 flex max-w-lg flex-col gap-2 px-4">
+          <div className="flex gap-2">
+            <button onClick={sendTelegram} disabled={sendState.busy} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-[#229ED9] text-sm font-semibold text-white disabled:opacity-50">
+              <Send className="h-4 w-4" /> Telegramga yuborish
+            </button>
+            <button onClick={shareImage} disabled={sendState.busy} className="inline-flex h-11 items-center justify-center gap-2 rounded-md border bg-white px-4 text-sm font-semibold disabled:opacity-50" aria-label="Rasm sifatida ulashish">
+              <Share2 className="h-4 w-4" /> Rasm
+            </button>
+          </div>
+          {sendState.ok && <p role="status" className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-800">{sendState.ok}</p>}
+          {sendState.error && (
+            <div role="alert" className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">
+              {sendState.error}
+              {sendState.link && (
+                <button className="mt-2 block font-semibold underline" onClick={() => { if (navigator.share) void navigator.share({ text: 'Qurilmangiz holatini Telegramda kuzating: ' + sendState.link }).catch(() => undefined); else void navigator.clipboard.writeText(sendState.link!); }}>
+                  Bot havolasini yuborish
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       {error && <p className="no-print mx-auto mt-6 max-w-sm rounded-md bg-red-50 p-3 text-sm text-red-700">{errorText(error)}</p>}
       {data && (
         <div className="flex justify-center px-2 py-6 print:block print:p-0">
-          <div className="bg-white shadow-sm print:shadow-none" style={{ width: paper + 'mm' }}>
+          <div ref={paperRef} className="bg-white shadow-sm print:shadow-none" style={{ width: paper + 'mm' }}>
             <ReceiptBody r={data} paper={paper} />
           </div>
         </div>
