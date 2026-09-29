@@ -50,70 +50,93 @@ function ChangePassword() {
 }
 
 const QUEUE = [
-  ['RECEIVED', 'Qabul qilingan', 'Navbatda turibdi'],
-  ['IN_REPAIR', "Ta'mirda", 'Ustada'],
-  ['READY', 'Tayyor', 'Olib ketilishi kerak'],
+  ['RECEIVED', 'Qabulda', 'Navbatda turibdi', 'bg-ink'],
+  ['IN_REPAIR', "Ta'mirda", 'Ustada', 'bg-blue-600'],
+  ['READY', 'Tayyor', 'Olib ketiladi', 'bg-emerald-600'],
 ] as const;
 
 function Home() {
   const { data: me } = useMe();
   const { data, isLoading, error } = useDashboard(!!me && can(me, 'reports.view'));
   const count = (s: string) => data?.statuses.find(x => x.status === s)?.count ?? 0;
-  const max = Math.max(1, ...(data?.revenueByDay ?? []).map(d => Number(d.revenue)));
+  const days = data?.revenueByDay ?? [];
+  const max = Math.max(1, ...days.map(d => Number(d.revenue)));
 
   return (
     <AppShell title={me ? `Salom, ${me.firstName}` : 'Asosiy'}>
       {error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading || !data ? <Loading rows={4} /> : (
-        <div className="space-y-5">
-          <div className="grid grid-cols-3 gap-2 sm:gap-3">
-            {QUEUE.map(([status, label, hint]) => (
-              <Link key={status} href={`/orders?status=${status}`} className="rounded-lg border bg-white p-3 hover:border-ink/40 sm:p-4">
-                <p className="num font-mono text-2xl font-semibold sm:text-3xl">{count(status)}</p>
-                <p className="mt-1 text-xs font-medium sm:text-sm">{label}</p>
-                <p className="hidden text-xs text-mute sm:block">{hint}</p>
-              </Link>
-            ))}
-          </div>
-
-          <section className="talon">
-            <div className="grid grid-cols-2 divide-x">
-              <div className="p-4"><p className="eyebrow">Bugun kassa</p><p className="num mt-1 font-mono text-lg font-semibold sm:text-xl">{money(data.todayCash)}</p><p className="text-xs text-mute">{data.todayReceived} ta qabul</p></div>
-              <div className="p-4"><p className="eyebrow">Shu oy</p><p className="num mt-1 font-mono text-lg font-semibold sm:text-xl">{money(data.monthCash)}</p><p className="text-xs text-mute">so&apos;m tushdi</p></div>
-            </div>
-            <div className="talon-cut" />
-            <div className="p-4">
-              <div className="flex h-20 items-end gap-1.5" aria-label="7 kunlik tushum">
-                {data.revenueByDay.map(d => (
-                  <div key={d.day} className="flex flex-1 flex-col items-center gap-1" title={`${d.day}: ${som(d.revenue)}`}>
-                    <div className="w-full rounded-sm bg-ink/80" style={{ height: `${Math.max(3, (Number(d.revenue) / max) * 64)}px` }} />
-                    <span className="num font-mono text-[10px] text-mute">{d.day.slice(8)}</span>
-                  </div>
-                ))}
+        <div className="grid gap-5 lg:grid-cols-5 lg:gap-6">
+          <div className="space-y-4 lg:col-span-3 lg:space-y-5">
+            {/* Today's cash: the dark talon, the one loud block on the screen. */}
+            <section className="talon-dark on-ink overflow-hidden">
+              <div className="grid grid-cols-[1fr_auto] items-end gap-4 p-5 sm:p-6">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/60">Bugun kassa</p>
+                  <p className="num mt-1.5 truncate font-mono text-[2rem] font-semibold leading-none tracking-tight sm:text-4xl">{money(data.todayCash)}</p>
+                  <p className="mt-2 text-sm text-white/60">so&apos;m · {data.todayReceived} ta qabul</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/60">Shu oy</p>
+                  <p className="num mt-1.5 font-mono text-base font-semibold sm:text-lg">{money(data.monthCash)}</p>
+                </div>
               </div>
+              <div className="talon-cut" />
+              <div className="px-5 pb-4 pt-4 sm:px-6">
+                <div className="flex h-24 items-end gap-2" role="img" aria-label="7 kunlik tushum">
+                  {days.map((d, i) => {
+                    const last = i === days.length - 1;
+                    return (
+                      <div key={d.day} className="flex flex-1 flex-col items-center gap-1.5" title={`${d.day}: ${som(d.revenue)}`}>
+                        <div className={last ? 'w-full rounded-md bg-brand' : 'w-full rounded-md bg-white/20'} style={{ height: `${Math.max(4, (Number(d.revenue) / max) * 72)}px` }} />
+                        <span className={last ? 'num font-mono text-[11px] font-semibold text-brand' : 'num font-mono text-[11px] text-white/50'}>{d.day.slice(8)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+              {QUEUE.map(([status, label, hint, dot]) => (
+                <Link key={status} href={`/orders?status=${status}`} className="group rounded-xl border bg-white p-3 transition-colors hover:border-ink/40 active:bg-paper sm:p-4">
+                  <div className="flex items-center justify-between">
+                    <span className={`h-2 w-2 rounded-full ${dot}`} aria-hidden="true" />
+                    <ChevronRight className="h-4 w-4 text-mute transition-transform group-hover:translate-x-0.5" />
+                  </div>
+                  <p className="num mt-3 font-mono text-3xl font-semibold leading-none">{count(status)}</p>
+                  <p className="mt-2 truncate text-[13px] font-semibold sm:text-sm">{label}</p>
+                  <p className="truncate text-xs text-mute">{hint}</p>
+                </Link>
+              ))}
             </div>
+
             {Number(data.debt) > 0 && can(me, 'reports.finance') && (
-              <Link href="/reports#debtors" className="flex items-center justify-between border-t px-4 py-3 text-sm hover:bg-paper">
-                <span>Mijozlar qarzi</span>
-                <span className="num flex items-center gap-1 font-mono font-semibold text-amber-700">{money(data.debt)}<ChevronRight className="h-4 w-4" /></span>
+              <Link href="/reports#debtors" className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 transition-colors hover:border-amber-300">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-amber-900">Mijozlar qarzi</span>
+                  <span className="block text-xs text-amber-800">Berilgan, lekin to&apos;lanmagan</span>
+                </span>
+                <span className="num font-mono text-base font-semibold text-amber-900">{money(data.debt)}</span>
+                <ChevronRight className="h-4 w-4 text-amber-800" />
               </Link>
             )}
-          </section>
+          </div>
 
-          <section>
-            <div className="mb-2 flex items-baseline justify-between">
-              <h2 className="font-semibold">Oxirgi buyurtmalar</h2>
-              <Link href="/orders?status=" className="text-sm text-mute hover:text-ink">Hammasi</Link>
+          <section className="lg:col-span-2">
+            <div className="mb-2.5 flex items-baseline justify-between">
+              <h2 className="text-base font-bold">Oxirgi buyurtmalar</h2>
+              <Link href="/orders?status=" className="flex items-center gap-0.5 text-sm font-medium text-mute hover:text-ink">Hammasi<ChevronRight className="h-4 w-4" /></Link>
             </div>
             {data.recent.length === 0 ? (
               <Empty title="Hali buyurtma yo'q">{can(me, 'orders.create') && <Link href="/orders/new" className="font-medium text-ink underline">Birinchi qurilmani qabul qiling</Link>}</Empty>
             ) : (
-              <ul className="divide-y overflow-hidden rounded-lg border bg-white">
+              <ul className="divide-y overflow-hidden rounded-xl border bg-white">
                 {data.recent.map(o => (
                   <li key={o.id}>
-                    <Link href={`/orders/${o.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-paper">
+                    <Link href={`/orders/${o.id}`} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-paper active:bg-black/[0.03]">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{deviceName(o.device)} <span className="font-normal text-mute">· {o.customer.firstName}</span></p>
-                        <p className="num font-mono text-xs text-mute">{o.number} · {dateTime(o.createdAt)}</p>
+                        <p className="truncate text-sm font-semibold">{deviceName(o.device)}</p>
+                        <p className="truncate text-xs text-mute">{o.customer.firstName} · <span className="num font-mono">{o.number}</span> · {dateTime(o.createdAt)}</p>
                       </div>
                       <StatusBadge status={o.status} />
                     </Link>

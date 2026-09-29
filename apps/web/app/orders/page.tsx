@@ -3,10 +3,9 @@
 import { Suspense, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { can, useMe, useOrders } from '../../lib/queries';
 import { errorText } from '../../lib/errors';
-import { cn } from '../../lib/utils';
 import { AppShell } from '../../components/layout/app-shell';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -40,15 +39,18 @@ function Orders() {
 
   return (
     <AppShell title="Buyurtmalar" action={can(me, 'orders.create') && (
-      <Button asChild size="sm" className="hidden lg:inline-flex"><Link href="/orders/new"><Plus className="h-4 w-4" /> Yangi qabul</Link></Button>
+      <Button asChild variant="brand" size="sm" className="hidden lg:inline-flex"><Link href="/orders/new"><Plus className="h-4 w-4" /> Yangi qabul</Link></Button>
     )}>
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-3 lg:mx-0 lg:flex-wrap lg:px-0">
+      <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-3 lg:mx-0 lg:flex-wrap lg:px-0">
         {FILTERS.map(([key, label]) => (
           <button key={key} onClick={() => router.replace(key === 'open' ? '/orders' : '/orders?status=' + key)} aria-pressed={filter === key}
-            className={cn('h-9 shrink-0 rounded-full border px-3.5 text-sm', filter === key ? 'border-ink bg-ink text-white' : 'bg-white')}>{label}</button>
+            className="chip">{label}</button>
         ))}
       </div>
-      <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Raqam, ism, telefon yoki model" className="mb-4" type="search" />
+      <div className="relative mb-4">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-mute" aria-hidden="true" />
+        <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Raqam, ism, telefon yoki model" className="rounded-xl pl-10" type="search" aria-label="Buyurtmalardan qidirish" />
+      </div>
       {error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading ? <Loading rows={5} /> : shown.length === 0 ? (
         <Empty title={q ? 'Hech narsa topilmadi' : 'Bu yerda buyurtma yo‘q'}>
           {!q && can(me, 'orders.create') && <Link href="/orders/new" className="font-medium text-ink underline">Yangi qabul qilish</Link>}

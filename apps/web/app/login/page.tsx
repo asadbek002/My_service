@@ -45,7 +45,7 @@ export default function Login() {
           <Input {...register('password')} type="password" autoComplete="current-password" />
         </FormField>
         <ErrorBox>{errors.root?.message}</ErrorBox>
-        <Button type="submit" size="lg" disabled={isSubmitting} className="w-full">{isSubmitting ? 'Kirilmoqda…' : 'Kirish'}</Button>
+        <Button type="submit" variant="brand" size="lg" disabled={isSubmitting} className="w-full">{isSubmitting ? 'Kirilmoqda…' : 'Kirish'}</Button>
         <p className="text-xs text-mute">Parolni unutdingizmi? Boshliq yoki xodim uni &laquo;Xodimlar&raquo; bo&apos;limida yangilab beradi.</p>
       </form>
     </AuthFrame>

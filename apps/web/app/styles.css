@@ -15,6 +15,8 @@
   /* Numbers line up in columns: order numbers, amounts, phones. */
   .num { font-variant-numeric: tabular-nums; }
   :focus-visible { outline: 2px solid #111113; outline-offset: 2px; }
+  /* On ink surfaces (sidebar, hero) the ring switches to the brand orange (6.6:1 on ink). */
+  .on-ink :focus-visible { outline-color: #FF6A2B; }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }
@@ -33,7 +35,16 @@
   }
   .talon-cut::before { left: -0.5rem; clip-path: inset(0 0 0 50%); }
   .talon-cut::after { right: -0.5rem; clip-path: inset(0 50% 0 0); }
+  /* The dark talon (dashboard hero): same tear line, hairline in white. */
+  .talon-dark { @apply relative rounded-xl bg-ink text-white; }
+  .talon-dark .talon-cut { border-color: rgb(255 255 255 / 0.18); }
+  .talon-dark .talon-cut::before, .talon-dark .talon-cut::after { border-color: transparent; }
+  /* Filter / choice chip: 36px pill, ink when chosen. */
+  .chip { @apply inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border bg-white px-3.5 text-sm transition-colors active:scale-[0.97]; }
+  .chip[aria-pressed='true'] { @apply border-ink bg-ink font-medium text-white; }
   .eyebrow { @apply text-[11px] font-semibold uppercase tracking-[0.12em] text-mute; }
+  .no-scrollbar { scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
   .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 }
 

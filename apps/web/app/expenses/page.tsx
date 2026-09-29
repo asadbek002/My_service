@@ -6,7 +6,6 @@ import { api } from '../../lib/api';
 import { errorText } from '../../lib/errors';
 import { dateTime, EXPENSE_CATEGORIES, money } from '../../lib/format';
 import { can, invalidateBusiness, useDefaults, useMe } from '../../lib/queries';
-import { cn } from '../../lib/utils';
 import { AppShell } from '../../components/layout/app-shell';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -62,10 +61,10 @@ function ExpenseForm() {
   return (
     <form onSubmit={save} className="rounded-lg border bg-white p-4" noValidate>
       <h2 className="mb-3 font-semibold">Xarajat yozish</h2>
-      <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
+      <div className="no-scrollbar -mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
         {categories.map(c => (
           <button key={c} type="button" onClick={() => edit(setCategory)(c)} aria-pressed={chosen === c}
-            className={cn('h-9 shrink-0 rounded-full border px-3.5 text-sm', chosen === c ? 'border-ink bg-ink text-white' : 'bg-white')}>{label(c)}</button>
+            className="chip">{label(c)}</button>
         ))}
       </div>
       <div className="grid gap-3 sm:grid-cols-[12rem_1fr]">

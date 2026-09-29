@@ -7,7 +7,6 @@ import { api } from '../../lib/api';
 import { errorText } from '../../lib/errors';
 import { money } from '../../lib/format';
 import { can, invalidateBusiness, useMe, useOrders } from '../../lib/queries';
-import { cn } from '../../lib/utils';
 import { AppShell } from '../../components/layout/app-shell';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -55,10 +54,10 @@ function PartsPage() {
           </section>
         )}
 
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+        <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
           {FILTERS.map(([key, text]) => (
             <button key={key} onClick={() => setFilter(key)} aria-pressed={filter === key}
-              className={cn('h-9 shrink-0 rounded-full border px-3.5 text-sm', filter === key ? 'border-ink bg-ink text-white' : 'bg-white')}>{text}</button>
+              className="chip">{text}</button>
           ))}
         </div>
         {error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading ? <Loading rows={4} /> : !data?.items.length ? <Empty title="Bu yerda zapchast yo'q" /> : (

@@ -8,7 +8,6 @@ import { api } from '../../../lib/api';
 import { errorText } from '../../../lib/errors';
 import { fullName, normalizePhone, phone as fmtPhone, som } from '../../../lib/format';
 import { useOrderMutation, type Customer, type Device } from '../../../lib/queries';
-import { cn } from '../../../lib/utils';
 import { AppShell, ActionBar } from '../../../components/layout/app-shell';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -118,7 +117,7 @@ function NewOrder() {
 
   return (
     <AppShell title="Yangi qabul" back="/orders" narrow>
-      <form onSubmit={submit} className="space-y-4" noValidate>
+      <form onSubmit={submit} className="space-y-4 [counter-reset:step]" noValidate>
         <Section title="Mijoz">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1.5">
@@ -171,7 +170,7 @@ function NewOrder() {
           )}
           {newDevice && (
             <div className="space-y-3">
-              <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
+              <div className="flex flex-wrap gap-2">
                 {CATEGORIES.map(c => <Chip key={c} active={category === c} onClick={() => setCategory(c)}>{c}</Chip>)}
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -219,7 +218,7 @@ function NewOrder() {
 
         <ErrorBox>{error}</ErrorBox>
         <ActionBar>
-          <Button type="submit" size="lg" disabled={create.isPending}>{create.isPending ? 'Saqlanmoqda…' : 'Qabul qilish'}</Button>
+          <Button type="submit" variant="brand" size="lg" disabled={create.isPending}>{create.isPending ? 'Saqlanmoqda…' : 'Qabul qilish'}</Button>
         </ActionBar>
       </form>
     </AppShell>
@@ -228,9 +227,10 @@ function NewOrder() {
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border bg-white p-4">
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className="font-semibold">{title}</h2>
+    <section className="rounded-xl border bg-white p-4 [counter-increment:step] sm:p-5">
+      <div className="mb-3.5 flex items-center justify-between gap-3">
+        {/* Numbered steps: the intake reads top to bottom like the paper form it replaces. */}
+        <h2 className="flex items-center gap-2.5 font-bold before:flex before:h-6 before:w-6 before:shrink-0 before:items-center before:justify-center before:rounded-full before:bg-ink before:font-mono before:text-xs before:font-semibold before:text-white before:[content:counter(step)]">{title}</h2>
         {hint && <span className="text-right text-xs text-mute">{hint}</span>}
       </div>
       {children}
@@ -241,7 +241,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button type="button" onClick={onClick} aria-pressed={active}
-      className={cn('inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm transition-colors', active ? 'border-ink bg-ink text-white' : 'bg-white text-ink hover:border-ink/40')}>
+      className="chip text-ink hover:border-ink/40">
       {children}
     </button>
   );
