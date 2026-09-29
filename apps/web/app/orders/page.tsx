@@ -56,7 +56,7 @@ function Orders() {
           {!q && can(me, 'orders.create') && <Link href="/orders/new" className="font-medium text-ink underline">Yangi qabul qilish</Link>}
         </Empty>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{shown.map(o => <OrderCard key={o.id} order={o} />)}</div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{shown.map(o => <OrderCard key={o.id} order={o} />)}</div>
       )}
     </AppShell>
   );

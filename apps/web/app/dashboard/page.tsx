@@ -65,8 +65,8 @@ function Home() {
   return (
     <AppShell title={me ? `Salom, ${me.firstName}` : 'Asosiy'}>
       {error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading || !data ? <Loading rows={4} /> : (
-        <div className="grid gap-5 lg:grid-cols-5 lg:gap-6">
-          <div className="space-y-4 lg:col-span-3 lg:space-y-5">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-5 lg:gap-6">
+          <div className="min-w-0 space-y-4 lg:col-span-3 lg:space-y-5">
             {/* Today's cash: the dark talon, the one loud block on the screen. */}
             <section className="talon-dark on-ink overflow-hidden">
               <div className="grid grid-cols-[1fr_auto] items-end gap-4 p-5 sm:p-6">
@@ -122,7 +122,7 @@ function Home() {
             )}
           </div>
 
-          <section className="lg:col-span-2">
+          <section className="min-w-0 lg:col-span-2">
             <div className="mb-2.5 flex items-baseline justify-between">
               <h2 className="text-base font-bold">Oxirgi buyurtmalar</h2>
               <Link href="/orders?status=" className="flex items-center gap-0.5 text-sm font-medium text-mute hover:text-ink">Hammasi<ChevronRight className="h-4 w-4" /></Link>

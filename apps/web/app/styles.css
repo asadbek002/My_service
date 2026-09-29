@@ -5,6 +5,8 @@
 @layer base {
   * { @apply border-line; box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
+  /* Grid children never grow a track past the screen: long names truncate instead of widening the page. */
+  .grid > * { min-width: 0; }
   body {
     @apply bg-paper text-ink antialiased;
     margin: 0;
