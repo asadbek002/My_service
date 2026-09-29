@@ -31,7 +31,12 @@ class ReceiptController {
     return {
       type: type === 'delivery' ? 'delivery' : 'receipt',
       width: receipt.width === 58 ? 58 : 80,
-      service: { name: text(general.name) || order.organization.name, phone: text(general.phone), address: text(general.address), footer: text(receipt.footer) },
+      // Social handles printed at the bottom; unset → MyService's own accounts, empty string → hidden.
+      service: {
+        name: text(general.name) || order.organization.name, phone: text(general.phone), address: text(general.address), footer: text(receipt.footer),
+        telegram: typeof receipt.telegram === 'string' ? receipt.telegram.trim() : '@myserviceuzz',
+        instagram: typeof receipt.instagram === 'string' ? receipt.instagram.trim() : 'myserviceuz',
+      },
       order: {
         number: order.number, status: order.status, createdAt: order.createdAt, complaint: order.complaint, accessories: order.accessories,
         labor: order.labor.toString(), partsTotal: order.partsTotal.toString(), total: order.total.toString(),

@@ -10,6 +10,7 @@ import { LinksModule } from './notifications/links.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OrdersModule } from './orders/orders.module';
 import { StaffModule } from './staff/staff.module';
+import { PartsModule } from './parts/parts.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -26,7 +27,7 @@ import { HealthController } from './health.controller';
         return config;
       },
     }),
-    DatabaseModule, AuthModule, StaffModule, OrdersModule, LinksModule, NotificationsModule, ManagementModule, SettingsModule, PlatformModule, DocumentsModule,
+    DatabaseModule, AuthModule, StaffModule, OrdersModule, PartsModule, LinksModule, NotificationsModule, ManagementModule, SettingsModule, PlatformModule, DocumentsModule,
   ],
   controllers: [HealthController],
 })

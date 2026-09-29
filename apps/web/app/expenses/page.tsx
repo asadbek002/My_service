@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { errorText } from '../../lib/errors';
 import { dateTime, EXPENSE_CATEGORIES, money } from '../../lib/format';
-import { can, useDefaults, useMe } from '../../lib/queries';
+import { can, invalidateBusiness, useDefaults, useMe } from '../../lib/queries';
 import { cn } from '../../lib/utils';
 import { AppShell } from '../../components/layout/app-shell';
 import { Button } from '../../components/ui/button';
@@ -44,30 +44,36 @@ function ExpenseForm() {
   const [state, setState] = useState<{ ok?: string; error?: string }>({});
   const [busy, setBusy] = useState(false);
   const chosen = category || categories[0] || 'OTHER';
-  async function save() {
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    if (busy || !Number(amount) || note.trim().length < 3) return;
     setBusy(true); setState({});
     try {
       await api('/expenses', { method: 'POST', body: JSON.stringify({ category: chosen, amount, note: note.trim() }) });
+      // Ready for the next one straight away: clear the fields and put the cursor back on the amount.
       setAmount(''); setNote('');
-      await Promise.all([qc.invalidateQueries({ queryKey: ['expenses'] }), qc.invalidateQueries({ queryKey: ['finance'] })]);
-      setState({ ok: 'Yozildi' });
-    } catch (e) { setState({ error: errorText(e) }); } finally { setBusy(false); }
+      setState({ ok: `Yozildi: ${label(chosen)}` });
+      document.getElementById('expense-amount')?.focus();
+      await invalidateBusiness(qc);
+    } catch (err) { setState({ error: errorText(err) }); } finally { setBusy(false); }
   }
+  // The last result disappears as soon as the next expense is being typed.
+  const edit = <T,>(set: (v: T) => void) => (v: T) => { set(v); if (state.ok || state.error) setState({}); };
   return (
-    <section className="rounded-lg border bg-white p-4">
+    <form onSubmit={save} className="rounded-lg border bg-white p-4" noValidate>
       <h2 className="mb-3 font-semibold">Xarajat yozish</h2>
       <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
         {categories.map(c => (
-          <button key={c} type="button" onClick={() => setCategory(c)} aria-pressed={chosen === c}
+          <button key={c} type="button" onClick={() => edit(setCategory)(c)} aria-pressed={chosen === c}
             className={cn('h-9 shrink-0 rounded-full border px-3.5 text-sm', chosen === c ? 'border-ink bg-ink text-white' : 'bg-white')}>{label(c)}</button>
         ))}
       </div>
       <div className="grid gap-3 sm:grid-cols-[12rem_1fr]">
-        <MoneyInput value={amount} onChange={setAmount} aria-label="Summa" />
-        <Input value={note} onChange={e => setNote(e.target.value)} placeholder="Izoh (masalan: oktyabr ijarasi)" />
+        <MoneyInput id="expense-amount" value={amount} onChange={edit(setAmount)} aria-label="Summa" />
+        <Input value={note} onChange={e => edit(setNote)(e.target.value)} placeholder="Izoh (masalan: oktyabr ijarasi)" enterKeyHint="done" />
       </div>
       <ErrorBox className="mt-3">{state.error}</ErrorBox><Notice className="mt-3">{state.ok}</Notice>
-      <Button className="mt-3 w-full sm:w-auto" disabled={busy || !Number(amount) || note.trim().length < 3} onClick={save}>Saqlash</Button>
-    </section>
+      <Button type="submit" className="mt-3 w-full sm:w-auto" disabled={busy || !Number(amount) || note.trim().length < 3}>{busy ? 'Saqlanmoqda…' : 'Saqlash'}</Button>
+    </form>
   );
 }

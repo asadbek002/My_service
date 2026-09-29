@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, ClipboardList, Users, CreditCard, BarChart3, Receipt, ShieldCheck, Bell, UserCog, Settings,
-  Plus, Menu, X, LogOut, Search, ChevronLeft, LifeBuoy,
+  Plus, Menu, X, LogOut, Search, ChevronLeft, LifeBuoy, Wrench,
 } from 'lucide-react';
 import { useMe, can } from '../../lib/queries';
 import { logout } from '../../lib/api';
@@ -28,6 +28,7 @@ const NAV = [
   { href: '/customers', label: 'Mijozlar', icon: Users, permission: 'customers.view' },
   { href: '/payments', label: "To'lovlar", icon: CreditCard, permission: 'payments.view' },
   { href: '/reports', label: 'Hisobot', icon: BarChart3, permission: 'reports.view' },
+  { href: '/parts', label: 'Zapchastlar', icon: Wrench, permission: 'orders.view' },
   { href: '/expenses', label: 'Xarajatlar', icon: Receipt, permission: 'reports.finance' },
   { href: '/warranties', label: 'Kafolatlar', icon: ShieldCheck, permission: 'orders.view' },
   { href: '/notifications', label: 'Xabarlar', icon: Bell, permission: 'orders.view' },

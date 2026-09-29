@@ -10,7 +10,8 @@ A checked item is implemented in code and covered by the API integration suite (
 - [x] Status flow RECEIVED → IN_REPAIR → READY → DELIVERED / CANCELLED; audited price changes.
 - [x] Split payments, idempotency, refunds, delivery with warranty days, debt delivery with consent.
 - [x] One customer notification when READY: Telegram with SMS fallback.
-- [x] Thermal receipt (58/80 mm) with QR tracking link; public tracking page without personal data.
+- [x] Thermal receipt (58/80 mm) showing only the total price, social handles and a QR tracking link; public tracking page without personal data.
+- [x] Parts taken from nearby shops on credit: supplier, cost, optional order; paid (booked as a parts purchase) or returned, once; debt per shop.
 - [x] Reports: revenue split into labor and parts, expenses, profit, debtors, CSV export.
 - [x] Staff management by staff, owner account protected; password reset by colleagues and platform.
 - [x] Platform: services, plans, subscriptions, password reset, audited support login.

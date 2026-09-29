@@ -71,7 +71,7 @@ function ServiceForm({ general, receipt }: { general: Record<string, unknown>; r
     const d = new FormData(e.currentTarget);
     const phone = String(d.get('phone') ?? '').trim();
     await save('general', { name: String(d.get('name') ?? '').trim(), phone: phone ? normalizePhone(phone) : '', address: String(d.get('address') ?? '').trim() });
-    await save('receipt', { width, footer: String(d.get('footer') ?? '').trim() });
+    await save('receipt', { width, footer: String(d.get('footer') ?? '').trim(), telegram: String(d.get('telegram') ?? '').trim(), instagram: String(d.get('instagram') ?? '').trim() });
   }
   return (
     <Block title="Servis va chek" hint="Chekning tepasida va pastida chiqadi">
@@ -90,6 +90,10 @@ function ServiceForm({ general, receipt }: { general: Record<string, unknown>; r
             ))}
           </div>
           <p className="mt-1 text-xs text-mute">Bilmasangiz, qog&apos;oz rulonining enini o&apos;lchang. Ko&apos;pchilik printerlar 80 mm.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <FormField label="Telegram"><Input name="telegram" defaultValue={typeof receipt.telegram === 'string' ? receipt.telegram : '@myserviceuzz'} autoCapitalize="none" /></FormField>
+          <FormField label="Instagram"><Input name="instagram" defaultValue={typeof receipt.instagram === 'string' ? receipt.instagram : 'myserviceuz'} autoCapitalize="none" /></FormField>
         </div>
         <FormField label="Chek oxiridagi matn"><Textarea name="footer" defaultValue={str(receipt.footer)} rows={2} placeholder="Xaridingiz uchun rahmat!" /></FormField>
         <ErrorBox>{state.error}</ErrorBox><Notice>{state.ok}</Notice>

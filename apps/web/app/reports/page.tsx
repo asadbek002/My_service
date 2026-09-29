@@ -18,7 +18,7 @@ import { List, ListRow } from '../../components/list-row';
 type Finance = {
   received: number; delivered: number; revenue: string; labor: string; parts: string; averageCheck: string;
   cashIn: string; refunds: string; netCash: string; expenses: { category: string; amount: string }[]; operatingExpenses: string; profit: string;
-  debt: string; debtors: { id: string; number: string; createdAt: string; customer: { firstName: string; lastName?: string | null; phone: string }; device: { brand: string; model: string }; balance: string }[];
+  debt: string; shopDebt: string; debtors: { id: string; number: string; createdAt: string; customer: { firstName: string; lastName?: string | null; phone: string }; device: { brand: string; model: string }; balance: string }[];
   basis: string;
 };
 
@@ -96,6 +96,12 @@ export default function Reports() {
               <Row label="Qaytarilgan">−{money(data.refunds)}</Row>
               <Row label="Sof" strong>{money(data.netCash)}</Row>
             </section>
+            {Number(data.shopDebt) > 0 && (
+              <Link href="/parts" className="flex items-center justify-between rounded-lg border bg-white p-4 text-sm hover:border-ink/40">
+                <span className="font-semibold">Do&apos;konlarga zapchast qarzi</span>
+                <span className="num font-mono font-semibold text-amber-700">{money(data.shopDebt)}</span>
+              </Link>
+            )}
             {data.expenses.length > 0 && (
               <section className="rounded-lg border bg-white p-4">
                 <div className="mb-2 flex items-baseline justify-between"><h2 className="font-semibold">Xarajatlar</h2><Link href="/expenses" className="text-sm text-mute hover:text-ink">Yozish</Link></div>

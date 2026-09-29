@@ -13,7 +13,7 @@ import { cn } from '../../../../lib/utils';
 
 type Receipt = {
   type: 'receipt' | 'delivery'; width: 58 | 80;
-  service: { name: string; phone: string; address: string; footer: string };
+  service: { name: string; phone: string; address: string; footer: string; telegram: string; instagram: string };
   order: { number: string; status: string; createdAt: string; complaint: string; accessories: string[]; labor: string; partsTotal: string; total: string; paid: string; balance: string };
   customer: { name: string; phone: string };
   device: { category: string; brand: string; model: string };
@@ -92,8 +92,7 @@ function ReceiptBody({ r, paper }: { r: Receipt; paper: 58 | 80 }) {
       <p className="mt-1">Nosozlik: {r.order.complaint}</p>
       {r.order.accessories.length > 0 && <p>Komplekt: {r.order.accessories.join(', ')}</p>}
       {line}
-      <Pair k="Usta haqi" v={money(r.order.labor)} />
-      <Pair k="Zapchast" v={money(r.order.partsTotal)} />
+      {/* The customer sees one price: the labor/parts split stays inside the shop. */}
       <Pair k="JAMI" v={money(r.order.total) + " so'm"} b />
       <Pair k="To'langan" v={money(r.order.paid)} />
       {Number(r.order.balance) > 0 && <Pair k="Qoldiq" v={money(r.order.balance)} b />}
@@ -116,10 +115,34 @@ function ReceiptBody({ r, paper }: { r: Receipt; paper: 58 | 80 }) {
       </div>
       {r.type === 'receipt' && <p className="mt-1">Qurilmani olishda ushbu chekni ko&apos;rsating.</p>}
       {r.service.footer && <p className="mt-1 whitespace-pre-wrap text-center">{r.service.footer}</p>}
-      <div className="mt-4 flex justify-between gap-4">
-        <span>Mijoz: ________</span><span>Usta: ________</span>
-      </div>
+      {(r.service.telegram || r.service.instagram) && (
+        <div className="mt-3 flex items-center justify-between gap-2">
+          {r.service.telegram ? <span className="flex min-w-0 items-center gap-1"><TelegramIcon /><span className="truncate">{handle(r.service.telegram)}</span></span> : <span />}
+          {r.service.instagram && <span className="flex min-w-0 items-center gap-1"><InstagramIcon /><span className="truncate">{r.service.instagram.replace(/^@/, '')}</span></span>}
+        </div>
+      )}
       <p className="mt-3 text-center text-[9px]">{dateTime(r.printedAt)}</p>
     </div>
+  );
+}
+
+const handle = (v: string) => (v.startsWith('@') ? v : '@' + v);
+
+// Solid black marks: thermal printers have no grey.
+function TelegramIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-[1.3em] w-[1.3em] shrink-0" aria-label="Telegram">
+      <circle cx="12" cy="12" r="12" fill="#000" />
+      <path fill="#fff" d="M5.4 11.8l11.6-4.5c.5-.2 1 .1.8.9l-2 9.3c-.1.6-.5.8-1 .5l-3-2.2-1.5 1.4c-.2.2-.3.3-.6.3l.2-3.1 5.6-5.1c.2-.2 0-.3-.4-.1l-6.9 4.4-3-.9c-.6-.2-.6-.6.2-.9z" />
+    </svg>
+  );
+}
+function InstagramIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-[1.3em] w-[1.3em] shrink-0" aria-label="Instagram">
+      <rect x="1" y="1" width="22" height="22" rx="6.5" fill="#000" />
+      <circle cx="12" cy="12" r="4.6" fill="none" stroke="#fff" strokeWidth="2.2" />
+      <circle cx="17.6" cy="6.4" r="1.4" fill="#fff" />
+    </svg>
   );
 }

@@ -242,10 +242,40 @@ test('thermal receipt data follows the configured paper width', async () => {
   const first = await json(await request('/orders/' + order.id + '/receipt', auth));
   assert.equal(first.width, 80); assert.equal(first.order.total, '200000'); assert.equal(first.order.labor, '120000');
   assert.equal(first.service.name, a.org.name); assert.ok(first.qrSvg.startsWith('<svg')); assert.ok(first.trackingUrl.includes('/track/'));
-  assert.equal((await request('/settings/general/receipt', { ...auth, method: 'PUT', body: { value: { width: 58, footer: 'Rahmat!' } } })).status, 200);
+  assert.equal(first.service.telegram, '@myserviceuzz'); assert.equal(first.service.instagram, 'myserviceuz');
+  assert.equal((await request('/settings/general/receipt', { ...auth, method: 'PUT', body: { value: { width: 58, footer: 'Rahmat!', telegram: '@shop', instagram: '' } } })).status, 200);
   const second = await json(await request('/orders/' + order.id + '/receipt?type=delivery', auth));
   assert.equal(second.width, 58); assert.equal(second.type, 'delivery'); assert.equal(second.service.footer, 'Rahmat!');
+  assert.equal(second.service.telegram, '@shop'); assert.equal(second.service.instagram, '');
   assert.equal((await json(await request('/settings/defaults', auth))).receiptWidth, 58);
+});
+test('parts taken from a shop are paid (as a purchase expense) or returned, once', async () => {
+  const auth = await owner(a);
+  const { order } = await newOrder(a, { labor: '100000', parts: '400000' });
+  const take = body => request('/parts', { ...auth, method: 'POST', body });
+  const screen = await json(await take({ name: 'iPhone 13 ekran', shop: 'Malika 12', cost: '350000', orderId: order.id }));
+  const glass = await json(await take({ name: 'Oyna', shop: 'Malika 12', cost: '50000' }));
+  const other = await json(await take({ name: 'Batareya', shop: 'Chilonzor', cost: '120000' }));
+  assert.equal(screen.status, 'TAKEN'); assert.equal(screen.order.number, order.number);
+  let list = await json(await request('/parts?status=TAKEN', auth));
+  assert.equal(list.debt, '520000');
+  assert.deepEqual(list.byShop.map(x => [x.shop, x.amount]), [['Malika 12', '400000'], ['Chilonzor', '120000']]);
+  // Paid: settled and booked as a parts purchase; returned: nothing owed, no expense.
+  assert.equal((await request('/parts/' + screen.id + '/pay', { ...auth, method: 'POST' })).status, 201);
+  assert.equal((await request('/parts/' + glass.id + '/return', { ...auth, method: 'POST' })).status, 201);
+  assert.equal((await request('/parts/' + screen.id + '/return', { ...auth, method: 'POST' })).status, 409);
+  const expenses = await json(await request('/expenses', auth));
+  assert.ok(expenses.some(e => e.category === 'PURCHASE' && e.amount === '350000' && e.note.includes('iPhone 13 ekran')));
+  assert.ok(!expenses.some(e => e.note.includes('Oyna')));
+  list = await json(await request('/parts', auth));
+  assert.equal(list.debt, '120000');
+  assert.equal((await json(await request('/parts?orderId=' + order.id, auth))).items[0].status, 'PAID');
+  assert.equal((await json(await request('/reports/finance', auth))).shopDebt, '120000');
+  // Another tenant can neither see nor settle it, nor attach to this order.
+  const other_ = await owner(b);
+  assert.equal((await json(await request('/parts', other_))).items.length, 0);
+  assert.equal((await request('/parts/' + other.id + '/pay', { ...other_, method: 'POST' })).status, 404);
+  assert.equal((await request('/parts', { ...other_, method: 'POST', body: { name: 'x', shop: 'y', cost: '1', orderId: order.id } })).status, 404);
 });
 test('finance report splits labor and parts and computes profit', async () => {
   const auth = await owner(b);

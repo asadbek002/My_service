@@ -73,12 +73,13 @@ class ReportsController {
     const period = range(from, to);
     return this.db.$transaction(async tx => {
       const scope = orderScope(a);
-      const [delivered, payments, expenses, received, debtors] = await Promise.all([
+      const [delivered, payments, expenses, received, debtors, shopDebt] = await Promise.all([
         tx.order.findMany({ where: { ...scope, status: 'DELIVERED', history: { some: { toStatus: 'DELIVERED', createdAt: period } } }, select: { labor: true, partsTotal: true, total: true } }),
         tx.payment.groupBy({ by: ['kind'], where: { organizationId: a.organizationId, createdAt: period, order: scope }, _sum: { amount: true } }),
         tx.expense.groupBy({ by: ['category'], where: { organizationId: a.organizationId, createdAt: period }, _sum: { amount: true } }),
         tx.order.count({ where: { ...scope, createdAt: period } }),
         tx.order.findMany({ where: { ...scope, status: { not: 'CANCELLED' } }, include: { customer: { select: { firstName: true, lastName: true, phone: true } }, device: { select: { brand: true, model: true } }, payments: { select: { kind: true, amount: true } } }, orderBy: { createdAt: 'desc' } }),
+        tx.sourcedPart.aggregate({ where: { organizationId: a.organizationId, status: 'TAKEN' }, _sum: { cost: true } }),
       ]);
       const sum = (xs: Prisma.Decimal[]) => xs.reduce((s, x) => s.plus(x), new Prisma.Decimal(0));
       const revenue = sum(delivered.map(o => o.total)), labor = sum(delivered.map(o => o.labor)), parts = sum(delivered.map(o => o.partsTotal));
@@ -96,6 +97,8 @@ class ReportsController {
         expenses: expenses.map(e => ({ category: e.category, amount: e._sum.amount ?? 0 })), operatingExpenses: operating,
         profit: labor.minus(operating),
         debt: sum(debtorRows.map(o => o.balance)), debtors: debtorRows,
+        // What the shop still owes nearby stores for parts taken on credit (not yet paid or returned).
+        shopDebt: shopDebt._sum.cost ?? new Prisma.Decimal(0),
         basis: "Tushum — shu davrda topshirilgan buyurtmalar. Foyda = usta haqi − xarajatlar (zapchast xaridi hisobga olinmaydi).",
       };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });

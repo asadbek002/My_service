@@ -30,6 +30,7 @@ model Organization {
   customers Customer[]
   orders Order[]
   parts Part[]
+  sourcedParts SourcedPart[]
   subscription Subscription?
   branches Branch[]
   users    User[]
@@ -274,6 +275,7 @@ model Order {
   warrantyClaims WarrantyClaim[]
   attachments Attachment[]
   documents Document[]
+  sourcedParts SourcedPart[]
   @@unique([organizationId, id])
   @@unique([organizationId, number])
   @@index([organizationId, branchId, status])
@@ -601,4 +603,24 @@ model PaymentMethod {
   label String
   active Boolean @default(true)
   @@unique([organizationId,key])
+}
+
+/// A part brought from a nearby shop on credit: paid for later, or returned if it was not used.
+model SourcedPart {
+  id String @id @default(cuid())
+  organizationId String
+  orderId String?
+  name String
+  shop String
+  cost Decimal @db.Decimal(18, 2)
+  status String @default("TAKEN") // TAKEN → PAID | RETURNED
+  note String?
+  actorId String
+  expenseId String?
+  createdAt DateTime @default(now())
+  settledAt DateTime?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  order Order? @relation(fields: [organizationId, orderId], references: [organizationId, id], onDelete: Restrict)
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, orderId])
 }

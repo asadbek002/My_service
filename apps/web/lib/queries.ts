@@ -42,12 +42,18 @@ export const useDefaults = () => useQuery({ queryKey: ['defaults'], queryFn: () 
 export const useStaff = () => useQuery({ queryKey: ['staff'], queryFn: () => api<Staff[]>('/staff') });
 export const usePaymentMethods = () => useQuery({ queryKey: ['payment-methods'], queryFn: () => api<{ key: string; label: string }[]>('/settings/payment-methods'), staleTime: 300_000 });
 
-/** Mutation that refreshes every order view afterwards (list, detail, dashboard). */
+/** Every screen that shows money or order state; refreshed after any change to them. */
+const BUSINESS_KEYS = ['orders', 'dashboard', 'customers', 'payments', 'finance', 'expenses', 'parts', 'warranties', 'notifications', 'search'];
+export function invalidateBusiness(qc: ReturnType<typeof useQueryClient>) {
+  return Promise.all(BUSINESS_KEYS.map(key => qc.invalidateQueries({ queryKey: [key] })));
+}
+
+/** Mutation that refreshes every order and money view afterwards. */
 export function useOrderMutation<V, R = unknown>(fn: (v: V) => Promise<R>) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: fn,
-    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['orders'] }), qc.invalidateQueries({ queryKey: ['dashboard'] }), qc.invalidateQueries({ queryKey: ['customers'] })]),
+    onSuccess: () => invalidateBusiness(qc),
   });
 }
 export const post = (path: string, body: unknown, method = 'POST') => api(path, { method, body: JSON.stringify(body) });

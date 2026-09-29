@@ -6,13 +6,16 @@ MyService — telefon va elektron qurilmalarni ta'mirlash servislarini boshqaris
 
 ## Ish jarayoni
 
-Bitta ustaxona uchun sodda jarayon (filial, usta biriktirish, diagnostika va ombor yo'q — zapchast bozordan olinadi):
+Bitta ustaxona uchun sodda jarayon (filial, usta biriktirish, diagnostika va ombor yo'q — zapchast yon atrofdagi do'konlardan olinadi):
 
 1. **Qabul** — bitta ekranda: mijoz telefoni (qaytgan mijoz raqami bo'yicha avtomatik topiladi), qurilma (turi, brend, model), komplekt, nosozlik, **usta haqi + zapchast = jami**. Qabul chekini termoprinterda (58/80 mm) chiqarish.
 2. **Holatlar** — Qabul qilindi → Ta'mirda → Tayyor → Berildi (yoki Bekor qilindi). Narx berilguncha o'zgartiriladi, har o'zgarish jurnalga yoziladi.
 3. **Tayyor** bo'lganda mijozga bitta xabar ketadi: Telegram, bo'lmasa SMS.
 4. **Berish** — qoldiq to'lanadi (yoki qarzga), kafolat necha kun ekani so'raladi, berish cheki chiqariladi.
-5. **Hisobot** — bugungi/oylik tushum, usta haqi va zapchastga bo'lingan, xarajatlar, foyda, qarzdorlar.
+5. **Zapchastlar** — do'kondan qarzga olingan zapchast: nima, kimdan, narxi, qaysi buyurtma uchun. Keyin "Pulini berdim" (xarajatga "Zapchast xaridi" bo'lib yoziladi) yoki ishlatilmasa "Qaytardim". Do'konlar bo'yicha qarz ko'rinib turadi.
+6. **Hisobot** — bugungi/oylik tushum, usta haqi va zapchastga bo'lingan, xarajatlar, foyda, mijozlar qarzi va do'konlarga qarz.
+
+Mijoz chekida faqat umumiy narx chiqadi (usta haqi va zapchast alohida ko'rsatilmaydi); pastida Telegram va Instagram (Sozlamalarda o'zgartiriladi).
 
 Rollar: **Boshliq** va **Xodim** — xodim hamma ishni qila oladi (xodim qo'shish va sozlamalar ham), faqat boshliq akkauntini o'zgartira olmaydi. Platforma egasi servis ochadi, har qanday parolni tiklaydi va "Servisga kirish" (yordam rejimi, 2 soat, jurnalga yoziladi) orqali muammoni tuzatadi.
 

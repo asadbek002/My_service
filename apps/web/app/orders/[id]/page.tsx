@@ -4,6 +4,7 @@ import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Printer, Phone, Pencil, Share2, Undo2, Ban, ShieldCheck } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 import { errorText } from '../../../lib/errors';
 import { date, dateTime, deviceName, fullName, idempotencyKey, money, phone, PAYMENT_METHODS, som } from '../../../lib/format';
@@ -15,6 +16,7 @@ import { Input } from '../../../components/ui/input';
 import { MoneyInput } from '../../../components/ui/money-input';
 import { StatusBadge, statusLabel } from '../../../components/ui/status-badge';
 import { ErrorBox, Loading, Notice, Row } from '../../../components/ui/feedback';
+import { PartRow, type SourcedPart } from '../../../components/part-row';
 
 const OPEN = ['RECEIVED', 'IN_REPAIR', 'READY'];
 type Panel = null | 'pay' | 'deliver' | 'price' | 'cancel';
@@ -86,6 +88,7 @@ function OrderPage() {
         </div>
 
         <Payments order={order} canRefund={can(me, 'payments.refund')} />
+        <OrderParts orderId={id} canAdd={canEdit && isOpen} canEdit={canEdit} />
         {order.warranty && (
           <section className="flex gap-3 rounded-lg border bg-white p-4">
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
@@ -361,6 +364,24 @@ function History({ order }: { order: OrderDetail }) {
           </li>
         ))}
       </ol>
+    </section>
+  );
+}
+
+/** Parts brought from shops for this repair: what they cost the shop and whether they are settled. */
+function OrderParts({ orderId, canAdd, canEdit }: { orderId: string; canAdd: boolean; canEdit: boolean }) {
+  const { data } = useQuery({ queryKey: ['parts', 'order', orderId], queryFn: () => api<{ items: SourcedPart[] }>('/parts?orderId=' + orderId) });
+  const items = data?.items ?? [];
+  if (!items.length && !canAdd) return null;
+  const cost = items.filter(p => p.status !== 'RETURNED').reduce((s, p) => s + Number(p.cost), 0);
+  return (
+    <section className="rounded-lg border bg-white">
+      <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+        <h2 className="font-semibold">Zapchastlar {cost > 0 && <span className="num font-mono text-sm font-normal text-mute">· tannarx {money(cost)}</span>}</h2>
+        {canAdd && <Link href={`/parts?order=${orderId}`} className="text-sm font-medium underline">Qo&apos;shish</Link>}
+      </div>
+      {items.length ? <ul className="divide-y">{items.map(p => <PartRow key={p.id} part={p} canEdit={canEdit} compact />)}</ul>
+        : <p className="px-4 py-4 text-sm text-mute">Do&apos;kondan zapchast olinsa, shu yerda ko&apos;rinadi.</p>}
     </section>
   );
 }
