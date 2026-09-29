@@ -57,7 +57,7 @@ function OrderPage() {
 
   return (
     <AppShell title={order.number} back="/orders" narrow action={
-      <Link href={`/orders/${id}/print${order.status === 'DELIVERED' ? '?type=delivery' : ''}`} className="rounded-md p-2 text-mute hover:bg-black/[0.04] hover:text-ink" aria-label="Chek chiqarish" title="Chek chiqarish">
+      <Link href={`/orders/${id}/print${order.status === 'DELIVERED' ? '?type=delivery' : ''}`} className="flex h-10 w-10 items-center justify-center rounded-full text-ink hover:bg-black/[0.05]" aria-label="Chek chiqarish" title="Chek chiqarish">
         <Printer className="h-5 w-5" />
       </Link>
     }>
@@ -105,15 +105,15 @@ function OrderPage() {
         <ActionBar>
           {order.status === 'RECEIVED' && canStatus && <>
             <Button variant="secondary" size="lg" disabled={status.isPending} onClick={() => move('READY')}>Tayyor</Button>
-            <Button size="lg" disabled={status.isPending} onClick={() => move('IN_REPAIR')}>Ta&apos;mirga olish</Button>
+            <Button variant="brand" size="lg" disabled={status.isPending} onClick={() => move('IN_REPAIR')}>Ta&apos;mirga olish</Button>
           </>}
           {order.status === 'IN_REPAIR' && canStatus && <Button size="lg" variant="success" disabled={status.isPending} onClick={() => move('READY')}>Tayyor</Button>}
           {order.status === 'READY' && <>
             {canPay && <Button variant="secondary" size="lg" onClick={() => toggle('pay')}>To&apos;lov</Button>}
-            {canEdit && <Button size="lg" onClick={() => toggle('deliver')}>Mijozga berish</Button>}
+            {canEdit && <Button variant="brand" size="lg" onClick={() => toggle('deliver')}>Mijozga berish</Button>}
           </>}
-          {order.status === 'DELIVERED' && canPay && <Button size="lg" onClick={() => toggle('pay')}>Qarzni to&apos;lash</Button>}
-          {(order.status === 'RECEIVED' || order.status === 'IN_REPAIR') && canPay && !canStatus && <Button size="lg" onClick={() => toggle('pay')}>To&apos;lov</Button>}
+          {order.status === 'DELIVERED' && canPay && <Button variant="brand" size="lg" onClick={() => toggle('pay')}>Qarzni to&apos;lash</Button>}
+          {(order.status === 'RECEIVED' || order.status === 'IN_REPAIR') && canPay && !canStatus && <Button variant="brand" size="lg" onClick={() => toggle('pay')}>To&apos;lov</Button>}
         </ActionBar>
       )}
     </AppShell>
@@ -201,7 +201,7 @@ function MethodPicker({ value, onChange }: { value: string; onChange: (v: string
     <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="To'lov usuli">
       {methods.map(m => (
         <button key={m.key} type="button" role="radio" aria-checked={value === m.key} onClick={() => onChange(m.key)}
-          className={cn('h-9 rounded-full border px-3.5 text-sm', value === m.key ? 'border-ink bg-ink text-white' : 'bg-white')}>{m.label}</button>
+          className="chip">{m.label}</button>
       ))}
     </div>
   );
@@ -250,7 +250,7 @@ function DeliverForm({ order, allowDebt, onDone }: { order: OrderDetail; allowDe
           <div className="flex flex-wrap gap-2">
             {WARRANTY_DAYS.map(d => (
               <button key={d} type="button" onClick={() => { setDays(d); setCustom(''); }} aria-pressed={!custom && days === d}
-                className={cn('h-9 min-w-[3rem] rounded-full border px-3 text-sm', !custom && days === d ? 'border-ink bg-ink text-white' : 'bg-white')}>
+                className="chip min-w-[3rem] justify-center px-3">
                 {d === 0 ? "Yo'q" : d + ' kun'}
               </button>
             ))}
