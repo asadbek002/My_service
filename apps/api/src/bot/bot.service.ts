@@ -11,6 +11,8 @@ type Message = {
 export type Update = { update_id?: number; message?: Message };
 
 const hash = (raw: string) => createHash('sha256').update(raw).digest('hex');
+/** +998901234567 → +998 90 123 45 67 */
+const prettyPhone = (p: string) => p.replace(/^\+998(\d{2})(\d{3})(\d{2})(\d{2})$/, '+998 $1 $2 $3 $4');
 const OPEN = ['RECEIVED', 'IN_REPAIR', 'READY'];
 
 // Reply-keyboard buttons: the text of the button is what the bot receives back.
@@ -79,7 +81,7 @@ export class BotService {
       if (text === '/stop') return await this.onStop(chatId);
       if (text === BTN.myOrders || text === '/orders') return await this.send(chatId, await this.customerOrders(chatId));
       if (text === BTN.warranty || text === '/warranty') return await this.send(chatId, await this.customerWarranties(chatId));
-      if (text === BTN.contact) return await this.send(chatId, await this.customerServices(chatId));
+      if (text === BTN.contact) return await this.sendServices(chatId);
       if (text === BTN.help || text === '/help') return await this.send(chatId, await this.help(chatId));
       const w = await this.who(chatId);
       if (text === BTN.platform || text === '/stats') return await this.send(chatId, w.admin ? await this.platformSummary() : 'Bu bo‘lim faqat platforma egasi uchun.');
@@ -191,16 +193,49 @@ export class BotService {
     return '<b>Kafolatlaringiz</b>\n\n' + list.map(w => `🛡 ${esc(w.order.device.brand + ' ' + w.order.device.model)} · ${esc(w.order.organization.name)}\n<b>${fmtDate(w.endDate)}</b> gacha (${esc(w.order.number)})`).join('\n\n');
   }
 
-  private async customerServices(chatId: string) {
+  /**
+   * "Servis bilan bog'lanish": every service this customer has, with what the service entered in
+   * Settings (name, phone, address, Telegram, Instagram). Without a saved phone the owner's number
+   * is used, so the customer can always call. Each service also gets a tappable contact card.
+   */
+  private async sendServices(chatId: string) {
     const customers = await this.db.customer.findMany({ where: { telegramChatId: chatId }, include: { organization: true } });
-    if (!customers.length) return 'Avval telefon raqamingizni yuboring.';
-    const settings = await this.db.organizationSetting.findMany({ where: { key: 'general', organizationId: { in: customers.map(c => c.organizationId) } } });
-    return customers.map(c => {
-      const g = (settings.find(s => s.organizationId === c.organizationId)?.value ?? {}) as Record<string, unknown>;
-      const name = typeof g.name === 'string' && g.name ? g.name : c.organization.name;
-      return `<b>${esc(name)}</b>` + (typeof g.phone === 'string' && g.phone ? `\n📞 ${esc(g.phone)}` : '') + (typeof g.address === 'string' && g.address ? `\n📍 ${esc(g.address)}` : '');
-    }).join('\n\n');
+    if (!customers.length) return this.send(chatId, 'Avval telefon raqamingizni yuboring.');
+    const orgIds = [...new Set(customers.map(c => c.organizationId))];
+    const [settings, owners] = await Promise.all([
+      this.db.organizationSetting.findMany({ where: { key: { in: ['general', 'receipt'] }, organizationId: { in: orgIds } } }),
+      this.db.user.findMany({ where: { organizationId: { in: orgIds }, status: 'ACTIVE', roles: { some: { role: { systemKey: 'OWNER' } } } }, select: { organizationId: true, phone: true }, orderBy: { createdAt: 'asc' } }),
+    ]);
+    const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    const handle = (v: string) => v.replace(/^@/, '').replace(/^https?:\/\/(www\.)?(t\.me|instagram\.com)\//, '').replace(/\/.*$/, '');
+    for (const orgId of orgIds) {
+      const org = customers.find(c => c.organizationId === orgId)!.organization;
+      const value = (key: string) => (settings.find(x => x.organizationId === orgId && x.key === key)?.value ?? {}) as Record<string, unknown>;
+      const g = value('general'), r = value('receipt');
+      const name = text(g.name) || org.name;
+      const phone = text(g.phone) || owners.find(o => o.organizationId === orgId)?.phone || '';
+      const address = text(g.address);
+      // Same handles as on the printed receipt (unset → MyService's own, empty → hidden).
+      const telegram = handle(typeof r.telegram === 'string' ? r.telegram.trim() : '@myserviceuzz');
+      const instagram = handle(typeof r.instagram === 'string' ? r.instagram.trim() : 'myserviceuz');
+      const lines = [`🛠 <b>${esc(name)}</b>`];
+      if (phone) lines.push(`📞 ${esc(prettyPhone(phone))}`);
+      if (address) lines.push(`📍 ${esc(address)}`);
+      if (telegram) lines.push(`✈️ Telegram: @${esc(telegram)}`);
+      if (instagram) lines.push(`📷 Instagram: ${esc(instagram)}`);
+      if (!phone && !address) lines.push('Aloqa ma’lumotlari hali kiritilmagan.');
+      const links = [
+        ...(telegram ? [{ text: '✈️ Telegram', url: `https://t.me/${telegram}` }] : []),
+        ...(instagram ? [{ text: '📷 Instagram', url: `https://instagram.com/${instagram}` }] : []),
+        ...(address ? [{ text: '🗺 Xaritada', url: 'https://yandex.uz/maps/?text=' + encodeURIComponent(address) }] : []),
+      ];
+      await this.telegram.send(chatId, lines.join('\n'), links.length ? { inline_keyboard: [links] } : await this.menu(chatId));
+      if (phone) await this.telegram.sendContact(chatId, phone, name);
+    }
+    // Put the menu back under the last message.
+    if (orgIds.length) await this.telegram.send(chatId, 'Qo‘ng‘iroq qilish uchun kontaktni bosing.', await this.menu(chatId));
   }
+
 
   private async help(chatId: string) {
     const w = await this.who(chatId);

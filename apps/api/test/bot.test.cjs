@@ -163,6 +163,15 @@ test('bot: customers, staff, admins, alerts and receipt photo', async () => {
   await tg(customerChat, { text: '/stats' });
   assert.ok(!lastTo(customerChat).text.includes('MyService platforma'));
 
+  // "Contact the service": name, phone (owner's when Settings has none), socials, and a call card per service.
+  const beforeContact = calls.length;
+  await tg(customerChat, { text: "☎️ Servis bilan bog'lanish" });
+  const info = calls.slice(beforeContact).filter(c => c.method === 'sendMessage' && String(c.body.chat_id) === String(customerChat)).map(c => c.body.text).join('\n');
+  assert.ok(info.includes('Servis a' + id) && info.includes('Servis b' + id), info);
+  assert.ok(info.includes('+998 90 111 00 00'), info); assert.ok(info.includes('@myserviceuzz'), info);
+  const cards = calls.slice(beforeContact).filter(c => c.method === 'sendContact');
+  assert.equal(cards.length, 2); assert.equal(cards[0].body.phone_number, '+998901110000');
+
   // /stop disconnects the chat everywhere.
   await tg(customerChat, { text: '/stop' });
   assert.equal(await db.customer.count({ where: { telegramChatId: String(customerChat) } }), 0);

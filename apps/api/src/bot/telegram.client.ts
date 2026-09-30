@@ -53,6 +53,11 @@ export class TelegramClient {
     return this.call<{ message_id: number }>('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true, ...(keyboard ? { reply_markup: keyboard } : {}) });
   }
 
+  /** A contact card: one tap on it calls the number. */
+  sendContact(chatId: string | number, phone: string, firstName: string, keyboard?: Keyboard) {
+    return this.call('sendContact', { chat_id: chatId, phone_number: phone, first_name: firstName.slice(0, 64), ...(keyboard ? { reply_markup: keyboard } : {}) });
+  }
+
   sendPhoto(chatId: string | number, png: Buffer, caption: string) {
     const form = new FormData();
     form.set('chat_id', String(chatId));
