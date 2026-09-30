@@ -27,6 +27,7 @@ export default function Settings() {
         <div className="space-y-4">
           <MyTelegram />
           <ServiceForm general={value('general')} receipt={value('receipt')} />
+          <BotContactForm saved={rows?.find(r => r.key === 'bot_contact')?.value} general={value('general')} receipt={value('receipt')} />
           <WarrantyForm terms={str(value('warranty_terms').text)} />
           <ExpenseCategories items={value('expense_categories').items} />
           <ReadyMessage />
@@ -261,6 +262,89 @@ function MyTelegram() {
         <Button onClick={connect} className="bg-[#229ED9] hover:bg-[#1c8cc2]">Telegramni ulash</Button>
       )}
       <ErrorBox className="mt-3">{state.error}</ErrorBox><Notice className="mt-3">{state.ok}</Notice>
+    </Block>
+  );
+}
+
+const BOT_FIELDS = [
+  ['name', 'Servis nomi', 'Masalan: Mobile Fix', 'text'],
+  ['phone', 'Telefon', '+998 90 123 45 67', 'tel'],
+  ['phone2', 'Qo‘shimcha telefon', 'Ixtiyoriy', 'tel'],
+  ['address', 'Manzil', 'Chilonzor, 9-kvartal, 12-uy', 'text'],
+  ['landmark', "Mo'ljal", "Masalan: Korzinka ro'parasida", 'text'],
+  ['hours', 'Ish vaqti', 'Du–Sha 9:00–19:00, Yak dam', 'text'],
+  ['telegram', 'Telegram', '@myserviceuzz', 'text'],
+  ['instagram', 'Instagram', 'myserviceuz', 'text'],
+  ['mapUrl', 'Xarita havolasi', 'https://yandex.uz/maps/... (ixtiyoriy)', 'url'],
+] as const;
+type BotField = (typeof BOT_FIELDS)[number][0] | 'note';
+
+/**
+ * What the Telegram bot shows under "☎️ Servis bilan bog'lanish" — separate from the receipt.
+ * Until saved, it starts from the receipt details; after saving, an empty field is not shown.
+ */
+function BotContactForm({ saved, general, receipt }: { saved: Record<string, unknown> | undefined; general: Record<string, unknown>; receipt: Record<string, unknown> }) {
+  const start = (): Record<BotField, string> => {
+    const from = saved ?? {};
+    const pick = (k: BotField, fallback: string) => (saved ? str(from[k]) : fallback);
+    return {
+      name: pick('name', str(general.name)), phone: pick('phone', str(general.phone)), phone2: pick('phone2', ''),
+      address: pick('address', str(general.address)), landmark: pick('landmark', ''), hours: pick('hours', ''),
+      telegram: pick('telegram', typeof receipt.telegram === 'string' ? receipt.telegram : '@myserviceuzz'),
+      instagram: pick('instagram', typeof receipt.instagram === 'string' ? receipt.instagram : 'myserviceuz'),
+      mapUrl: pick('mapUrl', ''), note: pick('note', ''),
+    };
+  };
+  const [form, setForm] = useState(start);
+  const { save, busy, state } = useSave();
+  const set = (k: BotField) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm(f => ({ ...f, [k]: e.target.value }));
+  const mapOk = !form.mapUrl.trim() || /^https?:\/\/\S+$/.test(form.mapUrl.trim());
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!mapOk) return;
+    const value = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, k.startsWith('phone') && v.trim() ? normalizePhone(v) : v.trim()]));
+    await save('bot_contact', value, "Saqlandi. Botda «Servis bilan bog'lanish» ni bosib tekshiring.");
+  }
+  const handle = (v: string) => v.trim().replace(/^@/, '');
+  const preview = [
+    form.phone.trim() && `📞 ${form.phone.trim()}`, form.phone2.trim() && `📞 ${form.phone2.trim()}`,
+    form.address.trim() && `📍 ${form.address.trim()}`, form.landmark.trim() && `🧭 Mo'ljal: ${form.landmark.trim()}`,
+    form.hours.trim() && `🕘 Ish vaqti: ${form.hours.trim()}`,
+    handle(form.telegram) && `✈️ Telegram: @${handle(form.telegram)}`, handle(form.instagram) && `📷 Instagram: ${handle(form.instagram)}`,
+  ].filter(Boolean) as string[];
+  return (
+    <Block title="Telegram bot: bog'lanish ma'lumotlari" hint="Mijoz botda «☎️ Servis bilan bog'lanish» ni bosganda shu ma'lumotlar chiqadi. Chekka ta'sir qilmaydi. Bo'sh qoldirilgan qator botda ko'rinmaydi.">
+      <form onSubmit={submit} className="grid gap-3" noValidate>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {BOT_FIELDS.map(([key, label, placeholder, type]) => (
+            <FormField key={key} label={label} className={key === 'address' || key === 'mapUrl' ? 'sm:col-span-2' : ''}
+              {...(key === 'mapUrl' && !mapOk ? { error: 'Havola https:// bilan boshlanishi kerak' } : {})}>
+              <Input value={form[key]} onChange={set(key)} placeholder={placeholder}
+                inputMode={type === 'tel' ? 'tel' : type === 'url' ? 'url' : 'text'} autoCapitalize={key === 'telegram' || key === 'instagram' || key === 'mapUrl' ? 'none' : 'sentences'} />
+            </FormField>
+          ))}
+        </div>
+        <FormField label="Qo'shimcha matn"><Textarea value={form.note} onChange={set('note')} rows={2} placeholder="Masalan: Oldindan qo'ng'iroq qilib keling" /></FormField>
+
+        <div>
+          <p className="eyebrow mb-1.5">Botda shunday ko&apos;rinadi</p>
+          <div className="max-w-sm rounded-2xl rounded-bl-md bg-[#EEF6FC] p-3 text-sm leading-relaxed">
+            <p>🛠 <b>{form.name.trim() || 'Servis nomi'}</b></p>
+            {preview.map(line => <p key={line}>{line}</p>)}
+            {form.note.trim() && <p className="mt-2 whitespace-pre-wrap">{form.note.trim()}</p>}
+            {!form.phone.trim() && !form.address.trim() && <p className="text-mute">Aloqa ma&apos;lumotlari hali kiritilmagan.</p>}
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {handle(form.telegram) && <span className="rounded-md bg-white px-2 py-1 text-xs">✈️ Telegram</span>}
+              {handle(form.instagram) && <span className="rounded-md bg-white px-2 py-1 text-xs">📷 Instagram</span>}
+              {(form.mapUrl.trim() || form.address.trim()) && <span className="rounded-md bg-white px-2 py-1 text-xs">🗺 Xaritada</span>}
+            </div>
+          </div>
+          {form.phone.trim() && <p className="mt-1.5 text-xs text-mute">+ telefon kontakt kartochka bo&apos;lib yuboriladi: mijoz bosib qo&apos;ng&apos;iroq qiladi.</p>}
+        </div>
+
+        <ErrorBox>{state.error}</ErrorBox><Notice>{state.ok}</Notice>
+        <Button disabled={busy || !mapOk} className="sm:w-fit">Saqlash</Button>
+      </form>
     </Block>
   );
 }

@@ -172,6 +172,20 @@ test('bot: customers, staff, admins, alerts and receipt photo', async () => {
   const cards = calls.slice(beforeContact).filter(c => c.method === 'sendContact');
   assert.equal(cards.length, 2); assert.equal(cards[0].body.phone_number, '+998901110000');
 
+  // Settings → bot contact overrides the receipt details for the bot; empty fields are hidden.
+  await ok(await request('/settings/general/bot_contact', { token: bosses[0], method: 'PUT', body: { value: { name: 'Mobile Fix', phone: '+998971112233', phone2: '', address: 'Chilonzor 9', landmark: 'Korzinka yonida', hours: '9:00–19:00', telegram: '', instagram: 'mobilefix.uz', mapUrl: 'https://yandex.uz/maps/-/abc', note: '' } } }));
+  const beforeBot = calls.length;
+  await tg(customerChat, { text: "☎️ Servis bilan bog'lanish" });
+  const sent = calls.slice(beforeBot).filter(c => c.method === 'sendMessage' && String(c.body.chat_id) === String(customerChat));
+  const fix = sent.find(c => c.body.text.includes('Mobile Fix'));
+  assert.ok(fix, sent.map(c => c.body.text).join('\n'));
+  for (const piece of ['+998 97 111 22 33', 'Chilonzor 9', "Mo'ljal: Korzinka yonida", 'Ish vaqti: 9:00–19:00', 'Instagram: mobilefix.uz']) assert.ok(fix.body.text.includes(piece), piece);
+  assert.ok(!fix.body.text.includes('Telegram:'));
+  assert.deepEqual(fix.body.reply_markup.inline_keyboard[0].map(b => b.url), ['https://instagram.com/mobilefix.uz', 'https://yandex.uz/maps/-/abc']);
+  // The other service has not saved it yet and keeps the defaults.
+  assert.ok(sent.some(c => c.body.text.includes('Servis b' + id) && c.body.text.includes('@myserviceuzz')));
+  assert.ok(calls.slice(beforeBot).some(c => c.method === 'sendContact' && c.body.phone_number === '+998971112233' && c.body.first_name === 'Mobile Fix'));
+
   // /stop disconnects the chat everywhere.
   await tg(customerChat, { text: '/stop' });
   assert.equal(await db.customer.count({ where: { telegramChatId: String(customerChat) } }), 0);

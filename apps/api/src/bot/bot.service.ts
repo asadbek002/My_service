@@ -203,7 +203,7 @@ export class BotService {
     if (!customers.length) return this.send(chatId, 'Avval telefon raqamingizni yuboring.');
     const orgIds = [...new Set(customers.map(c => c.organizationId))];
     const [settings, owners] = await Promise.all([
-      this.db.organizationSetting.findMany({ where: { key: { in: ['general', 'receipt'] }, organizationId: { in: orgIds } } }),
+      this.db.organizationSetting.findMany({ where: { key: { in: ['general', 'receipt', 'bot_contact'] }, organizationId: { in: orgIds } } }),
       this.db.user.findMany({ where: { organizationId: { in: orgIds }, status: 'ACTIVE', roles: { some: { role: { systemKey: 'OWNER' } } } }, select: { organizationId: true, phone: true }, orderBy: { createdAt: 'asc' } }),
     ]);
     const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
@@ -212,22 +212,36 @@ export class BotService {
       const org = customers.find(c => c.organizationId === orgId)!.organization;
       const value = (key: string) => (settings.find(x => x.organizationId === orgId && x.key === key)?.value ?? {}) as Record<string, unknown>;
       const g = value('general'), r = value('receipt');
-      const name = text(g.name) || org.name;
-      const phone = text(g.phone) || owners.find(o => o.organizationId === orgId)?.phone || '';
-      const address = text(g.address);
-      // Same handles as on the printed receipt (unset → MyService's own, empty → hidden).
-      const telegram = handle(typeof r.telegram === 'string' ? r.telegram.trim() : '@myserviceuzz');
-      const instagram = handle(typeof r.instagram === 'string' ? r.instagram.trim() : 'myserviceuz');
+      // Settings → "Telegram bot: bog'lanish" wins field by field once saved (an empty field hides
+      // that line); before it is saved, the receipt details and the owner's phone are used.
+      const b = settings.some(x => x.organizationId === orgId && x.key === 'bot_contact') ? value('bot_contact') : null;
+      const pick = (field: string, fallback: string) => b && typeof b[field] === 'string' ? text(b[field]) : fallback;
+      const name = pick('name', text(g.name)) || text(g.name) || org.name;
+      const phone = pick('phone', text(g.phone) || owners.find(o => o.organizationId === orgId)?.phone || '');
+      const phone2 = pick('phone2', '');
+      const address = pick('address', text(g.address));
+      const landmark = pick('landmark', '');
+      const hours = pick('hours', '');
+      const note = pick('note', '');
+      const mapUrl = pick('mapUrl', '');
+      // Same handles as on the printed receipt unless set here (unset → MyService's own, empty → hidden).
+      const telegram = handle(pick('telegram', typeof r.telegram === 'string' ? r.telegram.trim() : '@myserviceuzz'));
+      const instagram = handle(pick('instagram', typeof r.instagram === 'string' ? r.instagram.trim() : 'myserviceuz'));
       const lines = [`🛠 <b>${esc(name)}</b>`];
       if (phone) lines.push(`📞 ${esc(prettyPhone(phone))}`);
+      if (phone2) lines.push(`📞 ${esc(prettyPhone(phone2))}`);
       if (address) lines.push(`📍 ${esc(address)}`);
+      if (landmark) lines.push(`🧭 Mo'ljal: ${esc(landmark)}`);
+      if (hours) lines.push(`🕘 Ish vaqti: ${esc(hours)}`);
       if (telegram) lines.push(`✈️ Telegram: @${esc(telegram)}`);
       if (instagram) lines.push(`📷 Instagram: ${esc(instagram)}`);
+      if (note) lines.push('', esc(note));
       if (!phone && !address) lines.push('Aloqa ma’lumotlari hali kiritilmagan.');
+      const map = /^https?:\/\/\S+$/.test(mapUrl) ? mapUrl : address ? 'https://yandex.uz/maps/?text=' + encodeURIComponent(address) : '';
       const links = [
         ...(telegram ? [{ text: '✈️ Telegram', url: `https://t.me/${telegram}` }] : []),
         ...(instagram ? [{ text: '📷 Instagram', url: `https://instagram.com/${instagram}` }] : []),
-        ...(address ? [{ text: '🗺 Xaritada', url: 'https://yandex.uz/maps/?text=' + encodeURIComponent(address) }] : []),
+        ...(map ? [{ text: '🗺 Xaritada', url: map }] : []),
       ];
       await this.telegram.send(chatId, lines.join('\n'), links.length ? { inline_keyboard: [links] } : await this.menu(chatId));
       if (phone) await this.telegram.sendContact(chatId, phone, name);
