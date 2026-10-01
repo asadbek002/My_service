@@ -12,7 +12,8 @@ export default function manifest(): MetadataRoute.Manifest {
     // The /api/settings/icon endpoint returns the org's custom logo (or falls back to the static PNG).
     icons: [
       { src: '/api/settings/icon', sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: '/api/settings/icon', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+      { src: '/api/settings/icon', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/api/settings/icon', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
       { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
       { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
       { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
