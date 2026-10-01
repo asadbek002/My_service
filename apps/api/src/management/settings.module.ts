@@ -1,9 +1,10 @@
-import{BadRequestException,Body,Controller,Delete,Get,HttpCode,Module,Param,Put}from'@nestjs/common';
+import{BadRequestException,Body,Controller,Delete,Get,HttpCode,Module,Param,Put,Req,Res}from'@nestjs/common';
 import{IsBoolean,IsObject,IsString,Length,Matches,MaxLength}from'class-validator';
 import{Prisma}from'@prisma/client';
+import type{Request,Response}from'express';
 import{Database}from'../database';
 import{TelegramClient}from'../bot/telegram.client';
-import{CurrentActor,Permissions}from'../auth/security';
+import{CurrentActor,Permissions,Public}from'../auth/security';
 import type{Actor}from'../auth/security';
 class SettingsDto{@IsObject()value!:Record<string,unknown>}
 class LogoDto{@IsString()@MaxLength(400000)image!:string}
@@ -54,6 +55,24 @@ class SettingsController{
   const v=(k:string)=>(rows.find(r=>r.key===k)?.value??{}) as Record<string,unknown>;
   const name=typeof v('general').name==='string'&&String(v('general').name).trim()?String(v('general').name).trim():org.name;
   return{name,logo:typeof v('logo').image==='string'?v('logo').image:null};
+ }
+ /** PWA icon: returns the org logo image from the refresh-token cookie, no access token needed. */
+ @Get('icon')@Public()
+ async icon(@Req()req:Request,@Res()res:Response){
+  const raw=req.cookies?.myservice_refresh as string|undefined;
+  const id=raw?.split('.')[0];
+  const session=id?await this.db.session.findUnique({where:{id},include:{user:true}}):null;
+  if(!session||session.status!=='ACTIVE'||session.expiresAt<=new Date()||session.user.status!=='ACTIVE'){
+   return res.redirect('/icon-192.png');
+  }
+  const row=await this.db.organizationSetting.findUnique({where:{organizationId_key:{organizationId:session.user.organizationId,key:'logo'}}});
+  const image=(row?.value as Record<string,unknown>|null)?.image;
+  if(typeof image!=='string'||!image.startsWith('data:image/')){return res.redirect('/icon-192.png');}
+  const comma=image.indexOf(',');
+  const mime=image.slice(5,image.indexOf(';'));
+  res.setHeader('Content-Type',mime||'image/png');
+  res.setHeader('Cache-Control','private, max-age=3600');
+  return res.send(Buffer.from(image.slice(comma+1),'base64'));
  }
  /** Logo as a small image (the browser resizes it to 256 px before upload). */
  @Put('logo')@Permissions('settings.manage')

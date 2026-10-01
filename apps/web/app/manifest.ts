@@ -9,11 +9,13 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: '#FAFAF9',
     theme_color: '#FAFAF9',
     // PNG first: Android install prompts and iOS need raster icons.
+    // The /api/settings/icon endpoint returns the org's custom logo (or falls back to the static PNG).
     icons: [
+      { src: '/api/settings/icon', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/api/settings/icon', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
       { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
       { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
       { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-      { src: '/icon-512.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
     ],
   };
 }
