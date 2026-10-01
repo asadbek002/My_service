@@ -265,16 +265,19 @@ export class BotService {
       if (note) lines.push('', esc(note));
       if (!phone && !address) lines.push('Aloqa ma’lumotlari hali kiritilmagan.');
       const map = /^https?:\/\/\S+$/.test(mapUrl) ? mapUrl : address ? 'https://yandex.uz/maps/?text=' + encodeURIComponent(address) : '';
-      const links = [
-        ...(telegram ? [{ text: '✈️ Telegram', url: `https://t.me/${telegram}` }] : []),
-        ...(instagram ? [{ text: '📷 Instagram', url: `https://instagram.com/${instagram}` }] : []),
-        ...(map ? [{ text: '🗺 Xaritada', url: map }] : []),
+      const row1 = [
+        ...(telegram ? [{ text: ‘✈️ Telegram’, url: `https://t.me/${telegram}` }] : []),
+        ...(instagram ? [{ text: ‘📷 Instagram’, url: `https://instagram.com/${instagram}` }] : []),
       ];
-      await this.telegram.send(chatId, lines.join('\n'), links.length ? { inline_keyboard: [links] } : await this.menu(chatId));
+      const row2 = [
+        ...(phone ? [{ text: ‘📞 Qo\’ng\’iroq’, url: `tel:${phone.replace(/\s/g, ‘’)}` }] : []),
+        ...(map ? [{ text: ‘📍 Manzil’, url: map }] : []),
+      ];
+      const inlineRows = [row1, row2].filter(r => r.length);
+      await this.telegram.send(chatId, lines.join(‘\n’), inlineRows.length ? { inline_keyboard: inlineRows } : await this.menu(chatId));
       if (phone) await this.telegram.sendContact(chatId, phone, name);
     }
-    // Put the menu back under the last message.
-    if (orgIds.length) await this.telegram.send(chatId, 'Qo‘ng‘iroq qilish uchun kontaktni bosing.', await this.menu(chatId));
+    if (orgIds.length) await this.telegram.send(chatId, ‘Bosh menyu:’, await this.menu(chatId));
   }
 
 
