@@ -26,7 +26,7 @@ export const BTN = {
 };
 const customerKeyboard: Keyboard = { keyboard: [[{ text: BTN.myOrders }, { text: BTN.warranty }], [{ text: BTN.tg }, { text: BTN.ig }], [{ text: BTN.addr }, { text: BTN.call }], [{ text: BTN.help }]], resize_keyboard: true };
 // Before sharing a phone the contact button still works: anyone may reach the service.
-const shareKeyboard: Keyboard = { keyboard: [[{ text: BTN.share, request_contact: true }], [{ text: BTN.contact }]], resize_keyboard: true };
+const shareKeyboard: Keyboard = { keyboard: [[{ text: BTN.share, request_contact: true }], [{ text: BTN.tg }, { text: BTN.ig }], [{ text: BTN.addr }, { text: BTN.call }], [{ text: BTN.help }]], resize_keyboard: true };
 const staffKeyboard = (admin: boolean): Keyboard => ({
   keyboard: [[{ text: BTN.today }, { text: BTN.ready }], [{ text: BTN.search }, { text: BTN.myOrders }], ...(admin ? [[{ text: BTN.platform }]] : [])],
   resize_keyboard: true,
