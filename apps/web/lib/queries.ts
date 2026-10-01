@@ -34,6 +34,8 @@ export function paidOf(payments: Pick<Payment, 'kind' | 'amount'>[]) {
 }
 export const can = (me: Me | undefined, permission: string) => !!me?.permissions.includes(permission);
 
+/** Service name and logo for the header (Settings → Logotip). */
+export const useBranding = (enabled = true) => useQuery({ queryKey: ['branding'], queryFn: () => api<{ name: string; logo: string | null }>('/settings/branding'), staleTime: 300_000, enabled });
 export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/auth/me') });
 export const useOrders = (status = '', enabled = true) => useQuery({ queryKey: ['orders', 'list', status], queryFn: () => api<Order[]>('/orders' + (status ? '?status=' + status : '')), enabled });
 export const useOrder = (id: string) => useQuery({ queryKey: ['orders', id], queryFn: () => api<OrderDetail>('/orders/' + id), enabled: !!id });

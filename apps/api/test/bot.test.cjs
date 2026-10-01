@@ -149,6 +149,33 @@ test('bot: customers, staff, admins, alerts and receipt photo', async () => {
   assert.equal(skipped.status, 'SKIPPED'); assert.equal(skipped.errorCode, 'NO_TELEGRAM');
   assert.equal((await request('/orders/' + plain.id + '/receipt/telegram', { token: bosses[0], method: 'POST', body: { image: png } })).status, 409);
 
+  // Settings → order alerts: an extra chat joins by one-time link; people and events can be switched off.
+  const extraChat = 9500000 + Math.floor(Math.random() * 1e5);
+  const { url: alertUrl } = await ok(await request('/bot/alerts/chats', { token: bosses[0], method: 'POST', body: { label: 'Sherigim' } }), 201);
+  assert.match(alertUrl, /start=g_[A-Za-z0-9_-]{43}$/);
+  await tg(extraChat, { text: '/start ' + alertUrl.split('start=')[1] });
+  assert.ok(lastTo(extraChat).text.includes('buyurtma xabarlariga ulandingiz'));
+  let alertSetup = await ok(await request('/bot/alerts', { token: bosses[0] }));
+  assert.deepEqual(alertSetup.events, { newOrder: true, ready: true, daily: true });
+  assert.equal(alertSetup.chats.length, 1); assert.equal(alertSetup.chats[0].label, 'Sherigim');
+  const owner = alertSetup.users.find(u => u.linked); assert.ok(owner && owner.enabled);
+  const alertEvent = async () => db.outboxEvent.create({ data: { organizationId: orgA.organizationId, type: 'ORDER_RECEIVED', entityId: orders[0].id, payload: { actorId: 'someone-else' } } });
+  const recipients = async () => { const from = calls.length; await worker.deliverStaff((await alertEvent()).id); return calls.slice(from).filter(c => c.method === 'sendMessage').map(c => String(c.body.chat_id)); };
+  let got = await recipients();
+  assert.ok(got.includes(String(staffChat)) && got.includes(String(extraChat)), got.join());
+  await ok(await request('/bot/alerts/users/' + owner.id, { token: bosses[0], method: 'PATCH', body: { enabled: false } }));
+  got = await recipients();
+  assert.ok(!got.includes(String(staffChat)) && got.includes(String(extraChat)));
+  await ok(await request('/bot/alerts', { token: bosses[0], method: 'PUT', body: { newOrder: false, ready: true, daily: true } }));
+  assert.equal((await recipients()).length, 0);
+  // Other services cannot touch these settings.
+  assert.equal((await request('/bot/alerts/chats/' + alertSetup.chats[0].id, { token: bosses[1], method: 'DELETE' })).status, 404);
+  await ok(await request('/bot/alerts/chats/' + alertSetup.chats[0].id, { token: bosses[0], method: 'DELETE' }));
+  alertSetup = await ok(await request('/bot/alerts', { token: bosses[0] }));
+  assert.equal(alertSetup.chats.length, 0);
+  await ok(await request('/bot/alerts', { token: bosses[0], method: 'PUT', body: { newOrder: true, ready: true, daily: true } }));
+  await ok(await request('/bot/alerts/users/' + owner.id, { token: bosses[0], method: 'PATCH', body: { enabled: true } }));
+
   // Platform: register the webhook, connect the admin, read platform numbers.
   const setup = await ok(await request('/platform/bot/setup', { token: platform, method: 'POST' }), 201);
   const hook = calls.filter(c => c.method === 'setWebhook').at(-1);
@@ -185,6 +212,14 @@ test('bot: customers, staff, admins, alerts and receipt photo', async () => {
   // The other service has not saved it yet and keeps the defaults.
   assert.ok(sent.some(c => c.body.text.includes('Servis b' + id) && c.body.text.includes('@myserviceuzz')));
   assert.ok(calls.slice(beforeBot).some(c => c.method === 'sendContact' && c.body.phone_number === '+998971112233' && c.body.first_name === 'Mobile Fix'));
+
+  // Someone who never brought a device can still reach the service from the first screen.
+  const stranger = 5000000 + Math.floor(Math.random() * 1e6);
+  await tg(stranger, { text: '/start' });
+  assert.ok(lastTo(stranger).reply_markup.keyboard.flat().some(b => b.text === "☎️ Servis bilan bog'lanish"));
+  const beforeStranger = calls.length;
+  await tg(stranger, { text: "☎️ Servis bilan bog'lanish" });
+  assert.ok(calls.slice(beforeStranger).some(c => c.method === 'sendMessage' && String(c.body.chat_id) === String(stranger) && c.body.text.includes('Mobile Fix')));
 
   // /stop disconnects the chat everywhere.
   await tg(customerChat, { text: '/stop' });

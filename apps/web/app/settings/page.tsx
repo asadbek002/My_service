@@ -4,11 +4,12 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { api } from '../../lib/api';
+import { useBranding } from '../../lib/queries';
 import { errorText } from '../../lib/errors';
 import { date, EXPENSE_CATEGORIES, money, normalizePhone } from '../../lib/format';
 import { cn } from '../../lib/utils';
 import { AppShell } from '../../components/layout/app-shell';
-import { Button } from '../../components/ui/button';
+import { Button, buttonVariants } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
 import { FormField } from '../../components/ui/form-field';
@@ -25,9 +26,12 @@ export default function Settings() {
     <AppShell title="Sozlamalar" narrow>
       {error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading ? <Loading rows={4} /> : (
         <div className="space-y-4">
-          <MyTelegram />
+          <LogoBlock />
           <ServiceForm general={value('general')} receipt={value('receipt')} />
           <BotContactForm saved={rows?.find(r => r.key === 'bot_contact')?.value} general={value('general')} receipt={value('receipt')} />
+          <MyTelegram />
+          <OrderAlerts />
+          <RolesBlock />
           <WarrantyForm terms={str(value('warranty_terms').text)} />
           <ExpenseCategories items={value('expense_categories').items} />
           <ReadyMessage />
@@ -345,6 +349,246 @@ function BotContactForm({ saved, general, receipt }: { saved: Record<string, unk
         <ErrorBox>{state.error}</ErrorBox><Notice>{state.ok}</Notice>
         <Button disabled={busy || !mapOk} className="sm:w-fit">Saqlash</Button>
       </form>
+    </Block>
+  );
+}
+
+type Alerts = { configured: boolean; events: { newOrder: boolean; ready: boolean; daily: boolean }; users: { id: string; name: string; linked: boolean; enabled: boolean }[]; chats: { id: string; label: string; createdAt: string }[] };
+const EVENTS = [['newOrder', 'Yangi qabul'], ['ready', 'Qurilma tayyor'], ['daily', 'Kunlik hisobot (20:00)']] as const;
+
+function Toggle({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)}
+      className={cn('relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-40', on ? 'bg-ink' : 'bg-black/15')}>
+      <span className={cn('absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all', on ? 'left-[1.4rem]' : 'left-0.5')} />
+    </button>
+  );
+}
+
+/** Who gets order alerts in Telegram, and which ones: per event, per person, plus extra chats. */
+function OrderAlerts() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ['bot', 'alerts'], queryFn: () => api<Alerts>('/bot/alerts'), refetchInterval: 15000 });
+  const [label, setLabel] = useState('');
+  const [link, setLink] = useState('');
+  const [state, setState] = useState<{ ok?: string; error?: string }>({});
+  if (!data) return null;
+  const run = async (fn: () => Promise<unknown>, ok?: string) => {
+    setState({});
+    try { await fn(); await qc.invalidateQueries({ queryKey: ['bot'] }); if (ok) setState({ ok }); } catch (e) { setState({ error: errorText(e) }); }
+  };
+  const setEvent = (key: keyof Alerts['events'], v: boolean) => run(() => api('/bot/alerts', { method: 'PUT', body: JSON.stringify({ ...data.events, [key]: v }) }));
+  async function newLink() {
+    if (!label.trim()) return;
+    await run(async () => { const r = await api<{ url: string }>('/bot/alerts/chats', { method: 'POST', body: JSON.stringify({ label: label.trim() }) }); setLink(r.url); setLabel(''); });
+  }
+  async function shareLink() {
+    if (navigator.share) { await navigator.share({ text: "Servis buyurtma xabarlarini olish uchun bosing: " + link }).catch(() => undefined); return; }
+    await navigator.clipboard.writeText(link); setState({ ok: 'Havola nusxalandi' });
+  }
+  return (
+    <Block title="Buyurtma xabarlari (Telegram)" hint="Yangi qabul, tayyor qurilma va kunlik hisobot kimga borishini shu yerda boshqarasiz.">
+      {!data.configured ? <p className="text-sm text-mute">Bot hali ishga tushirilmagan.</p> : (
+        <div className="space-y-5">
+          <div>
+            <p className="eyebrow mb-2">Qaysi xabarlar</p>
+            <ul className="divide-y rounded-md border">
+              {EVENTS.map(([key, text]) => (
+                <li key={key} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">{text}<Toggle on={data.events[key]} onChange={v => setEvent(key, v)} label={text} /></li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="eyebrow mb-2">Xodimlar</p>
+            <ul className="divide-y rounded-md border">
+              {data.users.map(u => (
+                <li key={u.id} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+                  <span className="min-w-0"><span className="block truncate font-medium">{u.name}</span>
+                    <span className="text-xs text-mute">{u.linked ? 'Telegram ulangan' : "Telegram ulanmagan — o'zi Sozlamalar → «Mening Telegramim» dan ulaydi"}</span></span>
+                  <Toggle on={u.enabled && u.linked} disabled={!u.linked} onChange={v => run(() => api('/bot/alerts/users/' + u.id, { method: 'PATCH', body: JSON.stringify({ enabled: v }) }))} label={u.name} />
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="eyebrow mb-2">Boshqa Telegram akkauntlar</p>
+            {data.chats.length > 0 && (
+              <ul className="mb-3 divide-y rounded-md border">
+                {data.chats.map(c => (
+                  <li key={c.id} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+                    <span className="min-w-0 truncate"><b className="font-medium">{c.label}</b> <span className="text-xs text-mute">· {date(c.createdAt)}</span></span>
+                    <button type="button" className="text-sm text-red-600 underline" onClick={() => run(() => api('/bot/alerts/chats/' + c.id, { method: 'DELETE' }), "O'chirildi")}>O&apos;chirish</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mb-2 text-xs text-mute">Xodim bo&apos;lmagan odam (sherik, ikkinchi telefon) ham xabar olishi mumkin: nom yozing, havola oling va unga yuboring. U botda Start bosadi.</p>
+            <div className="flex gap-2">
+              <Input value={label} onChange={e => setLabel(e.target.value)} placeholder="Kim uchun? Masalan: Sherigim" />
+              <Button type="button" variant="secondary" disabled={!label.trim()} onClick={newLink}>Havola olish</Button>
+            </div>
+            {link && (
+              <div className="mt-3 rounded-md bg-paper p-3 text-sm">
+                <p className="break-all font-mono text-xs">{link}</p>
+                <div className="mt-2 flex gap-2">
+                  <Button type="button" size="sm" onClick={shareLink}>Yuborish</Button>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => window.open(link, '_blank')}>O&apos;zim ochaman</Button>
+                </div>
+                <p className="mt-1 text-xs text-mute">Havola 1 kun amal qiladi va bir marta ishlatiladi.</p>
+              </div>
+            )}
+          </div>
+          <ErrorBox>{state.error}</ErrorBox><Notice>{state.ok}</Notice>
+        </div>
+      )}
+    </Block>
+  );
+}
+
+type Role = { key: 'OWNER' | 'STAFF'; users: number; permissions: string[]; editable: boolean };
+// What each permission means for the person, grouped as the app is used.
+const PERMISSION_GROUPS: [string, [string, string][]][] = [
+  ['Buyurtmalar', [
+    ['orders.view', "Buyurtmalarni ko'rish (ro'yxat, qidiruv, kafolatlar, zapchastlar)"],
+    ['orders.create', 'Qurilma qabul qilish (yangi buyurtma)'],
+    ['orders.change_status', "Holatni o'zgartirish: ta'mirda, tayyor, bekor"],
+    ['orders.edit', "Narxni o'zgartirish, mijozga berish, zapchast va do'konlar"],
+  ]],
+  ['Mijozlar', [
+    ['customers.view', "Mijozlar ro'yxati va ma'lumotlari"],
+    ['customers.edit', "Mijoz va qurilma qo'shish"],
+  ]],
+  ["To'lovlar", [
+    ['payments.view', "To'lovlar ro'yxati"],
+    ['payments.create', "To'lov qabul qilish"],
+    ['payments.refund', 'Pulni qaytarish'],
+    ['payments.deliver_with_debt', 'Qurilmani qarzga berish'],
+  ]],
+  ['Pul va hisobot', [
+    ['reports.view', "Asosiy sahifadagi kassa va statistika, CSV"],
+    ['reports.finance', "Moliyaviy hisobot, foyda, qarzdorlar, xarajatlar ro'yxati"],
+    ['expenses.manage', 'Xarajat yozish'],
+  ]],
+  ['Boshqaruv', [
+    ['staff.view', "Xodimlar ro'yxati"],
+    ['staff.manage', "Xodim qo'shish, to'xtatish, parolini tiklash"],
+    ['settings.manage', 'Sozlamalar (servis, chek, bot, xabarlar)'],
+  ]],
+];
+const ALL_KEYS = PERMISSION_GROUPS.flatMap(([, items]) => items.map(([k]) => k));
+const PRESETS: [string, string[]][] = [
+  ['Hammasi', ALL_KEYS],
+  ["Faqat usta (pulsiz)", ['orders.view', 'orders.change_status', 'customers.view']],
+  ['Qabul va kassa', ['orders.view', 'orders.create', 'orders.change_status', 'orders.edit', 'customers.view', 'customers.edit', 'payments.view', 'payments.create']],
+];
+
+/** Boshliq has everything; the owner chooses what Xodim may see and do. */
+function RolesBlock() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ['roles'], queryFn: () => api<Role[]>('/roles') });
+  const staff = data?.find(r => r.key === 'STAFF');
+  const [chosen, setChosen] = useState<string[] | null>(null);
+  const [state, setState] = useState<{ ok?: string; error?: string }>({});
+  const [busy, setBusy] = useState(false);
+  if (!staff) return null;
+  const current = chosen ?? staff.permissions;
+  const changed = chosen !== null && [...chosen].sort().join() !== [...staff.permissions].sort().join();
+  const toggle = (k: string) => { setState({}); setChosen(list => { const base = list ?? staff.permissions; return base.includes(k) ? base.filter(x => x !== k) : [...base, k]; }); };
+  async function save() {
+    setBusy(true); setState({});
+    try {
+      await api('/roles/STAFF', { method: 'PUT', body: JSON.stringify({ permissions: current }) });
+      await qc.invalidateQueries({ queryKey: ['roles'] }); setChosen(null);
+      setState({ ok: "Saqlandi. Xodimlar uchun darhol amal qiladi (sahifani yangilashlari kifoya)." });
+    } catch (e) { setState({ error: errorText(e) }); } finally { setBusy(false); }
+  }
+  return (
+    <Block title="Rollar va ruxsatlar" hint={`Boshliq hamma narsani qila oladi. Xodim (${staff.users} kishi) nimani ko'rishi va qilishini shu yerda belgilaysiz.`}>
+      {!staff.editable && <p className="mb-3 rounded-md bg-paper p-3 text-sm text-mute">Ruxsatlarni faqat boshliq o&apos;zgartiradi. Quyida xodim nimalarni qila olishi ko&apos;rsatilgan.</p>}
+      {staff.editable && (
+        <div className="no-scrollbar -mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
+          {PRESETS.map(([name, keys]) => (
+            <button key={name} type="button" className="chip" aria-pressed={[...keys].sort().join() === [...current].sort().join()} onClick={() => { setState({}); setChosen(keys); }}>{name}</button>
+          ))}
+        </div>
+      )}
+      <div className="space-y-4">
+        {PERMISSION_GROUPS.map(([group, items]) => (
+          <div key={group}>
+            <p className="eyebrow mb-1.5">{group}</p>
+            <ul className="divide-y rounded-md border">
+              {items.map(([key, text]) => (
+                <li key={key}>
+                  <label className={cn('flex items-center gap-3 px-3 py-2.5 text-sm', staff.editable && 'cursor-pointer')}>
+                    <input type="checkbox" className="h-5 w-5 shrink-0 accent-[#111113]" checked={current.includes(key)} disabled={!staff.editable} onChange={() => toggle(key)} />
+                    <span>{text}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+      {staff.editable && current.length === 0 && <p className="mt-3 text-sm text-amber-700">Hech narsa tanlanmasa, xodim tizimga kirib hech narsa qila olmaydi.</p>}
+      <ErrorBox className="mt-3">{state.error}</ErrorBox><Notice className="mt-3">{state.ok}</Notice>
+      {staff.editable && (
+        <div className="mt-3 flex gap-2">
+          <Button disabled={busy || !changed} onClick={save}>Saqlash</Button>
+          {changed && <Button variant="secondary" onClick={() => setChosen(null)}>Bekor</Button>}
+        </div>
+      )}
+    </Block>
+  );
+}
+
+/** Shrink any picture to a 256 px square-fit PNG (WebP if PNG is too heavy) before upload. */
+async function shrinkImage(file: File): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => reject(new Error('Rasmni ochib bo‘lmadi')); i.src = url; });
+    const scale = Math.min(1, 256 / Math.max(img.width, img.height));
+    const canvas = Object.assign(document.createElement('canvas'), { width: Math.max(1, Math.round(img.width * scale)), height: Math.max(1, Math.round(img.height * scale)) });
+    canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const png = canvas.toDataURL('image/png');
+    return png.length < 350_000 ? png : canvas.toDataURL('image/webp', 0.85);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+function LogoBlock() {
+  const qc = useQueryClient();
+  const { data } = useBranding();
+  const [state, setState] = useState<{ ok?: string; error?: string }>({});
+  const [busy, setBusy] = useState(false);
+  async function upload(file: File | undefined) {
+    if (!file) return;
+    setBusy(true); setState({});
+    try {
+      const image = await shrinkImage(file);
+      await api('/settings/logo', { method: 'PUT', body: JSON.stringify({ image }) });
+      await qc.invalidateQueries({ queryKey: ['branding'] });
+      setState({ ok: 'Logotip saqlandi' });
+    } catch (e) { setState({ error: errorText(e) }); } finally { setBusy(false); }
+  }
+  async function remove() {
+    setBusy(true); setState({});
+    try { await api('/settings/logo', { method: 'DELETE' }); await qc.invalidateQueries({ queryKey: ['branding'] }); setState({ ok: "Logotip olib tashlandi" }); }
+    catch (e) { setState({ error: errorText(e) }); } finally { setBusy(false); }
+  }
+  return (
+    <Block title="Logotip" hint="Ilovaning tepasida (telefon va kompyuter), chekda va mijozning kuzatuv sahifasida chiqadi. Kvadrat rasm yaxshi ko'rinadi.">
+      <div className="flex items-center gap-4">
+        <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white">
+          {data?.logo ? <img src={data.logo} alt="Logotip" className="h-full w-full object-contain" /> : <span className="text-xs text-mute">Yo&apos;q</span>}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <label className={cn(buttonVariants({ variant: 'secondary' }), 'cursor-pointer', busy && 'pointer-events-none opacity-50')}>
+            {data?.logo ? 'Almashtirish' : 'Rasm tanlash'}
+            <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={e => { void upload(e.target.files?.[0]); e.target.value = ''; }} />
+          </label>
+          {data?.logo && <Button type="button" variant="ghost" className="text-red-600" disabled={busy} onClick={remove}>O&apos;chirish</Button>}
+        </div>
+      </div>
+      <ErrorBox className="mt-3">{state.error}</ErrorBox><Notice className="mt-3">{state.ok}</Notice>
     </Block>
   );
 }

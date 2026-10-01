@@ -1,7 +1,8 @@
-import { Module, Controller, Get, Post, Patch, Param, Body, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Module, Controller, Get, Post, Patch, Put, Param, Body, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ApiProperty, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { IsString, IsIn, Length, Matches, IsOptional, IsEmail } from 'class-validator';
+import { IsString, IsIn, Length, Matches, IsOptional, IsEmail, IsArray } from 'class-validator';
+import { ALL_PERMISSIONS } from '../auth/permissions';
 import * as argon2 from 'argon2';
 import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
@@ -131,5 +132,48 @@ class StaffController {
     });
   }
 }
-@Module({ controllers: [StaffController] })
+class RolePermissionsDto {
+  @ApiProperty({ type: [String] }) @IsArray() @IsIn(ALL_PERMISSIONS as unknown as string[], { each: true }) permissions!: string[];
+}
+
+/** Boshliq (OWNER) always has everything; what Xodim (STAFF) may do is chosen by the owner. */
+@ApiTags('staff') @ApiBearerAuth()
+@Controller('roles')
+class RolesController {
+  constructor(private readonly db: Database) {}
+  @Get()
+  async list(@CurrentActor() actor: Actor) {
+    const roles = await this.db.role.findMany({
+      where: { organizationId: actor.organizationId, systemKey: { in: ['OWNER', 'STAFF'] } },
+      include: { permissions: { include: { permission: true } }, _count: { select: { users: true } } },
+    });
+    return ['OWNER', 'STAFF'].map(key => {
+      const role = roles.find(r => r.systemKey === key);
+      return {
+        key, users: role?._count.users ?? 0,
+        permissions: key === 'OWNER' ? [...ALL_PERMISSIONS] : (role?.permissions.map(p => p.permission.key) ?? []),
+        editable: key === 'STAFF' && actor.owner,
+      };
+    });
+  }
+  @Put('STAFF')
+  async setStaff(@CurrentActor() actor: Actor, @Body() dto: RolePermissionsDto) {
+    if (!actor.owner) throw new ForbiddenException('Only the owner can change role permissions');
+    const keys = [...new Set(dto.permissions)];
+    return this.db.$transaction(async tx => {
+      const role = await tx.role.findFirst({ where: { organizationId: actor.organizationId, systemKey: 'STAFF' }, include: { permissions: { include: { permission: true } } } });
+      if (!role) throw new NotFoundException('Role not configured');
+      const before = role.permissions.map(p => p.permission.key);
+      await tx.rolePermission.deleteMany({ where: { roleId: role.id } });
+      for (const key of keys) {
+        const permission = await tx.permission.upsert({ where: { key }, create: { key }, update: {} });
+        await tx.rolePermission.create({ data: { roleId: role.id, permissionId: permission.id } });
+      }
+      await tx.auditLog.create({ data: { organizationId: actor.organizationId, actorId: actor.userId, action: 'ROLE_PERMISSIONS_CHANGED', entityId: role.id, oldValue: before, newValue: keys } });
+      return { key: 'STAFF', permissions: keys };
+    });
+  }
+}
+
+@Module({ controllers: [StaffController, RolesController] })
 export class StaffModule {}

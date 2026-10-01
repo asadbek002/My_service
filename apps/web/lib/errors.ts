@@ -29,6 +29,9 @@ const TEXT: Record<string, string> = {
   'Shop required': "Do'konni tanlang.",
   'Shop not found': "Do'kon topilmadi. Sahifani yangilang.",
   'Invalid date': "Sana noto'g'ri.",
+  'Logo too large': "Rasm juda katta. Kichikroq rasm tanlang.",
+  'PNG, JPEG or WebP image required': 'PNG, JPG yoki WebP rasm tanlang.',
+  'Only the owner can change role permissions': "Ruxsatlarni faqat boshliq o'zgartiradi.",
   FORBIDDEN: "Bu amal uchun ruxsat yo'q.",
   NETWORK_ERROR: "Server bilan aloqa yo'q. Internetni tekshiring.",
 };

@@ -9,6 +9,7 @@ type Message = {
   contact?: { phone_number?: string; user_id?: number };
 };
 export type Update = { update_id?: number; message?: Message };
+export type AlertKind = 'newOrder' | 'ready' | 'daily';
 
 const hash = (raw: string) => createHash('sha256').update(raw).digest('hex');
 /** +998901234567 → +998 90 123 45 67 */
@@ -23,7 +24,8 @@ export const BTN = {
   platform: '📈 Platforma',
 };
 const customerKeyboard: Keyboard = { keyboard: [[{ text: BTN.myOrders }, { text: BTN.warranty }], [{ text: BTN.contact }, { text: BTN.help }]], resize_keyboard: true };
-const shareKeyboard: Keyboard = { keyboard: [[{ text: BTN.share, request_contact: true }]], resize_keyboard: true };
+// Before sharing a phone the contact button still works: anyone may reach the service.
+const shareKeyboard: Keyboard = { keyboard: [[{ text: BTN.share, request_contact: true }], [{ text: BTN.contact }]], resize_keyboard: true };
 const staffKeyboard = (admin: boolean): Keyboard => ({
   keyboard: [[{ text: BTN.today }, { text: BTN.ready }], [{ text: BTN.search }, { text: BTN.myOrders }], ...(admin ? [[{ text: BTN.platform }]] : [])],
   resize_keyboard: true,
@@ -44,10 +46,10 @@ export class BotService {
   // ---------- Linking ----------
 
   /** One-time deep link for a staff member (kind USER) or platform admin (kind ADMIN); valid 1 day. */
-  async connectLink(kind: 'USER' | 'ADMIN', targetId: string) {
+  async connectLink(kind: 'USER' | 'ADMIN' | 'ALERT', targetId: string, label?: string) {
     const raw = randomBytes(32).toString('base64url');
-    await this.db.telegramLink.create({ data: { kind, targetId, tokenHash: hash(raw), expiresAt: new Date(Date.now() + 86400000) } });
-    return this.telegram.deepLink((kind === 'USER' ? 'u_' : 'a_') + raw);
+    await this.db.telegramLink.create({ data: { kind, targetId, tokenHash: hash(raw), expiresAt: new Date(Date.now() + 86400000), ...(label ? { label } : {}) } });
+    return this.telegram.deepLink({ USER: 'u_', ADMIN: 'a_', ALERT: 'g_' }[kind] + raw);
   }
 
   private async who(chatId: string) {
@@ -104,8 +106,8 @@ export class BotService {
   }
 
   private async onStart(chatId: string, payload: string | undefined, name?: string) {
-    if (payload && /^[ua]_[A-Za-z0-9_-]{43}$/.test(payload)) {
-      const kind = payload[0] === 'u' ? 'USER' : 'ADMIN';
+    if (payload && /^[uag]_[A-Za-z0-9_-]{43}$/.test(payload)) {
+      const kind = ({ u: 'USER', a: 'ADMIN', g: 'ALERT' } as const)[payload[0] as 'u' | 'a' | 'g'];
       const link = await this.db.telegramLink.findUnique({ where: { tokenHash: hash(payload.slice(2)) } });
       const used = link && link.kind === kind && link.expiresAt > new Date()
         ? await this.db.telegramLink.updateMany({ where: { id: link.id, consumedAt: null }, data: { consumedAt: new Date() } }) : { count: 0 };
@@ -114,6 +116,14 @@ export class BotService {
         const user = await this.db.user.update({ where: { id: link.targetId }, data: { telegramChatId: chatId }, include: { organization: true } });
         await this.db.auditLog.create({ data: { organizationId: user.organizationId, actorId: user.id, action: 'TELEGRAM_LINKED', entityId: user.id } });
         return this.send(chatId, `✅ <b>${esc(user.organization.name)}</b> servisiga ulandingiz, ${esc(user.firstName)}.\n\nYangi buyurtma va tayyor qurilmalar haqida xabar olasiz, har kuni 20:00 da kunlik hisobot keladi. Buyurtma raqami yoki mijoz telefonini yozsangiz — topib beraman.`);
+      }
+      if (kind === 'ALERT') {
+        // An extra chat for this service's order alerts (no staff account behind it).
+        const org = await this.db.organization.findUniqueOrThrow({ where: { id: link.targetId } });
+        const label = link.label || 'Telegram';
+        await this.db.alertChat.upsert({ where: { organizationId_chatId: { organizationId: org.id, chatId } }, create: { organizationId: org.id, chatId, label }, update: { label } });
+        await this.db.auditLog.create({ data: { organizationId: org.id, action: 'ALERT_CHAT_LINKED', entityId: chatId } });
+        return this.telegram.send(chatId, `✅ <b>${esc(org.name)}</b> buyurtma xabarlariga ulandingiz (${esc(label)}).\n\nYangi qabul, tayyor qurilmalar va kunlik hisobot shu yerga keladi. O‘chirish: /stop`);
       }
       await this.db.platformAdmin.update({ where: { id: link.targetId }, data: { telegramChatId: chatId } });
       return this.send(chatId, '✅ Platforma boshqaruviga ulandingiz. Yangi servislar va obunalar haqida xabar olasiz.');
@@ -159,6 +169,7 @@ export class BotService {
       this.db.user.updateMany({ where: { telegramChatId: chatId }, data: { telegramChatId: null } }),
       this.db.customer.updateMany({ where: { telegramChatId: chatId }, data: { telegramChatId: null } }),
       this.db.platformAdmin.updateMany({ where: { telegramChatId: chatId }, data: { telegramChatId: null } }),
+      this.db.alertChat.deleteMany({ where: { chatId } }),
     ]);
     return this.telegram.send(chatId, 'Bot o‘chirildi: endi xabar kelmaydi. Qayta ulash uchun /start bosing.', { remove_keyboard: true });
   }
@@ -198,10 +209,26 @@ export class BotService {
    * Settings (name, phone, address, Telegram, Instagram). Without a saved phone the owner's number
    * is used, so the customer can always call. Each service also gets a tappable contact card.
    */
+  /**
+   * Which services to show under "contact": the customer's own; for staff, their service; for anyone
+   * else (new visitors) the services that published bot contacts, or every active service.
+   */
+  private async contactServices(chatId: string): Promise<string[]> {
+    const own = await this.db.customer.findMany({ where: { telegramChatId: chatId }, select: { organizationId: true } });
+    if (own.length) return [...new Set(own.map(c => c.organizationId))];
+    const staff = await this.db.user.findMany({ where: { telegramChatId: chatId, status: 'ACTIVE' }, select: { organizationId: true } });
+    if (staff.length) return [...new Set(staff.map(u => u.organizationId))];
+    const now = new Date();
+    const active = { subscription: { is: { status: { in: ['ACTIVE', 'TRIAL'] }, expiresAt: { gt: now } } } };
+    const orgs = (await this.db.organization.findMany({ where: active, select: { id: true }, orderBy: { createdAt: 'asc' }, take: 50 })).map(o => o.id);
+    const published = new Set((await this.db.organizationSetting.findMany({ where: { key: 'bot_contact', organizationId: { in: orgs } }, select: { organizationId: true } })).map(x => x.organizationId));
+    return (published.size ? orgs.filter(id => published.has(id)) : orgs).slice(0, 10);
+  }
+
   private async sendServices(chatId: string) {
-    const customers = await this.db.customer.findMany({ where: { telegramChatId: chatId }, include: { organization: true } });
-    if (!customers.length) return this.send(chatId, 'Avval telefon raqamingizni yuboring.');
-    const orgIds = [...new Set(customers.map(c => c.organizationId))];
+    const orgIds = await this.contactServices(chatId);
+    if (!orgIds.length) return this.send(chatId, 'Servis ma’lumotlari hali kiritilmagan.');
+    const organizations = await this.db.organization.findMany({ where: { id: { in: orgIds } } });
     const [settings, owners] = await Promise.all([
       this.db.organizationSetting.findMany({ where: { key: { in: ['general', 'receipt', 'bot_contact'] }, organizationId: { in: orgIds } } }),
       this.db.user.findMany({ where: { organizationId: { in: orgIds }, status: 'ACTIVE', roles: { some: { role: { systemKey: 'OWNER' } } } }, select: { organizationId: true, phone: true }, orderBy: { createdAt: 'asc' } }),
@@ -209,7 +236,7 @@ export class BotService {
     const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
     const handle = (v: string) => v.replace(/^@/, '').replace(/^https?:\/\/(www\.)?(t\.me|instagram\.com)\//, '').replace(/\/.*$/, '');
     for (const orgId of orgIds) {
-      const org = customers.find(c => c.organizationId === orgId)!.organization;
+      const org = organizations.find(o => o.id === orgId)!;
       const value = (key: string) => (settings.find(x => x.organizationId === orgId && x.key === key)?.value ?? {}) as Record<string, unknown>;
       const g = value('general'), r = value('receipt');
       // Settings → "Telegram bot: bog'lanish" wins field by field once saved (an empty field hides
@@ -330,11 +357,22 @@ export class BotService {
   // ---------- Outgoing alerts ----------
 
   /** Tell a service's connected staff (except whoever did it). Best effort. */
-  async notifyStaff(organizationId: string, text: string, exceptUserId?: string) {
-    const users = await this.db.user.findMany({ where: { organizationId, status: 'ACTIVE', telegramChatId: { not: null }, ...(exceptUserId ? { id: { not: exceptUserId } } : {}) }, select: { telegramChatId: true } });
-    for (const u of users) await this.telegram.send(u.telegramChatId!, text);
-    return users.length;
+  /**
+   * Order alerts for one service: staff whose alerts are on (except whoever did it) plus the extra
+   * chats connected in Settings. Each kind can be switched off in Settings → "Buyurtma xabarlari".
+   */
+  async notifyStaff(organizationId: string, text: string, exceptUserId?: string, kind: AlertKind = 'newOrder') {
+    const setting = await this.db.organizationSetting.findUnique({ where: { organizationId_key: { organizationId, key: 'bot_alerts' } } });
+    if ((setting?.value as Record<string, unknown> | undefined)?.[kind] === false) return 0;
+    const [users, chats] = await Promise.all([
+      this.db.user.findMany({ where: { organizationId, status: 'ACTIVE', telegramAlerts: true, telegramChatId: { not: null }, ...(exceptUserId ? { id: { not: exceptUserId } } : {}) }, select: { telegramChatId: true } }),
+      this.db.alertChat.findMany({ where: { organizationId }, select: { chatId: true } }),
+    ]);
+    const targets = [...new Set([...users.map(u => u.telegramChatId!), ...chats.map(c => c.chatId)])];
+    for (const chat of targets) await this.telegram.send(chat, text);
+    return targets.length;
   }
+
   async notifyAdmins(text: string) {
     const admins = await this.db.platformAdmin.findMany({ where: { active: true, telegramChatId: { not: null } }, select: { telegramChatId: true } });
     for (const a of admins) await this.telegram.send(a.telegramChatId!, text);

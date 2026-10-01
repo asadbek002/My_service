@@ -8,7 +8,8 @@ import { changePasswordSchema, type ChangePasswordInput } from '../../lib/schema
 import { api, setAccessToken } from '../../lib/api';
 import { errorText } from '../../lib/errors';
 import { deviceName, money, som, dateTime } from '../../lib/format';
-import { can, useDashboard, useMe } from '../../lib/queries';
+import { can, useDashboard, useMe, useOrders } from '../../lib/queries';
+import { OrderCard } from '../../components/order-card';
 import { AppShell } from '../../components/layout/app-shell';
 import { AuthFrame } from '../../components/layout/auth-frame';
 import { Button } from '../../components/ui/button';
@@ -56,6 +57,39 @@ const QUEUE = [
 ] as const;
 
 function Home() {
+  const { data: me } = useMe();
+  // Staff without "reports.view" (Settings → roles) see the work queue, not the money.
+  if (me && !can(me, 'reports.view')) return <WorkHome firstName={me.firstName} canCreate={can(me, 'orders.create')} canView={can(me, 'orders.view')} />;
+  return <MoneyHome />;
+}
+
+function WorkHome({ firstName, canCreate, canView }: { firstName: string; canCreate: boolean; canView: boolean }) {
+  const { data: orders, isLoading, error } = useOrders('open', canView);
+  const count = (s: string) => orders?.filter(o => o.status === s).length ?? 0;
+  return (
+    <AppShell title={`Salom, ${firstName}`}>
+      {!canView ? <Empty title="Sizga hali ruxsat berilmagan">Boshliq Sozlamalar → «Rollar va ruxsatlar» da ruxsat beradi.</Empty>
+        : error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading || !orders ? <Loading rows={4} /> : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-2">
+            {([['RECEIVED', 'Navbatda'], ['IN_REPAIR', "Ta'mirda"], ['READY', 'Tayyor']] as const).map(([status, label]) => (
+              <Link key={status} href={`/orders?status=${status}`} className="rounded-lg border bg-white p-3">
+                <p className="num font-mono text-2xl font-semibold">{count(status)}</p><p className="text-xs font-medium">{label}</p>
+              </Link>
+            ))}
+          </div>
+          {canCreate && <Button asChild size="lg" className="w-full"><Link href="/orders/new">Yangi qabul</Link></Button>}
+          <h2 className="font-semibold">Ishdagi buyurtmalar</h2>
+          {orders.length === 0 ? <Empty title="Hozir ishda buyurtma yo'q" /> : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{orders.slice(0, 20).map(o => <OrderCard key={o.id} order={o} />)}</div>
+          )}
+        </div>
+      )}
+    </AppShell>
+  );
+}
+
+function MoneyHome() {
   const { data: me } = useMe();
   const { data, isLoading, error } = useDashboard(!!me && can(me, 'reports.view'));
   const count = (s: string) => data?.statuses.find(x => x.status === s)?.count ?? 0;

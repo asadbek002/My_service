@@ -14,6 +14,7 @@ const PERMISSIONS = ['orders.view', 'orders.create', 'orders.edit', 'orders.chan
 async function request(path, { token, cookie, body, method = 'GET', origin = 'http://localhost:3000' } = {}) {
   return fetch(base + path, { method, headers: { Origin: origin, ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(cookie ? { Cookie: cookie } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
 }
+async function login_(name, pass = password) { return login({ login: name }, pass); }
 async function login(user, pass = password) {
   const response = await request('/auth/login', { method: 'POST', body: { login: user.login, password: pass } });
   assert.equal(response.status, 200);
@@ -137,6 +138,29 @@ test('staff have the owner\'s rights but cannot touch the owner account', async 
   assert.equal((await request('/staff/' + staff.id + '/status', { ...boss, method: 'PATCH', body: { status: 'SUSPENDED' } })).status, 200);
   assert.equal((await request('/auth/me', auth)).status, 401);
 });
+test('owner decides what the staff role may do; it applies at once and staff cannot change it', async () => {
+  const boss = await owner(a);
+  const login = 'role-' + randomUUID().slice(0, 8);
+  assert.equal((await request('/staff', { ...boss, method: 'POST', body: { login, firstName: 'Usta', temporaryPassword: password, phone: '+998901119999' } })).status, 201);
+  const temp = await login_(login);
+  const auth = { token: (await json(await request('/auth/change-password', { ...temp, method: 'POST', body: { currentPassword: password, newPassword: 'role-password-123' } }))).accessToken };
+  const roles = await json(await request('/roles', boss));
+  assert.equal(roles.find(r => r.key === 'OWNER').editable, false);
+  assert.equal(roles.find(r => r.key === 'STAFF').editable, true);
+  const all = roles.find(r => r.key === 'STAFF').permissions;
+  // Repairs only: see and move orders, no money, no reports, no settings.
+  assert.equal((await request('/roles/STAFF', { ...boss, method: 'PUT', body: { permissions: ['orders.view', 'orders.change_status', 'customers.view'] } })).status, 200);
+  assert.equal((await request('/orders', auth)).status, 200);
+  assert.equal((await request('/reports/finance', auth)).status, 403);
+  assert.equal((await request('/settings/general', auth)).status, 403);
+  assert.deepEqual((await json(await request('/auth/me', auth))).permissions.sort(), ['customers.view', 'orders.change_status', 'orders.view']);
+  // Staff cannot widen their own role; unknown permissions are rejected; the owner keeps everything.
+  assert.equal((await request('/roles/STAFF', { ...auth, method: 'PUT', body: { permissions: all } })).status, 403);
+  assert.equal((await request('/roles/STAFF', { ...boss, method: 'PUT', body: { permissions: ['platform.everything'] } })).status, 400);
+  assert.equal((await request('/reports/finance', boss)).status, 200);
+  assert.equal((await request('/roles/STAFF', { ...boss, method: 'PUT', body: { permissions: all } })).status, 200);
+  assert.equal((await request('/reports/finance', auth)).status, 200);
+});
 test('expired subscription allows reads but denies writes', async () => {
   const auth = await owner(b);
   await db.subscription.update({ where: { organizationId: b.org.id }, data: { expiresAt: new Date(0) } });
@@ -233,6 +257,18 @@ test('public tracking hides personal data', async () => {
   const text = JSON.stringify(body);
   assert.ok(!text.includes('phone') && !text.includes('customer') && !text.includes('Mijoz'));
   assert.equal(body.total, '500000'); assert.equal(body.paid, '0');
+  assert.equal(body.service.name, a.org.name); assert.equal(body.service.logo, null);
+  // Logo: stored for the service, shown in the app, on the receipt and on the tracking page.
+  const logo = 'data:image/png;base64,' + Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000000020001e221bc330000000049454e44ae426082', 'hex').toString('base64');
+  assert.equal((await request('/settings/logo', { ...auth, method: 'PUT', body: { image: 'data:text/html;base64,PHNjcmlwdD4=' } })).status, 400);
+  assert.equal((await request('/settings/logo', { ...auth, method: 'PUT', body: { image: logo } })).status, 200);
+  assert.equal((await json(await request('/settings/branding', auth))).logo, logo);
+  assert.equal((await json(await request('/public/track/' + (await (await request('/orders/' + order.id + '/links', { ...auth, method: 'POST' })).json()).tracking.split('/').pop()))).service.logo, logo);
+  assert.equal((await json(await request('/orders/' + order.id + '/receipt', auth))).service.logo, logo);
+  assert.ok(!(await json(await request('/settings/general', auth))).some(r => r.key === 'logo'));
+  assert.equal((await json(await request('/settings/branding', await owner(b)))).logo, null);
+  assert.equal((await request('/settings/logo', { ...auth, method: 'DELETE' })).status, 200);
+  assert.equal((await json(await request('/settings/branding', auth))).logo, null);
   assert.equal((await request('/public/track/' + 'x'.repeat(43))).status, 404);
   assert.equal((await request('/public/approval/' + 'x'.repeat(43))).status, 404);
 });

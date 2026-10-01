@@ -1,6 +1,6 @@
-import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, Headers, HttpCode, Injectable, Logger, Module, NotFoundException, OnModuleDestroy, OnModuleInit, Param, Post, ServiceUnavailableException, BadRequestException } from '@nestjs/common';
+import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, Headers, HttpCode, Injectable, Logger, Module, NotFoundException, OnModuleDestroy, OnModuleInit, Param, Patch, Post, Put, ServiceUnavailableException, BadRequestException } from '@nestjs/common';
 import { ApiBearerAuth, ApiProperty, ApiTags } from '@nestjs/swagger';
-import { IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsString, Length, MaxLength } from 'class-validator';
 import { timingSafeEqual } from 'node:crypto';
 import Redis from 'ioredis';
 import { Database } from '../database';
@@ -14,6 +14,14 @@ class ReceiptPhotoDto {
   // data:image/png;base64,... — about 1.4 MB of base64 at most.
   @ApiProperty() @IsString() @MaxLength(2_000_000) image!: string;
 }
+
+class AlertEventsDto {
+  @ApiProperty() @IsBoolean() newOrder!: boolean;
+  @ApiProperty() @IsBoolean() ready!: boolean;
+  @ApiProperty() @IsBoolean() daily!: boolean;
+}
+class AlertUserDto { @ApiProperty() @IsBoolean() enabled!: boolean; }
+class AlertChatDto { @ApiProperty() @IsString() @Length(1, 60) label!: string; }
 
 @Controller('telegram')
 class TelegramWebhookController {
@@ -47,6 +55,52 @@ class BotController {
   @Delete('link') @HttpCode(200)
   async unlink(@CurrentActor() a: Actor) {
     await this.db.user.update({ where: { id: a.userId }, data: { telegramChatId: null } });
+    return { ok: true };
+  }
+
+  // ---- Order alerts (Settings → "Buyurtma xabarlari") ----
+
+  /** Which events go out and to whom: staff with Telegram (on/off each) and extra chats. */
+  @Get('alerts') @Permissions('settings.manage')
+  async alerts(@CurrentActor() a: Actor) {
+    const [setting, users, chats] = await Promise.all([
+      this.db.organizationSetting.findUnique({ where: { organizationId_key: { organizationId: a.organizationId, key: 'bot_alerts' } } }),
+      this.db.user.findMany({ where: { organizationId: a.organizationId, status: 'ACTIVE' }, select: { id: true, firstName: true, lastName: true, telegramChatId: true, telegramAlerts: true }, orderBy: { createdAt: 'asc' } }),
+      this.db.alertChat.findMany({ where: { organizationId: a.organizationId }, orderBy: { createdAt: 'asc' }, select: { id: true, label: true, createdAt: true } }),
+    ]);
+    const v = (setting?.value ?? {}) as Record<string, unknown>;
+    return {
+      configured: this.bot.telegram.enabled && !!this.bot.telegram.username,
+      events: { newOrder: v.newOrder !== false, ready: v.ready !== false, daily: v.daily !== false },
+      users: users.map(u => ({ id: u.id, name: [u.firstName, u.lastName].filter(Boolean).join(' '), linked: !!u.telegramChatId, enabled: u.telegramAlerts })),
+      chats,
+    };
+  }
+  @Put('alerts') @Permissions('settings.manage')
+  async setAlerts(@CurrentActor() a: Actor, @Body() d: AlertEventsDto) {
+    const value = { newOrder: d.newOrder, ready: d.ready, daily: d.daily };
+    await this.db.organizationSetting.upsert({ where: { organizationId_key: { organizationId: a.organizationId, key: 'bot_alerts' } }, create: { organizationId: a.organizationId, key: 'bot_alerts', value }, update: { value } });
+    await this.db.auditLog.create({ data: { organizationId: a.organizationId, actorId: a.userId, action: 'SETTING_CHANGED', entityId: 'bot_alerts' } });
+    return value;
+  }
+  @Patch('alerts/users/:id') @Permissions('settings.manage')
+  async setUserAlerts(@CurrentActor() a: Actor, @Param('id') id: string, @Body() d: AlertUserDto) {
+    const user = await this.db.user.findFirst({ where: { id, organizationId: a.organizationId } });
+    if (!user) throw new NotFoundException();
+    await this.db.user.update({ where: { id }, data: { telegramAlerts: d.enabled } });
+    return { ok: true };
+  }
+  /** One-time link: whoever opens it starts receiving this service's order alerts. */
+  @Post('alerts/chats') @Permissions('settings.manage')
+  async addAlertChat(@CurrentActor() a: Actor, @Body() d: AlertChatDto) {
+    const url = await this.bot.connectLink('ALERT', a.organizationId, d.label.trim());
+    if (!url) throw new ServiceUnavailableException('BOT_NOT_CONFIGURED');
+    return { url };
+  }
+  @Delete('alerts/chats/:id') @Permissions('settings.manage') @HttpCode(200)
+  async removeAlertChat(@CurrentActor() a: Actor, @Param('id') id: string) {
+    const removed = await this.db.alertChat.deleteMany({ where: { id, organizationId: a.organizationId } });
+    if (!removed.count) throw new NotFoundException();
     return { ok: true };
   }
 }
@@ -101,9 +155,12 @@ export class BotScheduler implements OnModuleInit, OnModuleDestroy {
   async tick() {
     const hour = this.hour();
     if (hour === 20) {
-      const orgs = await this.db.user.findMany({ where: { status: 'ACTIVE', telegramChatId: { not: null } }, distinct: ['organizationId'], select: { organizationId: true } });
-      for (const { organizationId } of orgs) {
-        if (await this.once('daily:' + organizationId)) await this.bot.notifyStaff(organizationId, await this.bot.dailyReport(organizationId, 'Kunlik hisobot'));
+      const [withStaff, withChats] = await Promise.all([
+        this.db.user.findMany({ where: { status: 'ACTIVE', telegramAlerts: true, telegramChatId: { not: null } }, distinct: ['organizationId'], select: { organizationId: true } }),
+        this.db.alertChat.findMany({ distinct: ['organizationId'], select: { organizationId: true } }),
+      ]);
+      for (const organizationId of new Set([...withStaff, ...withChats].map(x => x.organizationId))) {
+        if (await this.once('daily:' + organizationId)) await this.bot.notifyStaff(organizationId, await this.bot.dailyReport(organizationId, 'Kunlik hisobot'), undefined, 'daily');
       }
     }
     if (hour === 9 && await this.once('platform')) await this.bot.notifyAdmins(await this.bot.platformSummary());

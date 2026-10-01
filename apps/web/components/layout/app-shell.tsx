@@ -7,7 +7,7 @@ import {
   Home, ClipboardList, Users, CreditCard, BarChart3, Receipt, ShieldCheck, Bell, UserCog, Settings,
   Plus, Menu, X, LogOut, Search, ChevronLeft, LifeBuoy, Wrench,
 } from 'lucide-react';
-import { useMe, can } from '../../lib/queries';
+import { useMe, can, useBranding } from '../../lib/queries';
 import { logout } from '../../lib/api';
 import { cn } from '../../lib/utils';
 import { Mark } from './mark';
@@ -43,6 +43,7 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
   const pathname = usePathname() ?? '';
   const router = useRouter();
   const { data: me, error } = useMe();
+  const { data: brand } = useBranding(!!me && !me.mustChangePassword);
   const [menuOpen, setMenuOpen] = useState(false);
 
   // A temporary password blocks every business request; the dashboard hosts the change form.
@@ -73,8 +74,8 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
       {/* Desktop sidebar — ink, so the work area stays paper */}
       <aside className="on-ink sticky top-0 hidden h-[100dvh] w-64 shrink-0 flex-col bg-ink text-white lg:flex">
         <Link href="/dashboard" className="flex h-16 items-center gap-2.5 px-5">
-          <Mark />
-          <span className="text-sm font-bold tracking-[0.14em]">MY SERVICE</span>
+          <Mark src={brand?.logo} />
+          <span className="min-w-0 truncate text-sm font-bold tracking-[0.14em]">{brand?.name ? brand.name.toUpperCase() : 'MY SERVICE'}</span>
         </Link>
         {canCreate && (
           <div className="px-3 pb-2 pt-2">
@@ -119,7 +120,7 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
             {back ? (
               <Link href={back} className="-ml-2 flex h-10 w-10 items-center justify-center rounded-full hover:bg-black/[0.05] active:bg-black/[0.08]" aria-label="Orqaga"><ChevronLeft className="h-6 w-6" /></Link>
             ) : (
-              <Link href="/dashboard" className="lg:hidden" aria-label="Asosiy"><Mark /></Link>
+              <Link href="/dashboard" className="lg:hidden" aria-label="Asosiy"><Mark src={brand?.logo} /></Link>
             )}
             <h1 className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight lg:text-xl">{title}</h1>
             {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}

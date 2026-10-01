@@ -14,7 +14,7 @@ import { cn } from '../../../../lib/utils';
 
 type Receipt = {
   type: 'receipt' | 'delivery'; width: 58 | 80;
-  service: { name: string; phone: string; address: string; footer: string; telegram: string; instagram: string };
+  service: { name: string; phone: string; address: string; footer: string; telegram: string; instagram: string; logo?: string | null };
   order: { number: string; status: string; createdAt: string; complaint: string; accessories: string[]; labor: string; partsTotal: string; total: string; paid: string; balance: string };
   customer: { name: string; phone: string };
   device: { category: string; brand: string; model: string };
@@ -131,6 +131,8 @@ function ReceiptBody({ r, paper }: { r: Receipt; paper: 58 | 80 }) {
   return (
     <div className={cn('font-mono leading-snug text-black', small ? 'px-[2mm] py-[3mm] text-[10px]' : 'px-[4mm] py-[4mm] text-[12px]')}>
       <div className="text-center">
+        {/* Thermal paper is black only: the logo prints in greyscale. */}
+        {r.service.logo && <img src={r.service.logo} alt="" className={cn('mx-auto mb-1 object-contain grayscale', small ? 'h-[12mm]' : 'h-[16mm]')} />}
         <p className={cn('font-bold uppercase', small ? 'text-[13px]' : 'text-[16px]')}>{r.service.name}</p>
         {r.service.phone && <p>{phone(r.service.phone)}</p>}
         {r.service.address && <p>{r.service.address}</p>}
@@ -180,7 +182,8 @@ function ReceiptBody({ r, paper }: { r: Receipt; paper: 58 | 80 }) {
   );
 }
 
-const handle = (v: string) => (v.startsWith('@') ? v : '@' + v);
+// The Telegram icon already says what it is: print the bare name, without @.
+const handle = (v: string) => v.trim().replace(/^@/, '');
 
 // Solid black marks: thermal printers have no grey.
 function TelegramIcon() {

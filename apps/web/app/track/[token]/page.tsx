@@ -7,7 +7,7 @@ import { date, money } from '../../../lib/format';
 import { cn } from '../../../lib/utils';
 import { Mark } from '../../../components/layout/mark';
 
-type Tracking = { number: string; status: string; device: string; total: string; paid: string; balance: string; receivedAt: string; warrantyEnd: string | null };
+type Tracking = { service?: { name: string; logo: string | null }; number: string; status: string; device: string; total: string; paid: string; balance: string; receivedAt: string; warrantyEnd: string | null };
 const STEPS = [['RECEIVED', 'Qabul qilindi'], ['IN_REPAIR', "Ta'mirlanmoqda"], ['READY', 'Tayyor — olib ketishingiz mumkin'], ['DELIVERED', 'Berildi']] as const;
 
 export default function TrackPage({ params }: { params: Promise<{ token: string }> }) {
@@ -23,7 +23,7 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
 
   return (
     <main className="mx-auto min-h-[100dvh] max-w-md px-4 py-8">
-      <div className="mb-6 flex items-center gap-2.5"><Mark /><span className="text-sm font-bold tracking-[0.14em]">MY SERVICE</span></div>
+      <div className="mb-6 flex items-center gap-2.5"><Mark src={data?.service?.logo} /><span className="text-sm font-bold tracking-[0.14em]">{(data?.service?.name ?? 'My Service').toUpperCase()}</span></div>
       {error && <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p>}
       {!data && !error && <div className="h-64 animate-pulse rounded-lg bg-black/[0.04]" />}
       {data && (

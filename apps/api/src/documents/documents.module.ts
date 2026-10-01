@@ -20,7 +20,7 @@ class ReceiptController {
     const order = await this.db.order.findFirst({ where: { id, ...orderScope(a) }, include: { customer: true, device: true, payments: true, warranty: true, organization: true } });
     if (!order) throw new NotFoundException();
     const paid = order.payments.reduce((n, p) => p.kind === 'REFUND' ? n.minus(p.amount) : n.plus(p.amount), new Prisma.Decimal(0));
-    const settings = await this.db.organizationSetting.findMany({ where: { organizationId: a.organizationId, key: { in: ['general', 'receipt'] } } });
+    const settings = await this.db.organizationSetting.findMany({ where: { organizationId: a.organizationId, key: { in: ['general', 'receipt', 'logo'] } } });
     const value = (key: string) => (settings.find(s => s.key === key)?.value ?? {}) as Record<string, unknown>;
     const text = (v: unknown) => typeof v === 'string' ? v : '';
     const general = value('general'), receipt = value('receipt');
@@ -34,6 +34,7 @@ class ReceiptController {
       // Social handles printed at the bottom; unset → MyService's own accounts, empty string → hidden.
       service: {
         name: text(general.name) || order.organization.name, phone: text(general.phone), address: text(general.address), footer: text(receipt.footer),
+        logo: typeof value('logo').image === 'string' ? String(value('logo').image) : null,
         telegram: typeof receipt.telegram === 'string' ? receipt.telegram.trim() : '@myserviceuzz',
         instagram: typeof receipt.instagram === 'string' ? receipt.instagram.trim() : 'myserviceuz',
       },

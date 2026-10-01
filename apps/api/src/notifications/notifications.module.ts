@@ -76,7 +76,7 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
     const text = event.type === 'ORDER_RECEIVED'
       ? `📥 <b>Yangi qabul</b> ${esc(order.number)}\n${esc(order.device.brand + ' ' + order.device.model)} · ${esc(order.customer.firstName)}\n${esc(order.complaint)}\nNarx: ${fmtSom(order.total)}${actor ? '\nQabul qildi: ' + esc(actor.firstName) : ''}${web}`
       : `✅ <b>Tayyor</b> ${esc(order.number)}\n${esc(order.device.brand + ' ' + order.device.model)}\n${esc(order.customer.firstName)} ${esc(order.customer.phone)}${actor ? '\nUsta: ' + esc(actor.firstName) : ''}${web}`;
-    await this.bot.notifyStaff(event.organizationId, text, actorId);
+    await this.bot.notifyStaff(event.organizationId, text, actorId, event.type === 'ORDER_RECEIVED' ? 'newOrder' : 'ready');
   }
   async deliver(eventId: string) {
     const event = await this.db.outboxEvent.findUniqueOrThrow({ where: { id: eventId } });

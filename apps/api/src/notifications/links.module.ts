@@ -40,7 +40,13 @@ class TrackingController {
     const order = await this.db.order.findFirst({ where: { id: link.orderId, organizationId: link.organizationId }, include: { device: true, payments: true, warranty: true } });
     if (!order) throw new NotFoundException();
     const balance = order.payments.reduce((s,p) => p.kind === 'REFUND' ? s.plus(p.amount) : s.minus(p.amount), order.total);
-    return { number: order.number, status: order.status, device: order.device.brand + ' ' + order.device.model, total: order.total, paid: order.total.minus(balance), balance, receivedAt: order.createdAt, warrantyEnd: order.warranty?.endDate ?? null };
+    // The service's own name and logo on the customer's page.
+    const brand = await this.db.organizationSetting.findMany({ where: { organizationId: link.organizationId, key: { in: ['general', 'logo'] } } });
+    const general = (brand.find(b => b.key === 'general')?.value ?? {}) as Record<string, unknown>;
+    const logo = (brand.find(b => b.key === 'logo')?.value ?? {}) as Record<string, unknown>;
+    const org = await this.db.organization.findUniqueOrThrow({ where: { id: link.organizationId }, select: { name: true } });
+    return { service: { name: typeof general.name === 'string' && general.name.trim() ? general.name.trim() : org.name, logo: typeof logo.image === 'string' ? logo.image : null },
+      number: order.number, status: order.status, device: order.device.brand + ' ' + order.device.model, total: order.total, paid: order.total.minus(balance), balance, receivedAt: order.createdAt, warrantyEnd: order.warranty?.endDate ?? null };
   }
 }
 @Module({ controllers: [LinkController, TrackingController], providers: [LoginRateGuard] })
