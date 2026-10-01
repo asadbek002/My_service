@@ -22,8 +22,9 @@ export const BTN = {
   share: '📱 Telefon raqamni yuborish',
   today: '📊 Bugungi hisobot', ready: '✅ Tayyor qurilmalar', search: '🔎 Qidirish',
   platform: '📈 Platforma',
+  tg: '✈️ Telegram', ig: '📷 Instagram', addr: '📍 Manzil', call: '📞 Qo\'ng\'iroq',
 };
-const customerKeyboard: Keyboard = { keyboard: [[{ text: BTN.myOrders }, { text: BTN.warranty }], [{ text: BTN.contact }, { text: BTN.help }]], resize_keyboard: true };
+const customerKeyboard: Keyboard = { keyboard: [[{ text: BTN.myOrders }, { text: BTN.warranty }], [{ text: BTN.tg }, { text: BTN.ig }], [{ text: BTN.addr }, { text: BTN.call }], [{ text: BTN.help }]], resize_keyboard: true };
 // Before sharing a phone the contact button still works: anyone may reach the service.
 const shareKeyboard: Keyboard = { keyboard: [[{ text: BTN.share, request_contact: true }], [{ text: BTN.contact }]], resize_keyboard: true };
 const staffKeyboard = (admin: boolean): Keyboard => ({
@@ -84,6 +85,10 @@ export class BotService {
       if (text === BTN.myOrders || text === '/orders') return await this.send(chatId, await this.customerOrders(chatId));
       if (text === BTN.warranty || text === '/warranty') return await this.send(chatId, await this.customerWarranties(chatId));
       if (text === BTN.contact) return await this.sendServices(chatId);
+      if (text === BTN.tg) return await this.sendContactItem(chatId, 'tg');
+      if (text === BTN.ig) return await this.sendContactItem(chatId, 'ig');
+      if (text === BTN.addr) return await this.sendContactItem(chatId, 'addr');
+      if (text === BTN.call) return await this.sendContactItem(chatId, 'call');
       if (text === BTN.help || text === '/help') return await this.send(chatId, await this.help(chatId));
       const w = await this.who(chatId);
       if (text === BTN.platform || text === '/stats') return await this.send(chatId, w.admin ? await this.platformSummary() : 'Bu bo‘lim faqat platforma egasi uchun.');
@@ -225,6 +230,48 @@ export class BotService {
     return (published.size ? orgs.filter(id => published.has(id)) : orgs).slice(0, 10);
   }
 
+  private async sendContactItem(chatId: string, item: 'tg' | 'ig' | 'addr' | 'call') {
+    const orgIds = await this.contactServices(chatId);
+    if (!orgIds.length) return this.send(chatId, 'Servis ma\'lumotlari topilmadi.');
+    const [orgs, settings, owners] = await Promise.all([
+      this.db.organization.findMany({ where: { id: { in: orgIds } } }),
+      this.db.organizationSetting.findMany({ where: { key: { in: ['general', 'receipt', 'bot_contact'] }, organizationId: { in: orgIds } } }),
+      this.db.user.findMany({ where: { organizationId: { in: orgIds }, status: 'ACTIVE', roles: { some: { role: { systemKey: 'OWNER' } } } }, select: { organizationId: true, phone: true }, orderBy: { createdAt: 'asc' } }),
+    ]);
+    const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    const handle = (v: string) => v.replace(/^@/, '').replace(/^https?:\/\/(www\.)?(t\.me|instagram\.com)\//, '').replace(/\/.*$/, '');
+    const menu = await this.menu(chatId);
+    for (const orgId of orgIds) {
+      const org = orgs.find(o => o.id === orgId)!;
+      const value = (key: string) => (settings.find(x => x.organizationId === orgId && x.key === key)?.value ?? {}) as Record<string, unknown>;
+      const g = value('general'), r = value('receipt');
+      const b = settings.some(x => x.organizationId === orgId && x.key === 'bot_contact') ? value('bot_contact') : null;
+      const pick = (field: string, fallback: string) => b && typeof b[field] === 'string' ? text(b[field]) : fallback;
+      const name = pick('name', text(g.name)) || org.name;
+      const phone = pick('phone', text(g.phone) || owners.find(o => o.organizationId === orgId)?.phone || '');
+      const address = pick('address', text(g.address));
+      const mapUrl = pick('mapUrl', '');
+      const telegram = handle(pick('telegram', typeof r.telegram === 'string' ? r.telegram.trim() : '@myserviceuzz'));
+      const instagram = handle(pick('instagram', typeof r.instagram === 'string' ? r.instagram.trim() : 'myserviceuz'));
+      const map = /^https?:\/\/\S+$/.test(mapUrl) ? mapUrl : address ? 'https://yandex.uz/maps/?text=' + encodeURIComponent(address) : '';
+      if (item === 'tg') {
+        if (!telegram) { await this.telegram.send(chatId, `🛠 <b>${esc(name)}</b>\nTelegram kiritilmagan.`, menu); continue; }
+        await this.telegram.send(chatId, `🛠 <b>${esc(name)}</b>`, { inline_keyboard: [[{ text: '✈️ Telegram kanalga o\'tish', url: `https://t.me/${telegram}` }]] });
+      } else if (item === 'ig') {
+        if (!instagram) { await this.telegram.send(chatId, `🛠 <b>${esc(name)}</b>\nInstagram kiritilmagan.`, menu); continue; }
+        await this.telegram.send(chatId, `🛠 <b>${esc(name)}</b>`, { inline_keyboard: [[{ text: '📷 Instagramga o\'tish', url: `https://instagram.com/${instagram}` }]] });
+      } else if (item === 'addr') {
+        if (!map) { await this.telegram.send(chatId, `🛠 <b>${esc(name)}</b>\n📍 ${esc(address) || 'Manzil kiritilmagan.'}`, menu); continue; }
+        await this.telegram.send(chatId, `🛠 <b>${esc(name)}</b>\n📍 ${esc(address)}`, { inline_keyboard: [[{ text: '🗺 Xaritada ochish', url: map }]] });
+      } else if (item === 'call') {
+        if (!phone) { await this.telegram.send(chatId, `🛠 <b>${esc(name)}</b>\nTelefon kiritilmagan.`, menu); continue; }
+        await this.telegram.send(chatId, `🛠 <b>${esc(name)}</b>`, { inline_keyboard: [[{ text: `📞 ${phone} — Qo'ng'iroq`, url: `tel:${phone.replace(/\s/g, '')}` }]] });
+        await this.telegram.sendContact(chatId, phone, name);
+      }
+    }
+    if (orgIds.length) await this.telegram.send(chatId, '↩️', menu);
+  }
+
   private async sendServices(chatId: string) {
     const orgIds = await this.contactServices(chatId);
     if (!orgIds.length) return this.send(chatId, 'Servis ma’lumotlari hali kiritilmagan.');
@@ -284,7 +331,7 @@ export class BotService {
   private async help(chatId: string) {
     const w = await this.who(chatId);
     if (w.users.length) return `<b>Xodim uchun</b>\n${BTN.today} — bugungi kassa va buyurtmalar\n${BTN.ready} — olib ketilmagan qurilmalar\nRaqam, telefon yoki ism yozing — buyurtmani topaman\n/stop — botni o‘chirish`;
-    return `${BTN.myOrders} — ta'mirdagi va oldingi qurilmalaringiz\n${BTN.warranty} — kafolat muddati\n${BTN.contact} — servis telefoni va manzili\n/stop — xabarlarni o‘chirish`;
+    return `${BTN.myOrders} — ta’mirdagi va oldingi qurilmalaringiz\n${BTN.warranty} — kafolat muddati\n${BTN.tg} / ${BTN.ig} — servis ijtimoiy tarmoqlari\n${BTN.addr} — manzil va xarita\n${BTN.call} — qo’ng’iroq qilish\n/stop — xabarlarni o’chirish`;
   }
 
   // ---------- Staff views ----------
