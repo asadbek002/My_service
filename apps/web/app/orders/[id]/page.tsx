@@ -77,8 +77,8 @@ function OrderPage() {
 
         {panel === 'complaint' && <ComplaintForm order={order} onDone={() => { setPanel(null); setNotice('Nosozlik yangilandi'); }} />}
         {panel === 'price' && <PriceForm order={order} onDone={() => { setPanel(null); setNotice('Narx yangilandi'); }} />}
-        {panel === 'pay' && <PaymentForm order={order} onDone={() => { setPanel(null); setNotice("To'lov qabul qilindi"); }} />}
-        {panel === 'deliver' && <DeliverForm order={order} allowDebt={can(me, 'payments.deliver_with_debt')} onDone={() => { setPanel(null); setNotice('Qurilma mijozga berildi'); }} />}
+        {panel === 'pay' && <PaymentForm order={order} onDone={left => { setPanel(null); setNotice(left > 0 ? `To'lov qabul qilindi. Qoldiq: ${som(left)}` : "To'lov qabul qilindi. Buyurtma to'liq to'landi."); }} />}
+        {panel === 'deliver' && <DeliverForm order={order} allowDebt={can(me, 'payments.deliver_with_debt')} onDone={left => { setPanel(null); setNotice(left > 0 ? `Qurilma mijozga berildi. Qarz: ${som(left)}` : 'Qurilma mijozga berildi'); }} />}
         {panel === 'cancel' && <CancelForm busy={status.isPending} onCancel={comment => move('CANCELLED', comment)} onClose={() => setPanel(null)} />}
 
         <ErrorBox>{error}</ErrorBox>
@@ -230,20 +230,45 @@ function MethodPicker({ value, onChange }: { value: string; onChange: (v: string
   );
 }
 
-function PaymentForm({ order, onDone }: { order: OrderDetail; onDone: () => void }) {
-  const [amount, setAmount] = useState(String(Math.max(0, Math.round(Number(order.balance)))));
+/** Typed amount → what is sent: the exact balance when it is paid in full, so no kopecks are left over. */
+function payAmount(typed: string, balance: number) {
+  const n = Number(typed) || 0;
+  return n === Math.round(balance) ? Math.round(balance * 100) / 100 : n;
+}
+
+/** What the customer gives now and what is still owed after it. */
+function Remainder({ balance, paying, debtWord = 'Qoladi' }: { balance: number; paying: number; debtWord?: string }) {
+  const left = Math.round((balance - paying) * 100) / 100;
+  return (
+    <div className="rounded-md bg-paper px-3 py-2 text-sm">
+      <Row label="Hozirgi qoldiq">{money(balance)}</Row>
+      <Row label="Hozir to'laydi">{money(paying)}</Row>
+      <div className="mt-1 border-t pt-1">
+        {left > 0 ? <Row label={debtWord} strong className="text-amber-700"><span className="font-semibold text-amber-700">{som(left)}</span></Row>
+          : left < 0 ? <p className="font-medium text-red-600">Summa qoldiqdan {som(-left)} ko&apos;p</p>
+          : <p className="font-medium text-emerald-700">To&apos;liq to&apos;lanadi</p>}
+      </div>
+    </div>
+  );
+}
+
+function PaymentForm({ order, onDone }: { order: OrderDetail; onDone: (left: number) => void }) {
+  const balance = Number(order.balance);
+  const [amount, setAmount] = useState(String(Math.max(0, Math.round(balance))));
   const [method, setMethod] = useState('CASH');
   const [key] = useState(idempotencyKey);
   const [error, setError] = useState('');
-  const pay = useOrderMutation(() => post(`/orders/${order.id}/payments`, { amount, method, idempotencyKey: key }));
+  const paying = payAmount(amount, balance);
+  const pay = useOrderMutation(() => post(`/orders/${order.id}/payments`, { amount: String(paying), method, idempotencyKey: key }));
   return (
-    <Panel title="To'lov qabul qilish">
+    <Panel title={order.status === 'DELIVERED' ? "Qarzni to'lash" : "To'lov qabul qilish"}>
       <div className="space-y-3">
-        <label className="grid gap-1.5"><span className="text-sm font-medium">Summa <span className="font-normal text-mute">(qoldiq {money(order.balance)})</span></span><MoneyInput value={amount} onChange={setAmount} autoFocus /></label>
+        <label className="grid gap-1.5"><span className="text-sm font-medium">Qancha to&apos;laydi?</span><MoneyInput value={amount} onChange={setAmount} autoFocus /></label>
+        <Remainder balance={balance} paying={paying} debtWord={order.status === 'DELIVERED' ? 'Qarz qoladi' : 'Qoldiq qoladi'} />
         <MethodPicker value={method} onChange={setMethod} />
         <ErrorBox>{error}</ErrorBox>
-        <Button className="w-full sm:w-auto" disabled={pay.isPending || !Number(amount)} onClick={async () => { setError(''); try { await pay.mutateAsync(undefined); onDone(); } catch (e) { setError(errorText(e)); } }}>
-          {som(amount)} qabul qilish
+        <Button className="w-full sm:w-auto" disabled={pay.isPending || paying <= 0 || paying > balance} onClick={async () => { setError(''); try { await pay.mutateAsync(undefined); onDone(Math.round((balance - paying) * 100) / 100); } catch (e) { setError(errorText(e)); } }}>
+          {som(paying)} qabul qilish
         </Button>
       </div>
     </Panel>
@@ -251,19 +276,22 @@ function PaymentForm({ order, onDone }: { order: OrderDetail; onDone: () => void
 }
 
 const WARRANTY_DAYS = [0, 7, 14, 30, 90, 180];
-function DeliverForm({ order, allowDebt, onDone }: { order: OrderDetail; allowDebt: boolean; onDone: () => void }) {
+function DeliverForm({ order, allowDebt, onDone }: { order: OrderDetail; allowDebt: boolean; onDone: (left: number) => void }) {
   const balance = Number(order.balance);
   const [days, setDays] = useState(0);
   const [custom, setCustom] = useState('');
   const [payNow, setPayNow] = useState(balance > 0);
+  const [amount, setAmount] = useState(String(Math.max(0, Math.round(balance))));
   const [method, setMethod] = useState('CASH');
   const [key] = useState(idempotencyKey);
   const [error, setError] = useState('');
   const warrantyDays = custom ? Math.min(1095, Number(custom)) : days;
+  const paying = balance > 0 && payNow ? payAmount(amount, balance) : 0;
+  const left = Math.round((balance - paying) * 100) / 100;
   const deliver = useOrderMutation(async () => {
-    // Taking the rest of the money and handing over are one step at the counter.
-    if (balance > 0 && payNow) await post(`/orders/${order.id}/payments`, { amount: String(Math.round(balance * 100) / 100), method, idempotencyKey: key });
-    return post(`/orders/${order.id}/deliver`, { warrantyDays, ...(balance > 0 && !payNow ? { allowDebt: true } : {}) });
+    // Taking the money (all or part of it) and handing over are one step at the counter.
+    if (paying > 0) await post(`/orders/${order.id}/payments`, { amount: String(paying), method, idempotencyKey: key });
+    return post(`/orders/${order.id}/deliver`, { warrantyDays, ...(left > 0 ? { allowDebt: true } : {}) });
   });
   return (
     <Panel title="Mijozga berish">
@@ -283,14 +311,21 @@ function DeliverForm({ order, allowDebt, onDone }: { order: OrderDetail; allowDe
         {balance > 0 && (
           <div className="rounded-md bg-amber-50 p-3">
             <p className="text-sm font-medium text-amber-900">Qoldiq: {som(balance)}</p>
-            <label className="mt-2 flex items-center gap-2 text-sm"><input type="radio" checked={payNow} onChange={() => setPayNow(true)} className="h-4 w-4" /> Hozir to&apos;laydi</label>
-            {payNow && <div className="mt-2 pl-6"><MethodPicker value={method} onChange={setMethod} /></div>}
-            {allowDebt && <label className="mt-2 flex items-center gap-2 text-sm"><input type="radio" checked={!payNow} onChange={() => setPayNow(false)} className="h-4 w-4" /> Qarzga beriladi</label>}
+            <label className="mt-2 flex items-center gap-2 text-sm"><input type="radio" checked={payNow} onChange={() => setPayNow(true)} className="h-4 w-4" /> Hozir to&apos;laydi (to&apos;liq yoki qisman)</label>
+            {payNow && (
+              <div className="mt-2 space-y-2 pl-6">
+                <MoneyInput value={amount} onChange={setAmount} aria-label="Hozir to'laydigan summa" />
+                <Remainder balance={balance} paying={paying} debtWord="Qarz qoladi" />
+                {left > 0 && !allowDebt && <p className="text-xs text-red-600">Qarzga berishga ruxsatingiz yo&apos;q: to&apos;liq summani oling.</p>}
+                <MethodPicker value={method} onChange={setMethod} />
+              </div>
+            )}
+            {allowDebt && <label className="mt-2 flex items-center gap-2 text-sm"><input type="radio" checked={!payNow} onChange={() => setPayNow(false)} className="h-4 w-4" /> Hozir to&apos;lamaydi, hammasi qarzga</label>}
           </div>
         )}
         <ErrorBox>{error}</ErrorBox>
-        <Button className="w-full sm:w-auto" disabled={deliver.isPending || (balance > 0 && !payNow && !allowDebt)} onClick={async () => { setError(''); try { await deliver.mutateAsync(undefined); onDone(); } catch (e) { setError(errorText(e)); } }}>
-          {deliver.isPending ? 'Saqlanmoqda…' : 'Berildi deb belgilash'}
+        <Button className="w-full sm:w-auto" disabled={deliver.isPending || left < 0 || (left > 0 && !allowDebt) || (payNow && balance > 0 && paying <= 0)} onClick={async () => { setError(''); try { await deliver.mutateAsync(undefined); onDone(left); } catch (e) { setError(errorText(e)); } }}>
+          {deliver.isPending ? 'Saqlanmoqda…' : left > 0 ? `Berildi · ${som(left)} qarz` : 'Berildi deb belgilash'}
         </Button>
       </div>
     </Panel>

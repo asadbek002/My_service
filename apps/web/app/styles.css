@@ -44,7 +44,7 @@
   .talon-dark .talon-cut::before, .talon-dark .talon-cut::after { border-color: transparent; }
   /* Filter / choice chip: 36px pill, ink when chosen. */
   .chip { @apply inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border bg-white px-3.5 text-sm transition-colors active:scale-[0.97]; }
-  .chip[aria-pressed='true'] { @apply border-ink bg-ink font-medium text-white; }
+  .chip[aria-pressed='true'], .chip[aria-checked='true'] { @apply border-ink bg-ink font-medium text-white; }
   .eyebrow { @apply text-[11px] font-semibold uppercase tracking-[0.12em] text-mute; }
   .no-scrollbar { scrollbar-width: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }

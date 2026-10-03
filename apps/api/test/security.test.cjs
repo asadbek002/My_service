@@ -286,6 +286,25 @@ test('delivery with debt needs explicit consent; the debt can be paid later', as
   const report = await json(await request('/reports/finance', auth));
   assert.ok(!report.debtors.some(d => d.id === order.id));
 });
+test('partial payments on ready and delivered orders always leave the right balance', async () => {
+  const auth = await owner(a);
+  const { order } = await newOrder(a, { labor: '200000', parts: '300000' });
+  const pay = amount => request('/orders/' + order.id + '/payments', { ...auth, method: 'POST', body: { amount, method: 'CASH', idempotencyKey: randomUUID() } });
+  const balance = async () => (await json(await request('/orders/' + order.id, auth))).balance;
+  await request('/orders/' + order.id + '/status', { ...auth, method: 'PATCH', body: { status: 'READY' } });
+  assert.equal((await pay('120000')).status, 201);
+  assert.equal(await balance(), '380000');
+  // Handed over with part of the rest; what is left is a debt.
+  assert.equal((await pay('80000')).status, 201);
+  assert.equal((await request('/orders/' + order.id + '/deliver', { ...auth, method: 'POST', body: { warrantyDays: 0, allowDebt: true } })).status, 201);
+  assert.equal(await balance(), '300000');
+  assert.equal((await pay('100000')).status, 201);
+  assert.equal(await balance(), '200000');
+  assert.equal((await pay('200001')).status, 409);
+  assert.equal((await pay('200000')).status, 201);
+  assert.equal(await balance(), '0');
+  assert.equal((await pay('1')).status, 409);
+});
 test('public tracking hides personal data', async () => {
   const auth = await owner(a);
   const { order } = await newOrder(a);
