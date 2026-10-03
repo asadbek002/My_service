@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
-import { CustomerDto, DeviceDto, OrderDto, PriceDto, ComplaintDto, StatusDto, PaymentDto, RefundDto, DeliverDto } from './orders.dto';
+import { CustomerDto, DeviceDto, OrderDto, PriceDto, ComplaintDto, StatusDto, PaymentDto, RefundDto, DeliverDto, UndeliverDto } from './orders.dto';
 
 // Simplified flow: RECEIVED → IN_REPAIR → READY → DELIVERED, CANCELLED from any open state.
 export const OPEN_STATUSES = ['RECEIVED', 'IN_REPAIR', 'READY'];
@@ -239,6 +239,27 @@ class OrdersController {
       }
       await transition(tx, actor, order, 'DELIVERED', balance.greaterThan(0) ? 'Qarz bilan topshirildi' : undefined);
       return { ok: true, warranty };
+    });
+  }
+  /**
+   * A delivery marked by mistake goes back to READY. Payments stay as they are; the warranty given at
+   * delivery is withdrawn. Not via transition(): that would tell the customer the device is "ready".
+   */
+  @Post(':id/undeliver') @Permissions('orders.change_status')
+  undeliver(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: UndeliverDto) {
+    const reason = dto.reason.trim();
+    if (reason.length < 3) throw new ConflictException('Reason required');
+    return this.db.$transaction(async tx => {
+      const order = await lockedOrder(tx, actor, id);
+      if (order.status !== 'DELIVERED') throw new ConflictException('Order must be DELIVERED');
+      if (await tx.warrantyClaim.count({ where: { organizationId: actor.organizationId, parentOrderId: id } })) throw new ConflictException('WARRANTY_CLAIMED');
+      const warranty = await tx.warranty.findUnique({ where: { organizationId_orderId: { organizationId: actor.organizationId, orderId: id } } });
+      if (warranty) await tx.warranty.delete({ where: { id: warranty.id } });
+      await tx.order.update({ where: { id }, data: { status: 'READY' } });
+      await tx.orderHistory.create({ data: { organizationId: actor.organizationId, orderId: id, fromStatus: 'DELIVERED', toStatus: 'READY', actorId: actor.userId, comment: ('Berish bekor qilindi: ' + reason).slice(0, 1000) } });
+      await record(tx, actor, id, 'ORDER_DELIVERY_UNDONE',
+        warranty ? { warrantyEndDate: warranty.endDate.toISOString(), warrantyTerms: warranty.terms } : {}, { reason });
+      return { ok: true };
     });
   }
 }

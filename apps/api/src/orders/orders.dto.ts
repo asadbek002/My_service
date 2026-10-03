@@ -46,6 +46,9 @@ export class RefundDto {
   @ApiProperty() @IsString() @Length(3, 1000) reason!: string;
   @ApiProperty() @IsString() @Length(16, 128) idempotencyKey!: string;
 }
+export class UndeliverDto {
+  @ApiProperty() @IsString() @Length(3, 1000) reason!: string;
+}
 export class DeliverDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() allowDebt?: boolean;
   // 0 = delivered without warranty.

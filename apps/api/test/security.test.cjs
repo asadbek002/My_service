@@ -305,6 +305,35 @@ test('partial payments on ready and delivered orders always leave the right bala
   assert.equal(await balance(), '0');
   assert.equal((await pay('1')).status, 409);
 });
+test('a delivery marked by mistake can be undone without notifying the customer', async () => {
+  const auth = await owner(a);
+  const { order } = await newOrder(a, { labor: '100000', parts: '0' });
+  const undo = body => request('/orders/' + order.id + '/undeliver', { ...auth, method: 'POST', body });
+  await request('/orders/' + order.id + '/status', { ...auth, method: 'PATCH', body: { status: 'READY' } });
+  assert.equal((await undo({ reason: 'Adashib bosildi' })).status, 409);
+  assert.equal((await request('/orders/' + order.id + '/payments', { ...auth, method: 'POST', body: { amount: '60000', method: 'CASH', idempotencyKey: randomUUID() } })).status, 201);
+  assert.equal((await request('/orders/' + order.id + '/deliver', { ...auth, method: 'POST', body: { warrantyDays: 30, allowDebt: true } })).status, 201);
+  const readyEvents = () => db.outboxEvent.count({ where: { entityId: order.id, type: 'ORDER_READY' } });
+  const before = await readyEvents();
+
+  assert.equal((await undo({ reason: 'x' })).status, 400);
+  assert.equal((await request('/orders/' + order.id + '/undeliver', { ...await owner(b), method: 'POST', body: { reason: 'Adashib bosildi' } })).status, 404);
+  assert.equal((await undo({ reason: 'Adashib bosildi' })).status, 201);
+  const detail = await json(await request('/orders/' + order.id, auth));
+  assert.equal(detail.status, 'READY'); assert.equal(detail.balance, '40000'); assert.equal(detail.warranty, null);
+  assert.equal(detail.payments.length, 1);
+  assert.equal(detail.history.at(-1).fromStatus, 'DELIVERED'); assert.ok(detail.history.at(-1).comment.includes('Adashib bosildi'));
+  assert.equal(await readyEvents(), before);
+  const audit = await db.auditLog.findFirst({ where: { organizationId: a.org.id, entityId: order.id, action: 'ORDER_DELIVERY_UNDONE' } });
+  assert.equal(audit.newValue.reason, 'Adashib bosildi'); assert.ok(audit.oldValue.warrantyEndDate);
+  assert.equal((await undo({ reason: 'Ikkinchi marta' })).status, 409);
+
+  // It can be handed over again, and a warranty claim locks the delivery in place.
+  assert.equal((await request('/orders/' + order.id + '/deliver', { ...auth, method: 'POST', body: { warrantyDays: 7, allowDebt: true } })).status, 201);
+  const warranty = await db.warranty.findUnique({ where: { orderId: order.id } });
+  assert.equal((await request('/warranties/' + warranty.id + '/claim', { ...auth, method: 'POST', body: { reason: 'Yana buzildi' } })).status, 201);
+  assert.equal((await undo({ reason: 'Adashib bosildi' })).status, 409);
+});
 test('public tracking hides personal data', async () => {
   const auth = await owner(a);
   const { order } = await newOrder(a);

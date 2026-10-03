@@ -339,7 +339,8 @@ export class BotService {
     const [org, received, delivered, payments, expenses, open, debtRows, shopDebt] = await Promise.all([
       this.db.organization.findUniqueOrThrow({ where: { id: organizationId } }),
       this.db.order.count({ where: { organizationId, createdAt: { gte: start } } }),
-      this.db.orderHistory.count({ where: { organizationId, toStatus: 'DELIVERED', createdAt: { gte: start } } }),
+      // Orders still delivered: an undone delivery (or one redone after undo) is counted once at most.
+      this.db.order.count({ where: { organizationId, status: 'DELIVERED', history: { some: { toStatus: 'DELIVERED', createdAt: { gte: start } } } } }),
       this.db.payment.findMany({ where: { organizationId, createdAt: { gte: start } }, select: { kind: true, amount: true } }),
       this.db.expense.aggregate({ where: { organizationId, createdAt: { gte: start }, category: { not: 'PURCHASE' } }, _sum: { amount: true } }),
       this.db.order.groupBy({ by: ['status'], where: { organizationId, status: { in: OPEN } }, _count: true }),

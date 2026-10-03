@@ -20,7 +20,7 @@ import { ErrorBox, Loading, Notice, Row } from '../../../components/ui/feedback'
 import { PartRow, type SourcedPart } from '../../../components/part-row';
 
 const OPEN = ['RECEIVED', 'IN_REPAIR', 'READY'];
-type Panel = null | 'pay' | 'deliver' | 'price' | 'cancel' | 'complaint';
+type Panel = null | 'pay' | 'deliver' | 'price' | 'cancel' | 'complaint' | 'undeliver';
 
 export default function Page() {
   return <Suspense><OrderPage /></Suspense>;
@@ -79,6 +79,7 @@ function OrderPage() {
         {panel === 'price' && <PriceForm order={order} onDone={() => { setPanel(null); setNotice('Narx yangilandi'); }} />}
         {panel === 'pay' && <PaymentForm order={order} onDone={left => { setPanel(null); setNotice(left > 0 ? `To'lov qabul qilindi. Qoldiq: ${som(left)}` : "To'lov qabul qilindi. Buyurtma to'liq to'landi."); }} />}
         {panel === 'deliver' && <DeliverForm order={order} allowDebt={can(me, 'payments.deliver_with_debt')} onDone={left => { setPanel(null); setNotice(left > 0 ? `Qurilma mijozga berildi. Qarz: ${som(left)}` : 'Qurilma mijozga berildi'); }} />}
+        {panel === 'undeliver' && <UndeliverForm order={order} onClose={() => setPanel(null)} onDone={() => { setPanel(null); setNotice("Berish bekor qilindi. Buyurtma yana «Tayyor» holatida."); }} />}
         {panel === 'cancel' && <CancelForm busy={status.isPending} onCancel={comment => move('CANCELLED', comment)} onClose={() => setPanel(null)} />}
 
         <ErrorBox>{error}</ErrorBox>
@@ -89,6 +90,7 @@ function OrderPage() {
           {canStatus && order.status === 'IN_REPAIR' && <Button variant="secondary" size="sm" onClick={() => move('RECEIVED')}><Undo2 className="h-4 w-4" /> Qabulga qaytarish</Button>}
           {canStatus && order.status === 'READY' && <Button variant="secondary" size="sm" onClick={() => move('IN_REPAIR')}><Undo2 className="h-4 w-4" /> Ta&apos;mirga qaytarish</Button>}
           {canEdit && isOpen && <ShareLink orderId={id} />}
+          {canStatus && order.status === 'DELIVERED' && <Button variant="secondary" size="sm" onClick={() => toggle('undeliver')}><Undo2 className="h-4 w-4" /> Berishni bekor qilish</Button>}
           {canStatus && isOpen && <Button variant="ghost" size="sm" className="text-red-600" onClick={() => toggle('cancel')}><Ban className="h-4 w-4" /> Bekor qilish</Button>}
         </div>
 
@@ -329,6 +331,32 @@ function DeliverForm({ order, allowDebt, onDone }: { order: OrderDetail; allowDe
         </Button>
       </div>
     </Panel>
+  );
+}
+
+/** Undo a delivery marked by mistake: back to READY, payments kept, warranty withdrawn. */
+function UndeliverForm({ order, onClose, onDone }: { order: OrderDetail; onClose: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const undo = useOrderMutation(() => post(`/orders/${order.id}/undeliver`, { reason: reason.trim() }));
+  return (
+    <section className="rounded-lg border-2 border-amber-500 bg-white p-4">
+      <h2 className="font-semibold">Berishni bekor qilasizmi?</h2>
+      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-mute">
+        <li>Buyurtma yana «Tayyor» holatiga qaytadi.</li>
+        <li>Olingan to&apos;lovlar o&apos;zgarmaydi{Number(order.balance) > 0 ? `, ${som(order.balance)} qoldiq sifatida qoladi` : ''}.</li>
+        {order.warranty && <li>Berilgan kafolat ({date(order.warranty.endDate)} gacha) bekor qilinadi.</li>}
+        <li>Mijozga xabar yuborilmaydi.</li>
+      </ul>
+      <Input className="mt-3" value={reason} onChange={e => setReason(e.target.value)} placeholder="Sababi (masalan: adashib bosildi)" autoFocus maxLength={1000} />
+      <ErrorBox className="mt-3">{error}</ErrorBox>
+      <div className="mt-3 flex gap-2">
+        <Button variant="secondary" onClick={onClose}>Yo&apos;q</Button>
+        <Button disabled={undo.isPending || reason.trim().length < 3} onClick={async () => { setError(''); try { await undo.mutateAsync(undefined); onDone(); } catch (e) { setError(errorText(e)); } }}>
+          {undo.isPending ? 'Saqlanmoqda…' : 'Bekor qilish'}
+        </Button>
+      </div>
+    </section>
   );
 }
 
