@@ -265,7 +265,8 @@ export class BotService {
         await this.telegram.send(chatId, `🛠 <b>${esc(name)}</b>\n📍 ${esc(address)}`, { inline_keyboard: [[{ text: '🗺 Xaritada ochish', url: map }]] });
       } else if (item === 'call') {
         if (!phone) { await this.telegram.send(chatId, `🛠 <b>${esc(name)}</b>\nTelefon kiritilmagan.`, menu); continue; }
-        await this.telegram.send(chatId, `🛠 <b>${esc(name)}</b>`, { inline_keyboard: [[{ text: `📞 ${phone} — Qo'ng'iroq`, url: `tel:${phone.replace(/\s/g, '')}` }]] });
+        // Telegram rejects tel: links in buttons; the contact card is the one-tap call.
+        await this.telegram.send(chatId, `🛠 <b>${esc(name)}</b>\n📞 ${esc(prettyPhone(phone))}`);
         await this.telegram.sendContact(chatId, phone, name);
       }
     }
@@ -312,16 +313,13 @@ export class BotService {
       if (note) lines.push('', esc(note));
       if (!phone && !address) lines.push('Aloqa ma’lumotlari hali kiritilmagan.');
       const map = /^https?:\/\/\S+$/.test(mapUrl) ? mapUrl : address ? 'https://yandex.uz/maps/?text=' + encodeURIComponent(address) : '';
-      const row1 = [
+      // Only http(s) links are valid in inline buttons; calling is the contact card sent below.
+      const buttons = [
         ...(telegram ? [{ text: '✈️ Telegram', url: `https://t.me/${telegram}` }] : []),
         ...(instagram ? [{ text: '📷 Instagram', url: `https://instagram.com/${instagram}` }] : []),
-      ];
-      const row2 = [
-        ...(phone ? [{ text: '📞 Qo\'ng\'iroq', url: `tel:${phone.replace(/\s/g, '')}` }] : []),
         ...(map ? [{ text: '📍 Manzil', url: map }] : []),
       ];
-      const inlineRows = [row1, row2].filter(r => r.length);
-      await this.telegram.send(chatId, lines.join('\n'), inlineRows.length ? { inline_keyboard: inlineRows } : await this.menu(chatId));
+      await this.telegram.send(chatId, lines.join('\n'), buttons.length ? { inline_keyboard: [buttons] } : await this.menu(chatId));
       if (phone) await this.telegram.sendContact(chatId, phone, name);
     }
     if (orgIds.length) await this.telegram.send(chatId, 'Bosh menyu:', await this.menu(chatId));

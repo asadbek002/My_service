@@ -216,10 +216,15 @@ test('bot: customers, staff, admins, alerts and receipt photo', async () => {
   // Someone who never brought a device can still reach the service from the first screen.
   const stranger = 5000000 + Math.floor(Math.random() * 1e6);
   await tg(stranger, { text: '/start' });
-  assert.ok(lastTo(stranger).reply_markup.keyboard.flat().some(b => b.text === "☎️ Servis bilan bog'lanish"));
+  const firstScreen = lastTo(stranger).reply_markup.keyboard.flat().map(b => b.text);
+  for (const button of ['✈️ Telegram', '📷 Instagram', '📍 Manzil', "📞 Qo'ng'iroq"]) assert.ok(firstScreen.includes(button), button);
   const beforeStranger = calls.length;
-  await tg(stranger, { text: "☎️ Servis bilan bog'lanish" });
-  assert.ok(calls.slice(beforeStranger).some(c => c.method === 'sendMessage' && String(c.body.chat_id) === String(stranger) && c.body.text.includes('Mobile Fix')));
+  await tg(stranger, { text: '📍 Manzil' });
+  const where = calls.slice(beforeStranger).find(c => c.method === 'sendMessage' && String(c.body.chat_id) === String(stranger) && c.body.text.includes('Mobile Fix'));
+  assert.ok(where); assert.equal(where.body.reply_markup.inline_keyboard[0][0].url, 'https://yandex.uz/maps/-/abc');
+  const beforeCall = calls.length;
+  await tg(stranger, { text: "📞 Qo'ng'iroq" });
+  assert.ok(calls.slice(beforeCall).some(c => c.method === 'sendContact' && c.body.phone_number === '+998971112233'));
 
   // /stop disconnects the chat everywhere.
   await tg(customerChat, { text: '/stop' });
