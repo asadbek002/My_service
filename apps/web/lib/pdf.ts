@@ -63,7 +63,8 @@ export async function downloadPdf(report: PdfReport) {
         headStyles: { fillColor: INK, textColor: [255, 255, 255], fontStyle: 'bold' },
         footStyles: { fillColor: [245, 245, 243], textColor: INK, fontStyle: 'bold' },
         alternateRowStyles: { fillColor: [250, 250, 249] },
-        columnStyles: Object.fromEntries((t.right ?? []).map(i => [i, { halign: 'right' }])),
+        // Amounts never break across lines ("350 / 000") in head, body or foot; text columns absorb the width.
+        didParseCell: data => { if (t.right?.includes(data.column.index)) Object.assign(data.cell.styles, { halign: 'right', cellWidth: 'wrap' }); },
       });
       y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
     }

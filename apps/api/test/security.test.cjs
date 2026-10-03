@@ -24,6 +24,13 @@ async function login(user, pass = password) {
 const sessions = new Map();
 async function owner(t) { if (!sessions.has(t.user.id)) sessions.set(t.user.id, await login(t.user)); return sessions.get(t.user.id); }
 const json = async r => { const body = await r.json(); return body; };
+/** A fresh STAFF member of the tenant, past the temporary-password step. */
+async function staffOf(t) {
+  const name = 'st-' + randomUUID().slice(0, 8);
+  assert.equal((await request('/staff', { ...await owner(t), method: 'POST', body: { login: name, firstName: 'Usta', temporaryPassword: password, phone: '+998901117777' } })).status, 201);
+  const temp = await login_(name);
+  return { token: (await json(await request('/auth/change-password', { ...temp, method: 'POST', body: { currentPassword: password, newPassword: 'staff-password-123' } }))).accessToken };
+}
 
 async function tenant() {
   const id = randomUUID();
@@ -231,8 +238,42 @@ test('split payment, idempotency, refund, price floor and delivery with warranty
   const warranty = await db.warranty.findUnique({ where: { orderId: order.id } });
   assert.ok(warranty); assert.ok(warranty.terms.length > 10);
   assert.equal(Math.round((warranty.endDate - warranty.startDate) / 86400000), 30);
+  // The owner may still correct a delivered order's price, but never below what was paid.
   assert.equal((await request('/orders/' + order.id + '/price', { ...auth, method: 'PATCH', body: { labor: '1', partsTotal: '1' } })).status, 409);
   assert.equal((await db.order.findUnique({ where: { id: order.id } })).status, 'DELIVERED');
+});
+test('anyone edits the complaint; after delivery only the owner fixes prices and part costs', async () => {
+  const boss = await owner(a);
+  const staff = await staffOf(a);
+  const { order } = await newOrder(a, { labor: '100000', parts: '200000' });
+  const complaint = body => request('/orders/' + order.id + '/complaint', { ...staff, method: 'PATCH', body });
+  assert.equal((await complaint({ complaint: '' })).status, 400);
+  assert.equal((await complaint({ complaint: 'Ekran singan, zaryad olmaydi' })).status, 200);
+  assert.equal((await db.order.findUnique({ where: { id: order.id } })).complaint, 'Ekran singan, zaryad olmaydi');
+  const audit = await db.auditLog.findFirst({ where: { organizationId: a.org.id, entityId: order.id, action: 'ORDER_COMPLAINT_CHANGED' } });
+  assert.equal(audit.oldValue.complaint, 'Ekran singan');
+  assert.equal((await request('/orders/' + order.id + '/complaint', { ...await owner(b), method: 'PATCH', body: { complaint: 'x' } })).status, 404);
+
+  const part = await json(await request('/parts', { ...staff, method: 'POST', body: { name: 'Ekran', shop: 'Sergeli 5', cost: '200000', orderId: order.id } }));
+  assert.equal((await request('/parts/' + part.id + '/pay', { ...staff, method: 'POST' })).status, 201);
+  await request('/orders/' + order.id + '/status', { ...boss, method: 'PATCH', body: { status: 'READY' } });
+  assert.equal((await request('/orders/' + order.id + '/payments', { ...boss, method: 'POST', body: { amount: '300000', method: 'CASH', idempotencyKey: randomUUID() } })).status, 201);
+  assert.equal((await request('/orders/' + order.id + '/deliver', { ...boss, method: 'POST', body: { warrantyDays: 0 } })).status, 201);
+
+  const price = { labor: '120000', partsTotal: '180000' };
+  assert.equal((await request('/orders/' + order.id + '/price', { ...staff, method: 'PATCH', body: price })).status, 409);
+  assert.equal((await request('/orders/' + order.id + '/price', { ...boss, method: 'PATCH', body: price })).status, 200);
+  const fixed = await db.order.findUnique({ where: { id: order.id } });
+  assert.equal(fixed.labor.toString(), '120000'); assert.equal(fixed.partsTotal.toString(), '180000');
+
+  const edit = { name: 'Ekran (asl)', cost: '180000' };
+  assert.equal((await request('/parts/' + part.id, { ...staff, method: 'PATCH', body: edit })).status, 403);
+  assert.equal((await request('/parts/' + part.id, { ...await owner(b), method: 'PATCH', body: edit })).status, 404);
+  const updated = await json(await request('/parts/' + part.id, { ...boss, method: 'PATCH', body: edit }));
+  assert.equal(updated.name, 'Ekran (asl)'); assert.equal(updated.cost, '180000');
+  // The purchase expense booked when the part was paid follows the corrected price.
+  const expense = await db.expense.findUnique({ where: { id: updated.expenseId } });
+  assert.equal(expense.amount.toString(), '180000'); assert.ok(expense.note.includes('Ekran (asl)'));
 });
 test('delivery with debt needs explicit consent; the debt can be paid later', async () => {
   const auth = await owner(a);

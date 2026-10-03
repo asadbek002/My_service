@@ -13,13 +13,14 @@ import { cn } from '../../../lib/utils';
 import { AppShell, ActionBar } from '../../../components/layout/app-shell';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
+import { Textarea } from '../../../components/ui/textarea';
 import { MoneyInput } from '../../../components/ui/money-input';
 import { StatusBadge, statusLabel } from '../../../components/ui/status-badge';
 import { ErrorBox, Loading, Notice, Row } from '../../../components/ui/feedback';
 import { PartRow, type SourcedPart } from '../../../components/part-row';
 
 const OPEN = ['RECEIVED', 'IN_REPAIR', 'READY'];
-type Panel = null | 'pay' | 'deliver' | 'price' | 'cancel';
+type Panel = null | 'pay' | 'deliver' | 'price' | 'cancel' | 'complaint';
 
 export default function Page() {
   return <Suspense><OrderPage /></Suspense>;
@@ -52,6 +53,9 @@ function OrderPage() {
   const isOpen = OPEN.includes(order.status);
   const canStatus = can(me, 'orders.change_status');
   const canEdit = can(me, 'orders.edit');
+  const owner = me?.role === 'OWNER';
+  const canEditPrice = canEdit && (isOpen || (order.status === 'DELIVERED' && owner));
+  const canEditComplaint = can(me, 'orders.view') && order.status !== 'CANCELLED';
   const canPay = can(me, 'payments.create') && order.status !== 'CANCELLED' && balance > 0;
   const toggle = (p: Panel) => { setError(''); setNotice(''); setPanel(panel === p ? null : p); };
 
@@ -69,8 +73,9 @@ function OrderPage() {
           </div>
         )}
 
-        <Ticket order={order} canEditPrice={canEdit && isOpen} onEditPrice={() => toggle('price')} />
+        <Ticket order={order} canEditPrice={canEditPrice} onEditPrice={() => toggle('price')} canEditComplaint={canEditComplaint} onEditComplaint={() => toggle('complaint')} />
 
+        {panel === 'complaint' && <ComplaintForm order={order} onDone={() => { setPanel(null); setNotice('Nosozlik yangilandi'); }} />}
         {panel === 'price' && <PriceForm order={order} onDone={() => { setPanel(null); setNotice('Narx yangilandi'); }} />}
         {panel === 'pay' && <PaymentForm order={order} onDone={() => { setPanel(null); setNotice("To'lov qabul qilindi"); }} />}
         {panel === 'deliver' && <DeliverForm order={order} allowDebt={can(me, 'payments.deliver_with_debt')} onDone={() => { setPanel(null); setNotice('Qurilma mijozga berildi'); }} />}
@@ -88,7 +93,7 @@ function OrderPage() {
         </div>
 
         <Payments order={order} canRefund={can(me, 'payments.refund')} />
-        <OrderParts orderId={id} canAdd={canEdit && isOpen} canEdit={canEdit} />
+        <OrderParts orderId={id} canAdd={canEdit && isOpen} canEdit={canEdit} owner={owner} />
         {order.warranty && (
           <section className="flex gap-3 rounded-lg border bg-white p-4">
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
@@ -121,7 +126,7 @@ function OrderPage() {
 }
 
 /** The repair talon: who, what, what's wrong — then the money, below the tear line. */
-function Ticket({ order, canEditPrice, onEditPrice }: { order: OrderDetail; canEditPrice: boolean; onEditPrice: () => void }) {
+function Ticket({ order, canEditPrice, onEditPrice, canEditComplaint, onEditComplaint }: { order: OrderDetail; canEditPrice: boolean; onEditPrice: () => void; canEditComplaint: boolean; onEditComplaint: () => void }) {
   const balance = Number(order.balance);
   return (
     <article className="talon">
@@ -146,7 +151,12 @@ function Ticket({ order, canEditPrice, onEditPrice }: { order: OrderDetail; canE
           </div>
         </div>
         <div className="mt-4">
-          <p className="eyebrow">Nosozlik</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="eyebrow">Nosozlik</p>
+            {canEditComplaint && (
+              <button onClick={onEditComplaint} className="inline-flex items-center gap-1 text-xs font-medium text-mute hover:text-ink"><Pencil className="h-3 w-3" /> O&apos;zgartirish</button>
+            )}
+          </div>
           <p className="mt-0.5 whitespace-pre-wrap break-words text-sm">{order.complaint}</p>
         </div>
         {order.accessories.length > 0 && (
@@ -174,6 +184,19 @@ function Ticket({ order, canEditPrice, onEditPrice }: { order: OrderDetail; canE
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return <section className="rounded-lg border-2 border-ink bg-white p-4"><h2 className="mb-3 font-semibold">{title}</h2>{children}</section>;
+}
+
+function ComplaintForm({ order, onDone }: { order: OrderDetail; onDone: () => void }) {
+  const [complaint, setComplaint] = useState(order.complaint);
+  const [error, setError] = useState('');
+  const save = useOrderMutation(() => post(`/orders/${order.id}/complaint`, { complaint: complaint.trim() }, 'PATCH'));
+  return (
+    <Panel title="Nosozlik">
+      <Textarea value={complaint} onChange={e => setComplaint(e.target.value)} rows={3} autoFocus maxLength={4000} />
+      <ErrorBox className="mt-3">{error}</ErrorBox>
+      <Button className="mt-3 w-full sm:w-auto" disabled={save.isPending || !complaint.trim() || complaint.trim() === order.complaint} onClick={async () => { setError(''); try { await save.mutateAsync(undefined); onDone(); } catch (e) { setError(errorText(e)); } }}>Saqlash</Button>
+    </Panel>
+  );
 }
 
 function PriceForm({ order, onDone }: { order: OrderDetail; onDone: () => void }) {
@@ -230,7 +253,7 @@ function PaymentForm({ order, onDone }: { order: OrderDetail; onDone: () => void
 const WARRANTY_DAYS = [0, 7, 14, 30, 90, 180];
 function DeliverForm({ order, allowDebt, onDone }: { order: OrderDetail; allowDebt: boolean; onDone: () => void }) {
   const balance = Number(order.balance);
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState(0);
   const [custom, setCustom] = useState('');
   const [payNow, setPayNow] = useState(balance > 0);
   const [method, setMethod] = useState('CASH');
@@ -371,7 +394,7 @@ function History({ order }: { order: OrderDetail }) {
 }
 
 /** Parts brought from shops for this repair: what they cost the shop and whether they are settled. */
-function OrderParts({ orderId, canAdd, canEdit }: { orderId: string; canAdd: boolean; canEdit: boolean }) {
+function OrderParts({ orderId, canAdd, canEdit, owner }: { orderId: string; canAdd: boolean; canEdit: boolean; owner: boolean }) {
   const { data } = useQuery({ queryKey: ['parts', 'order', orderId], queryFn: () => api<{ items: SourcedPart[] }>('/parts?orderId=' + orderId) });
   const items = data?.items ?? [];
   if (!items.length && !canAdd) return null;
@@ -382,7 +405,7 @@ function OrderParts({ orderId, canAdd, canEdit }: { orderId: string; canAdd: boo
         <h2 className="font-semibold">Zapchastlar {cost > 0 && <span className="num font-mono text-sm font-normal text-mute">· tannarx {money(cost)}</span>}</h2>
         {canAdd && <Link href={`/parts?order=${orderId}`} className="text-sm font-medium underline">Qo&apos;shish</Link>}
       </div>
-      {items.length ? <ul className="divide-y">{items.map(p => <PartRow key={p.id} part={p} canEdit={canEdit} compact />)}</ul>
+      {items.length ? <ul className="divide-y">{items.map(p => <PartRow key={p.id} part={p} canEdit={canEdit} canFix={owner && canEdit} compact />)}</ul>
         : <p className="px-4 py-4 text-sm text-mute">Do&apos;kondan zapchast olinsa, shu yerda ko&apos;rinadi.</p>}
     </section>
   );

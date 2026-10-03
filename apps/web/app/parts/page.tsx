@@ -152,7 +152,7 @@ function PartsTab({ orderId, openShops }: { orderId: string; openShops: () => vo
       </section>
 
       {error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading ? <Loading rows={4} /> : !data?.items.length ? <Empty title="Tanlangan bo'yicha zapchast yo'q" /> : (
-        <ul className="space-y-2">{data.items.map(p => <PartRow key={p.id} part={p} canEdit={edit} />)}</ul>
+        <ul className="space-y-2">{data.items.map(p => <PartRow key={p.id} part={p} canEdit={edit} canFix={edit && me?.role === 'OWNER'} />)}</ul>
       )}
     </div>
   );

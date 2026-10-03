@@ -1,4 +1,4 @@
-import { BadRequestException, Body, ConflictException, Controller, Get, Module, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Module, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { IsBoolean, IsOptional, IsString, Length, Matches } from 'class-validator';
 import { Prisma } from '@prisma/client';
@@ -15,6 +15,11 @@ class SourcedPartDto {
   @ApiProperty({ example: '350000' }) @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) cost!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 100) orderId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(0, 1000) note?: string;
+}
+
+class PartEditDto {
+  @ApiProperty() @IsString() @Length(1, 200) name!: string;
+  @ApiProperty({ example: '350000' }) @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) cost!: string;
 }
 
 class ShopDto {
@@ -87,6 +92,26 @@ class PartsController {
         ...(d.orderId ? { orderId: d.orderId } : {}), ...(d.note?.trim() ? { note: d.note.trim() } : {}),
       }, include });
       await record(tx, a, part.id, 'PART_TAKEN'); return part;
+    });
+  }
+
+  /** Owner fixes a mistyped name or price, in any status; a paid part's expense follows the new price. */
+  @Patch(':id') @Permissions('orders.edit')
+  edit(@CurrentActor() a: Actor, @Param('id') id: string, @Body() d: PartEditDto) {
+    if (!a.owner) throw new ForbiddenException('OWNER_ONLY');
+    const cost = new Prisma.Decimal(d.cost), name = d.name.trim();
+    if (!cost.greaterThan(0)) throw new ConflictException('Positive amount required');
+    if (!name) throw new BadRequestException('Name required');
+    return this.db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "SourcedPart" WHERE id = ${id} AND "organizationId" = ${a.organizationId} FOR UPDATE`;
+      const part = await tx.sourcedPart.findFirst({ where: { id, organizationId: a.organizationId } });
+      if (!part) throw new NotFoundException();
+      if (part.expenseId) {
+        await tx.expense.updateMany({ where: { id: part.expenseId, organizationId: a.organizationId }, data: { amount: cost, note: `Zapchast: ${name} (${part.shop})`.slice(0, 1000) } });
+      }
+      const result = await tx.sourcedPart.update({ where: { id }, data: { name, cost }, include });
+      await record(tx, a, id, 'PART_EDITED', { name: part.name, cost: part.cost.toString() }, { name, cost: cost.toString() });
+      return result;
     });
   }
 

@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
-import { CustomerDto, DeviceDto, OrderDto, PriceDto, StatusDto, PaymentDto, RefundDto, DeliverDto } from './orders.dto';
+import { CustomerDto, DeviceDto, OrderDto, PriceDto, ComplaintDto, StatusDto, PaymentDto, RefundDto, DeliverDto } from './orders.dto';
 
 // Simplified flow: RECEIVED → IN_REPAIR → READY → DELIVERED, CANCELLED from any open state.
 export const OPEN_STATUSES = ['RECEIVED', 'IN_REPAIR', 'READY'];
@@ -168,7 +168,8 @@ class OrdersController {
   async price(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: PriceDto) {
     return this.db.$transaction(async tx => {
       const order = await lockedOrder(tx, actor, id);
-      if (!OPEN_STATUSES.includes(order.status)) throw new ConflictException('Order closed');
+      // Only the owner may correct a price after the device was handed over.
+      if (!OPEN_STATUSES.includes(order.status) && !(order.status === 'DELIVERED' && actor.owner)) throw new ConflictException('Order closed');
       const labor = new Prisma.Decimal(dto.labor), partsTotal = new Prisma.Decimal(dto.partsTotal), total = labor.plus(partsTotal);
       const { paid } = await paidOf(tx, actor.organizationId, id, order.total);
       if (total.lessThan(paid)) throw new ConflictException('PRICE_BELOW_PAID');
@@ -177,6 +178,18 @@ class OrdersController {
       await tx.auditLog.create({ data: { organizationId: actor.organizationId, actorId: actor.userId, action: 'PRICE_CHANGE', entityId: id, ...(actor.ip ? { ip: actor.ip } : {}),
         oldValue: { labor: order.labor.toString(), partsTotal: order.partsTotal.toString(), total: order.total.toString() },
         newValue: { labor: labor.toString(), partsTotal: partsTotal.toString(), total: total.toString() } } });
+      return { ok: true };
+    });
+  }
+  @Patch(':id/complaint') @Permissions('orders.view')
+  async complaint(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: ComplaintDto) {
+    const complaint = dto.complaint.trim();
+    if (!complaint) throw new ConflictException('Complaint required');
+    return this.db.$transaction(async tx => {
+      const order = await lockedOrder(tx, actor, id);
+      if (order.status === 'CANCELLED') throw new ConflictException('Order closed');
+      await tx.order.update({ where: { id }, data: { complaint } });
+      await record(tx, actor, id, 'ORDER_COMPLAINT_CHANGED', { complaint: order.complaint }, { complaint });
       return { ok: true };
     });
   }

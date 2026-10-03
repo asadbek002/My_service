@@ -29,6 +29,9 @@ export class PriceDto {
   @ApiProperty({ example: '150000' }) @IsString() @Matches(MONEY) labor!: string;
   @ApiProperty({ example: '350000' }) @IsString() @Matches(MONEY) partsTotal!: string;
 }
+export class ComplaintDto {
+  @ApiProperty() @IsString() @Length(1, 4000) complaint!: string;
+}
 export class StatusDto {
   @ApiProperty() @IsIn(['RECEIVED', 'IN_REPAIR', 'READY', 'CANCELLED']) status!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(0, 1000) comment?: string;

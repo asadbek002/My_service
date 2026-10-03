@@ -32,6 +32,9 @@ const TEXT: Record<string, string> = {
   'Logo too large': "Rasm juda katta. Kichikroq rasm tanlang.",
   'PNG, JPEG or WebP image required': 'PNG, JPG yoki WebP rasm tanlang.',
   'Only the owner can change role permissions': "Ruxsatlarni faqat boshliq o'zgartiradi.",
+  OWNER_ONLY: "Buni faqat boshliq o'zgartira oladi.",
+  'Complaint required': 'Nosozlikni yozing.',
+  'Positive amount required': "Summa noldan katta bo'lishi kerak.",
   FORBIDDEN: "Bu amal uchun ruxsat yo'q.",
   NETWORK_ERROR: "Server bilan aloqa yo'q. Internetni tekshiring.",
 };
