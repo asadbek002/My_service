@@ -1,10 +1,11 @@
-import { Module, Controller, Get, Post, Patch, Body, Param, Query, ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Module, Controller, Get, Post, Patch, Body, Param, Query, BadRequestException, ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Prisma } from '@prisma/client';
 import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
-import { CustomerDto, DeviceDto, OrderDto, PriceDto, ComplaintDto, StatusDto, PaymentDto, RefundDto, DeliverDto, UndeliverDto } from './orders.dto';
+import { CustomerDto, DeviceDto, OrderDto, PriceDto, ComplaintDto, StatusDto, PaymentDto, RefundDto, DeliverDto, FixDeliveryDto } from './orders.dto';
 
 // Simplified flow: RECEIVED → IN_REPAIR → READY → DELIVERED, CANCELLED from any open state.
 export const OPEN_STATUSES = ['RECEIVED', 'IN_REPAIR', 'READY'];
@@ -41,6 +42,10 @@ export async function paidOf(tx: Prisma.TransactionClient, organizationId: strin
   const payments = await tx.payment.findMany({ where: { organizationId, orderId }, select: { kind: true, amount: true } });
   const paid = payments.reduce((s, p) => p.kind === 'REFUND' ? s.minus(p.amount) : s.plus(p.amount), new Prisma.Decimal(0));
   return { paid, balance: total.minus(paid) };
+}
+export async function assertMethod(tx: Prisma.TransactionClient, actor: Actor, method: string) {
+  const builtIn = ['CASH', 'CARD', 'CLICK', 'PAYME', 'TRANSFER', 'OTHER'];
+  if (!builtIn.includes(method) && !await tx.paymentMethod.findFirst({ where: { organizationId: actor.organizationId, key: method, active: true } })) throw new ConflictException('Payment method unavailable');
 }
 function orderNumberDay() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -206,8 +211,7 @@ class OrdersController {
     return this.db.$transaction(async tx => {
       const order = await lockedOrder(tx, actor, id);
       const amount = new Prisma.Decimal(dto.amount);
-      const builtIn = ['CASH', 'CARD', 'CLICK', 'PAYME', 'TRANSFER', 'OTHER'];
-      if (!builtIn.includes(dto.method) && !await tx.paymentMethod.findFirst({ where: { organizationId: actor.organizationId, key: dto.method, active: true } })) throw new ConflictException('Payment method unavailable');
+      await assertMethod(tx, actor, dto.method);
       if (!amount.greaterThan(0)) throw new ConflictException('Positive amount required');
       const existing = await tx.payment.findUnique({ where: { organizationId_idempotencyKey: { organizationId: actor.organizationId, idempotencyKey: dto.idempotencyKey } } });
       if (existing) {
@@ -242,24 +246,60 @@ class OrdersController {
     });
   }
   /**
-   * A delivery marked by mistake goes back to READY. Payments stay as they are; the warranty given at
-   * delivery is withdrawn. Not via transition(): that would tell the customer the device is "ready".
+   * Fixes a delivery recorded wrongly: optionally back to READY (warranty withdrawn, no customer message:
+   * not via transition(), which would announce "ready"), and the money set to what was really paid.
+   * Payments are never edited: a lower amount is booked as correction refunds, a higher one as a payment.
    */
-  @Post(':id/undeliver') @Permissions('orders.change_status')
-  undeliver(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: UndeliverDto) {
+  @Post(':id/fix-delivery') @Permissions('orders.view')
+  fixDelivery(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: FixDeliveryDto) {
     const reason = dto.reason.trim();
     if (reason.length < 3) throw new ConflictException('Reason required');
+    const allowed = (p: string) => { if (!actor.permissions.includes(p)) throw new ForbiddenException('FORBIDDEN'); };
+    if (dto.status === 'READY') allowed('orders.change_status');
     return this.db.$transaction(async tx => {
       const order = await lockedOrder(tx, actor, id);
       if (order.status !== 'DELIVERED') throw new ConflictException('Order must be DELIVERED');
-      if (await tx.warrantyClaim.count({ where: { organizationId: actor.organizationId, parentOrderId: id } })) throw new ConflictException('WARRANTY_CLAIMED');
-      const warranty = await tx.warranty.findUnique({ where: { organizationId_orderId: { organizationId: actor.organizationId, orderId: id } } });
-      if (warranty) await tx.warranty.delete({ where: { id: warranty.id } });
-      await tx.order.update({ where: { id }, data: { status: 'READY' } });
-      await tx.orderHistory.create({ data: { organizationId: actor.organizationId, orderId: id, fromStatus: 'DELIVERED', toStatus: 'READY', actorId: actor.userId, comment: ('Berish bekor qilindi: ' + reason).slice(0, 1000) } });
-      await record(tx, actor, id, 'ORDER_DELIVERY_UNDONE',
-        warranty ? { warrantyEndDate: warranty.endDate.toISOString(), warrantyTerms: warranty.terms } : {}, { reason });
-      return { ok: true };
+      const target = new Prisma.Decimal(dto.paid);
+      if (target.greaterThan(order.total)) throw new ConflictException('Paid exceeds total');
+      const { paid } = await paidOf(tx, actor.organizationId, id, order.total);
+      if (dto.status === 'DELIVERED') {
+        if (target.equals(paid)) throw new ConflictException('No changes');
+        if (target.lessThan(order.total)) allowed('payments.deliver_with_debt');
+      }
+
+      const note = ('Tuzatish: ' + reason).slice(0, 1000);
+      if (target.lessThan(paid)) {
+        allowed('payments.refund');
+        // Newest payments are taken back first, each never beyond what is left of it.
+        let need = paid.minus(target);
+        const payments = await tx.payment.findMany({ where: { organizationId: actor.organizationId, orderId: id, kind: 'PAYMENT' }, orderBy: { createdAt: 'desc' } });
+        for (const p of payments) {
+          if (!need.greaterThan(0)) break;
+          const back = await tx.payment.aggregate({ where: { organizationId: actor.organizationId, originalPaymentId: p.id, kind: 'REFUND' }, _sum: { amount: true } });
+          const left = p.amount.minus(back._sum.amount ?? 0);
+          if (!left.greaterThan(0)) continue;
+          const amount = Prisma.Decimal.min(left, need);
+          await tx.payment.create({ data: { organizationId: actor.organizationId, orderId: id, originalPaymentId: p.id, kind: 'REFUND', amount, method: p.method, reason: note, idempotencyKey: 'fix-' + randomUUID(), actorId: actor.userId } });
+          need = need.minus(amount);
+        }
+      } else if (target.greaterThan(paid)) {
+        allowed('payments.create');
+        if (!dto.method) throw new BadRequestException('Payment method required');
+        await assertMethod(tx, actor, dto.method);
+        await tx.payment.create({ data: { organizationId: actor.organizationId, orderId: id, kind: 'PAYMENT', amount: target.minus(paid), method: dto.method, reason: note, idempotencyKey: 'fix-' + randomUUID(), actorId: actor.userId } });
+      }
+      if (!target.equals(paid)) await record(tx, actor, id, 'PAYMENT_CORRECTED', { paid: paid.toString() }, { paid: target.toString(), reason });
+
+      if (dto.status === 'READY') {
+        if (await tx.warrantyClaim.count({ where: { organizationId: actor.organizationId, parentOrderId: id } })) throw new ConflictException('WARRANTY_CLAIMED');
+        const warranty = await tx.warranty.findUnique({ where: { organizationId_orderId: { organizationId: actor.organizationId, orderId: id } } });
+        if (warranty) await tx.warranty.delete({ where: { id: warranty.id } });
+        await tx.order.update({ where: { id }, data: { status: 'READY' } });
+        await tx.orderHistory.create({ data: { organizationId: actor.organizationId, orderId: id, fromStatus: 'DELIVERED', toStatus: 'READY', actorId: actor.userId, comment: ('Berish bekor qilindi: ' + reason).slice(0, 1000) } });
+        await record(tx, actor, id, 'ORDER_DELIVERY_UNDONE',
+          warranty ? { warrantyEndDate: warranty.endDate.toISOString(), warrantyTerms: warranty.terms } : {}, { reason });
+      }
+      return { ok: true, paid: target.toString(), balance: order.total.minus(target).toString() };
     });
   }
 }

@@ -8,7 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 import { errorText } from '../../../lib/errors';
 import { date, dateTime, deviceName, fullName, idempotencyKey, money, phone, PAYMENT_METHODS, som } from '../../../lib/format';
-import { can, post, useMe, useOrder, useOrderMutation, usePaymentMethods, type OrderDetail, type Payment } from '../../../lib/queries';
+import { can, post, useMe, useOrder, useOrderMutation, usePaymentMethods, type Me, type OrderDetail, type Payment } from '../../../lib/queries';
 import { cn } from '../../../lib/utils';
 import { AppShell, ActionBar } from '../../../components/layout/app-shell';
 import { Button } from '../../../components/ui/button';
@@ -20,7 +20,7 @@ import { ErrorBox, Loading, Notice, Row } from '../../../components/ui/feedback'
 import { PartRow, type SourcedPart } from '../../../components/part-row';
 
 const OPEN = ['RECEIVED', 'IN_REPAIR', 'READY'];
-type Panel = null | 'pay' | 'deliver' | 'price' | 'cancel' | 'complaint' | 'undeliver';
+type Panel = null | 'pay' | 'deliver' | 'price' | 'cancel' | 'complaint' | 'fix';
 
 export default function Page() {
   return <Suspense><OrderPage /></Suspense>;
@@ -79,7 +79,7 @@ function OrderPage() {
         {panel === 'price' && <PriceForm order={order} onDone={() => { setPanel(null); setNotice('Narx yangilandi'); }} />}
         {panel === 'pay' && <PaymentForm order={order} onDone={left => { setPanel(null); setNotice(left > 0 ? `To'lov qabul qilindi. Qoldiq: ${som(left)}` : "To'lov qabul qilindi. Buyurtma to'liq to'landi."); }} />}
         {panel === 'deliver' && <DeliverForm order={order} allowDebt={can(me, 'payments.deliver_with_debt')} onDone={left => { setPanel(null); setNotice(left > 0 ? `Qurilma mijozga berildi. Qarz: ${som(left)}` : 'Qurilma mijozga berildi'); }} />}
-        {panel === 'undeliver' && <UndeliverForm order={order} onClose={() => setPanel(null)} onDone={() => { setPanel(null); setNotice("Berish bekor qilindi. Buyurtma yana «Tayyor» holatida."); }} />}
+        {panel === 'fix' && <FixDeliveryForm order={order} me={me} onClose={() => setPanel(null)} onDone={text => { setPanel(null); setNotice(text); }} />}
         {panel === 'cancel' && <CancelForm busy={status.isPending} onCancel={comment => move('CANCELLED', comment)} onClose={() => setPanel(null)} />}
 
         <ErrorBox>{error}</ErrorBox>
@@ -90,7 +90,7 @@ function OrderPage() {
           {canStatus && order.status === 'IN_REPAIR' && <Button variant="secondary" size="sm" onClick={() => move('RECEIVED')}><Undo2 className="h-4 w-4" /> Qabulga qaytarish</Button>}
           {canStatus && order.status === 'READY' && <Button variant="secondary" size="sm" onClick={() => move('IN_REPAIR')}><Undo2 className="h-4 w-4" /> Ta&apos;mirga qaytarish</Button>}
           {canEdit && isOpen && <ShareLink orderId={id} />}
-          {canStatus && order.status === 'DELIVERED' && <Button variant="secondary" size="sm" onClick={() => toggle('undeliver')}><Undo2 className="h-4 w-4" /> Berishni bekor qilish</Button>}
+          {order.status === 'DELIVERED' && (canStatus || can(me, 'payments.refund') || can(me, 'payments.create')) && <Button variant="secondary" size="sm" onClick={() => toggle('fix')}><Undo2 className="h-4 w-4" /> Berishni tuzatish</Button>}
           {canStatus && isOpen && <Button variant="ghost" size="sm" className="text-red-600" onClick={() => toggle('cancel')}><Ban className="h-4 w-4" /> Bekor qilish</Button>}
         </div>
 
@@ -334,27 +334,81 @@ function DeliverForm({ order, allowDebt, onDone }: { order: OrderDetail; allowDe
   );
 }
 
-/** Undo a delivery marked by mistake: back to READY, payments kept, warranty withdrawn. */
-function UndeliverForm({ order, onClose, onDone }: { order: OrderDetail; onClose: () => void; onDone: () => void }) {
+/**
+ * Fix a delivery recorded wrongly: keep it delivered or send it back to READY, and set what the customer
+ * really paid. The server books the difference (a correction refund or a payment); nothing is erased.
+ */
+function FixDeliveryForm({ order, me, onClose, onDone }: { order: OrderDetail; me: Me | undefined; onClose: () => void; onDone: (text: string) => void }) {
+  const total = Number(order.total), paidNow = Number(order.totalPaid);
+  const [where, setWhere] = useState<'DELIVERED' | 'READY'>('DELIVERED');
+  const [mode, setMode] = useState<'full' | 'part'>(Number(order.balance) > 0 ? 'part' : 'full');
+  const [amount, setAmount] = useState(String(Math.round(paidNow)));
+  const [method, setMethod] = useState('CASH');
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
-  const undo = useOrderMutation(() => post(`/orders/${order.id}/undeliver`, { reason: reason.trim() }));
+  const target = mode === 'full' ? total : Number(amount) || 0;
+  const diff = Math.round((target - paidNow) * 100) / 100;
+  const left = Math.round((total - target) * 100) / 100;
+  const sent = mode === 'full' ? order.total : String(target);
+
+  const blocker = target > total ? `Summa jami narxdan (${som(total)}) ko'p.`
+    : where === 'DELIVERED' && diff === 0 ? "Hech narsa o'zgarmadi: summani yoki holatni o'zgartiring."
+    : where === 'READY' && !can(me, 'orders.change_status') ? "Holatni o'zgartirishga ruxsatingiz yo'q."
+    : diff < 0 && !can(me, 'payments.refund') ? "To'lovni kamaytirishga ruxsatingiz yo'q."
+    : diff > 0 && !can(me, 'payments.create') ? "To'lov qabul qilishga ruxsatingiz yo'q."
+    : where === 'DELIVERED' && left > 0 && !can(me, 'payments.deliver_with_debt') ? "Qarzga berishga ruxsatingiz yo'q."
+    : '';
+  const save = useOrderMutation(() => post(`/orders/${order.id}/fix-delivery`, { status: where, paid: sent, ...(diff > 0 ? { method } : {}), reason: reason.trim() }));
+  const debtWord = where === 'DELIVERED' ? 'Qarz' : 'Qoldiq';
+
   return (
     <section className="rounded-lg border-2 border-amber-500 bg-white p-4">
-      <h2 className="font-semibold">Berishni bekor qilasizmi?</h2>
-      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-mute">
-        <li>Buyurtma yana «Tayyor» holatiga qaytadi.</li>
-        <li>Olingan to&apos;lovlar o&apos;zgarmaydi{Number(order.balance) > 0 ? `, ${som(order.balance)} qoldiq sifatida qoladi` : ''}.</li>
-        {order.warranty && <li>Berilgan kafolat ({date(order.warranty.endDate)} gacha) bekor qilinadi.</li>}
-        <li>Mijozga xabar yuborilmaydi.</li>
-      </ul>
-      <Input className="mt-3" value={reason} onChange={e => setReason(e.target.value)} placeholder="Sababi (masalan: adashib bosildi)" autoFocus maxLength={1000} />
+      <h2 className="font-semibold">Berishni tuzatish</h2>
+
+      <p className="mt-3 text-sm font-medium">Buyurtma qayerda bo&apos;ladi?</p>
+      <div className="mt-2 grid gap-2">
+        <label className="flex items-start gap-2 text-sm"><input type="radio" className="mt-0.5 h-4 w-4" checked={where === 'DELIVERED'} onChange={() => setWhere('DELIVERED')} />
+          <span>Berilgan holatida qoladi <span className="text-mute">— faqat to&apos;lovni tuzatish</span></span></label>
+        <label className="flex items-start gap-2 text-sm"><input type="radio" className="mt-0.5 h-4 w-4" checked={where === 'READY'} onChange={() => setWhere('READY')} />
+          <span>«Tayyor» holatiga qaytariladi <span className="text-mute">— qurilma ustaxonada{order.warranty ? `, kafolat (${date(order.warranty.endDate)} gacha) bekor qilinadi` : ''}</span></span></label>
+      </div>
+
+      <p className="mt-4 text-sm font-medium">Mijoz aslida qancha to&apos;lagan?</p>
+      <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="To'lov holati">
+        <button type="button" role="radio" aria-checked={mode === 'full'} className="chip" onClick={() => setMode('full')}>To&apos;liq to&apos;lagan</button>
+        <button type="button" role="radio" aria-checked={mode === 'part'} className="chip" onClick={() => setMode('part')}>{where === 'DELIVERED' ? 'Qarzga (qisman yoki umuman to\'lamagan)' : 'Qisman yoki umuman to\'lamagan'}</button>
+      </div>
+      {mode === 'part' && (
+        <label className="mt-2 grid gap-1.5"><span className="text-sm text-mute">Jami qancha to&apos;lagan (0 — umuman to&apos;lamagan)</span>
+          <MoneyInput value={amount} onChange={setAmount} aria-label="Aslida to'langan summa" /></label>
+      )}
+
+      <div className="mt-3 rounded-md bg-paper px-3 py-2 text-sm">
+        <Row label="Jami narx">{money(total)}</Row>
+        <Row label="Hozir yozilgan to'lov">{money(paidNow)}</Row>
+        <Row label="To'g'risi">{money(target)}</Row>
+        <div className="mt-1 border-t pt-1">
+          {diff < 0 && <p className="text-mute">{som(-diff)} tuzatish sifatida qaytarib yoziladi</p>}
+          {diff > 0 && <p className="text-mute">{som(diff)} to&apos;lov qo&apos;shiladi</p>}
+          {left > 0 ? <Row label={debtWord} strong><span className="font-semibold text-amber-700">{som(left)}</span></Row>
+            : left === 0 ? <p className="font-medium text-emerald-700">To&apos;liq to&apos;langan</p> : null}
+        </div>
+      </div>
+      {diff > 0 && <div className="mt-3"><MethodPicker value={method} onChange={setMethod} /></div>}
+
+      <Input className="mt-3" value={reason} onChange={e => setReason(e.target.value)} placeholder="Sababi (masalan: kassada adashib yozildi)" maxLength={1000} />
+      {blocker && <p className="mt-2 text-xs text-red-600">{blocker}</p>}
+      <p className="mt-2 text-xs text-mute">Mijozga xabar yuborilmaydi. Eski yozuvlar o&apos;chirilmaydi, tuzatish tarixda ko&apos;rinadi.</p>
       <ErrorBox className="mt-3">{error}</ErrorBox>
       <div className="mt-3 flex gap-2">
-        <Button variant="secondary" onClick={onClose}>Yo&apos;q</Button>
-        <Button disabled={undo.isPending || reason.trim().length < 3} onClick={async () => { setError(''); try { await undo.mutateAsync(undefined); onDone(); } catch (e) { setError(errorText(e)); } }}>
-          {undo.isPending ? 'Saqlanmoqda…' : 'Bekor qilish'}
-        </Button>
+        <Button variant="secondary" onClick={onClose}>Yopish</Button>
+        <Button disabled={save.isPending || !!blocker || reason.trim().length < 3} onClick={async () => {
+          setError('');
+          try {
+            await save.mutateAsync(undefined);
+            onDone((where === 'READY' ? 'Buyurtma «Tayyor» holatiga qaytarildi. ' : "To'lov tuzatildi. ") + (left > 0 ? `${debtWord}: ${som(left)}` : "To'liq to'langan."));
+          } catch (e) { setError(errorText(e)); }
+        }}>{save.isPending ? 'Saqlanmoqda…' : 'Saqlash'}</Button>
       </div>
     </section>
   );
@@ -403,7 +457,7 @@ function Payments({ order, canRefund }: { order: OrderDetail; canRefund: boolean
           <li key={p.id} className="px-4 py-3">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-sm font-medium">{p.kind === 'REFUND' ? 'Qaytarildi' : PAYMENT_METHODS[p.method] ?? p.method}</p>
+                <p className="text-sm font-medium">{p.kind === 'REFUND' ? (p.reason?.startsWith('Tuzatish:') ? 'Tuzatildi' : 'Qaytarildi') : PAYMENT_METHODS[p.method] ?? p.method}</p>
                 <p className="truncate text-xs text-mute">{dateTime(p.createdAt)}{p.actorId && order.actorNames[p.actorId] ? ' · ' + order.actorNames[p.actorId] : ''}{p.reason ? ' · ' + p.reason : ''}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">

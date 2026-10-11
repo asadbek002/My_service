@@ -308,7 +308,8 @@ test('partial payments on ready and delivered orders always leave the right bala
 test('a delivery marked by mistake can be undone without notifying the customer', async () => {
   const auth = await owner(a);
   const { order } = await newOrder(a, { labor: '100000', parts: '0' });
-  const undo = body => request('/orders/' + order.id + '/undeliver', { ...auth, method: 'POST', body });
+  // Back to READY with the money left as recorded (60 000 paid).
+  const undo = body => request('/orders/' + order.id + '/fix-delivery', { ...auth, method: 'POST', body: { status: 'READY', paid: '60000', ...body } });
   await request('/orders/' + order.id + '/status', { ...auth, method: 'PATCH', body: { status: 'READY' } });
   assert.equal((await undo({ reason: 'Adashib bosildi' })).status, 409);
   assert.equal((await request('/orders/' + order.id + '/payments', { ...auth, method: 'POST', body: { amount: '60000', method: 'CASH', idempotencyKey: randomUUID() } })).status, 201);
@@ -317,7 +318,8 @@ test('a delivery marked by mistake can be undone without notifying the customer'
   const before = await readyEvents();
 
   assert.equal((await undo({ reason: 'x' })).status, 400);
-  assert.equal((await request('/orders/' + order.id + '/undeliver', { ...await owner(b), method: 'POST', body: { reason: 'Adashib bosildi' } })).status, 404);
+  assert.equal((await request('/orders/' + order.id + '/fix-delivery', { ...await owner(b), method: 'POST', body: { status: 'READY', paid: '60000', reason: 'Adashib bosildi' } })).status, 404);
+  assert.equal((await undo({ reason: 'Adashib bosildi', paid: '100001' })).status, 409);
   assert.equal((await undo({ reason: 'Adashib bosildi' })).status, 201);
   const detail = await json(await request('/orders/' + order.id, auth));
   assert.equal(detail.status, 'READY'); assert.equal(detail.balance, '40000'); assert.equal(detail.warranty, null);
@@ -333,6 +335,44 @@ test('a delivery marked by mistake can be undone without notifying the customer'
   const warranty = await db.warranty.findUnique({ where: { orderId: order.id } });
   assert.equal((await request('/warranties/' + warranty.id + '/claim', { ...auth, method: 'POST', body: { reason: 'Yana buzildi' } })).status, 201);
   assert.equal((await undo({ reason: 'Adashib bosildi' })).status, 409);
+});
+test('a wrongly recorded delivery payment is rewritten to debt or to paid, with an audit trail', async () => {
+  const auth = await owner(a);
+  const { order } = await newOrder(a, { labor: '500000', parts: '0' });
+  const fix = (body, who = auth) => request('/orders/' + order.id + '/fix-delivery', { ...who, method: 'POST', body: { reason: 'Kassada xato', ...body } });
+  const state = async () => { const d = await json(await request('/orders/' + order.id, auth)); return [d.status, d.totalPaid, d.balance]; };
+  await request('/orders/' + order.id + '/status', { ...auth, method: 'PATCH', body: { status: 'READY' } });
+  // Recorded as paid in full in two payments, but the customer really paid only 150 000.
+  for (const amount of ['300000', '200000']) assert.equal((await request('/orders/' + order.id + '/payments', { ...auth, method: 'POST', body: { amount, method: 'CASH', idempotencyKey: randomUUID() } })).status, 201);
+  assert.equal((await request('/orders/' + order.id + '/deliver', { ...auth, method: 'POST', body: { warrantyDays: 0 } })).status, 201);
+  assert.equal((await fix({ status: 'DELIVERED', paid: '500000' })).status, 409);
+
+  // Lowering it is a refund: staff need that right (the owner may switch it off for them).
+  const staff = await staffOf(a);
+  const all = (await json(await request('/roles', auth))).find(r => r.key === 'STAFF').permissions;
+  assert.equal((await request('/roles/STAFF', { ...auth, method: 'PUT', body: { permissions: all.filter(p => p !== 'payments.refund') } })).status, 200);
+  assert.equal((await fix({ status: 'DELIVERED', paid: '150000' }, staff)).status, 403);
+  assert.deepEqual(await state(), ['DELIVERED', '500000', '0']);
+  assert.equal((await request('/roles/STAFF', { ...auth, method: 'PUT', body: { permissions: all } })).status, 200);
+  assert.equal((await fix({ status: 'DELIVERED', paid: '150000' }, staff)).status, 201);
+  assert.deepEqual(await state(), ['DELIVERED', '150000', '350000']);
+  const refunds = await db.payment.findMany({ where: { orderId: order.id, kind: 'REFUND' }, orderBy: { amount: 'desc' } });
+  // Newest payment (200 000) is taken back whole, then 150 000 of the older one.
+  assert.deepEqual(refunds.map(r => r.amount.toString()), ['200000', '150000']);
+  assert.ok(refunds.every(r => r.reason === 'Tuzatish: Kassada xato'));
+  const audit = await db.auditLog.findFirst({ where: { organizationId: a.org.id, entityId: order.id, action: 'PAYMENT_CORRECTED' } });
+  assert.equal(audit.oldValue.paid, '500000'); assert.equal(audit.newValue.paid, '150000');
+
+  // Raising it back needs a method; it becomes a normal payment.
+  assert.equal((await fix({ status: 'DELIVERED', paid: '500000' })).status, 400);
+  assert.equal((await fix({ status: 'DELIVERED', paid: '500000', method: 'CARD' })).status, 201);
+  assert.deepEqual(await state(), ['DELIVERED', '500000', '0']);
+  // Back to the shop with nothing paid: every payment is reversed, nothing goes negative.
+  assert.equal((await fix({ status: 'READY', paid: '0' })).status, 201);
+  assert.deepEqual(await state(), ['READY', '0', '500000']);
+  const finance = await json(await request('/reports/finance', auth));
+  // Reports see the corrected money: the whole price is outstanding again.
+  assert.equal(finance.debtors.find(d => d.id === order.id).balance, '500000');
 });
 test('public tracking hides personal data', async () => {
   const auth = await owner(a);

@@ -46,7 +46,13 @@ export class RefundDto {
   @ApiProperty() @IsString() @Length(3, 1000) reason!: string;
   @ApiProperty() @IsString() @Length(16, 128) idempotencyKey!: string;
 }
-export class UndeliverDto {
+export class FixDeliveryDto {
+  // DELIVERED: stays handed over, only the money is corrected; READY: back to the shop.
+  @ApiProperty() @IsIn(['DELIVERED', 'READY']) status!: string;
+  // What the customer has really paid in total for this order.
+  @ApiProperty({ example: '300000' }) @IsString() @Matches(MONEY) paid!: string;
+  // Needed only when the corrected amount is higher than what is recorded.
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 64) @Matches(/^[A-Z0-9_]+$/) method?: string;
   @ApiProperty() @IsString() @Length(3, 1000) reason!: string;
 }
 export class DeliverDto {
