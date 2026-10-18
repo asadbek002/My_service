@@ -8,7 +8,7 @@ export type Plan = {
   monthlyPrice: string; yearlyPrice: string | null; yearlyTotal?: string;
   features: Record<string, boolean>; _count?: { subscriptions: number };
 };
-type Billing = { trialDays: number; graceDays: number; extraSmsPrice: string; yearlyFreeMonths: number };
+type Billing = { trialDays: number; graceDays: number; extraSmsPrice: string; yearlyFreeMonths: number; signupOpen: boolean; signupPlanId: string | null };
 
 // What a plan switches on. Keys the console does not show are kept as they are when a plan is saved.
 export const FEATURES: [string, string][] = [
@@ -86,7 +86,7 @@ function PlanForm({ plan, busy, onSubmit, onCancel }: { plan?: Plan; busy: boole
   );
 }
 
-function BillingCard({ busy, run }: { busy: boolean; run: (action: () => Promise<unknown>, done: string) => Promise<void> }) {
+function BillingCard({ plans, busy, run }: { plans: Plan[]; busy: boolean; run: (action: () => Promise<unknown>, done: string) => Promise<void> }) {
   const [billing, setBilling] = useState<Billing | null>(null);
   useEffect(() => { platformApi<Billing>('/billing-settings').then(setBilling).catch(() => setBilling(null)); }, []);
   if (!billing) return null;
@@ -96,7 +96,8 @@ function BillingCard({ busy, run }: { busy: boolean; run: (action: () => Promise
       <p className="mb-3 text-xs text-mute">Hamma tariflar uchun bir xil.</p>
       <form key={JSON.stringify(billing)} className="space-y-3" onSubmit={e => {
         e.preventDefault(); const d = new FormData(e.currentTarget);
-        const value = { trialDays: Number(digits(d.get('trialDays'))), graceDays: Number(digits(d.get('graceDays'))), extraSmsPrice: digits(d.get('extraSmsPrice')) || '0', yearlyFreeMonths: Number(digits(d.get('yearlyFreeMonths'))) };
+        const value = { trialDays: Number(digits(d.get('trialDays'))), graceDays: Number(digits(d.get('graceDays'))), extraSmsPrice: digits(d.get('extraSmsPrice')) || '0', yearlyFreeMonths: Number(digits(d.get('yearlyFreeMonths'))),
+          signupOpen: d.get('signupOpen') === 'on', signupPlanId: String(d.get('signupPlanId') || '') || null };
         void run(async () => setBilling(await platformApi<Billing>('/billing-settings', { method: 'PUT', body: JSON.stringify(value) })), 'Sozlamalar saqlandi');
       }}>
         <div className="grid grid-cols-2 gap-2">
@@ -109,6 +110,12 @@ function BillingCard({ busy, run }: { busy: boolean; run: (action: () => Promise
           <label className="block space-y-1 text-sm"><span className="font-medium">Yillikda bepul oy</span>
             <input name="yearlyFreeMonths" required inputMode="numeric" pattern="\d{1,2}" defaultValue={billing.yearlyFreeMonths} className={field} /></label>
         </div>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="signupOpen" defaultChecked={billing.signupOpen} className="h-4 w-4" />Yangi ustaxonalar o&apos;zi ro&apos;yxatdan o&apos;ta oladi</label>
+        <label className="block space-y-1 text-sm"><span className="font-medium">Sinov davridagi tarif</span>
+          <select name="signupPlanId" defaultValue={billing.signupPlanId ?? ''} className={field}>
+            <option value="">Eng qimmat faol tarif (avtomatik)</option>
+            {plans.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select></label>
         <p className="text-[11px] text-mute">Imtiyozli kunlar — obuna tugagandan keyin servis yana necha kun to&apos;liq ishlaydi, keyin faqat ko&apos;rish rejimiga o&apos;tadi. Yangi sinov muddati va imtiyoz faqat bundan keyin yaratilgan yoki o&apos;zgartirilgan obunalarga qo&apos;llanadi.</p>
         <button className={button + ' w-full'} disabled={busy}>Saqlash</button>
       </form>
@@ -152,7 +159,7 @@ export function PlansTab({ plans, busy, run }: { plans: Plan[]; busy: boolean; r
           <h2 className="mb-3 font-semibold">Yangi tarif</h2>
           <PlanForm key={plans.length} busy={busy} onSubmit={d => void run(() => platformApi('/plans', { method: 'POST', body: JSON.stringify(forCreate(planBody(d))) }), 'Tarif yaratildi')} />
         </section>
-        <BillingCard busy={busy} run={run} />
+        <BillingCard plans={plans} busy={busy} run={run} />
       </div>
     </div>
   );

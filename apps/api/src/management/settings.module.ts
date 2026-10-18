@@ -57,6 +57,37 @@ class SettingsController{
   const name=typeof v('general').name==='string'&&String(v('general').name).trim()?String(v('general').name).trim():org.name;
   return{name,logo:typeof v('logo').image==='string'?v('logo').image:null};
  }
+ /**
+  * Getting-started checklist for a new service, worked out from what is already set up.
+  * The owner can hide it; it also disappears by itself once every step is done.
+  */
+ @Get('setup')@Permissions('settings.manage')
+ async setup(@CurrentActor()a:Actor){
+  const org=a.organizationId;
+  const [rows,me,staff,orders]=await Promise.all([
+   this.db.organizationSetting.findMany({where:{organizationId:org,key:{in:['general','logo','warranty_terms','setup']}}}),
+   this.db.user.findUniqueOrThrow({where:{id:a.userId},select:{telegramChatId:true}}),
+   this.db.user.count({where:{organizationId:org}}),
+   this.db.order.count({where:{organizationId:org}}),
+  ]);
+  const v=(k:string)=>(rows.find(r=>r.key===k)?.value??{}) as Record<string,unknown>;
+  const text=(x:unknown)=>typeof x==='string'&&x.trim().length>0;
+  const steps=[
+   {key:'profile',done:text(v('general').address)&&text(v('general').phone)},
+   {key:'logo',done:text(v('logo').image)},
+   {key:'warranty',done:text(v('warranty_terms').text)},
+   {key:'telegram',done:!!me.telegramChatId},
+   {key:'staff',done:staff>1},
+   {key:'order',done:orders>0},
+  ];
+  return{steps,done:steps.filter(x=>x.done).length,total:steps.length,dismissed:v('setup').dismissed===true};
+ }
+ @Put('setup/dismiss')@Permissions('settings.manage')
+ async dismissSetup(@CurrentActor()a:Actor){
+  const value={dismissed:true} as Prisma.InputJsonObject;
+  await this.db.organizationSetting.upsert({where:{organizationId_key:{organizationId:a.organizationId,key:'setup'}},create:{organizationId:a.organizationId,key:'setup',value},update:{value}});
+  return{ok:true};
+ }
  /** Logo as a small image (the browser resizes it to 256 px before upload). */
  @Put('logo')@Permissions('settings.manage')
  async logo(@CurrentActor()a:Actor,@Body()d:LogoDto){

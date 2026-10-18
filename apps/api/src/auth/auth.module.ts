@@ -6,9 +6,10 @@ import { AuthService } from './auth.service';
 import { SecurityGuard } from './security';
 import { LoginRateGuard } from './rate-limit';
 import { SubscriptionCache } from './subscription-cache';
+import { BotModule } from '../bot/bot.module';
 
 @Module({
-  imports: [JwtModule.registerAsync({ useFactory: () => ({ secret: process.env.JWT_ACCESS_SECRET! }) })],
+  imports: [BotModule, JwtModule.registerAsync({ useFactory: () => ({ secret: process.env.JWT_ACCESS_SECRET! }) })],
   providers: [AuthService, LoginRateGuard, SubscriptionCache, { provide: APP_GUARD, useClass: SecurityGuard }],
   controllers: [AuthController],
   exports: [SubscriptionCache],

@@ -13,6 +13,7 @@ import { StaffModule } from './staff/staff.module';
 import { PartsModule } from './parts/parts.module';
 import { BotModule } from './bot/bot.module';
 import { HealthController } from './health.controller';
+import { VerificationModule } from './auth/verification';
 
 @Module({
   imports: [
@@ -28,7 +29,7 @@ import { HealthController } from './health.controller';
         return config;
       },
     }),
-    DatabaseModule, AuthModule, StaffModule, OrdersModule, PartsModule, BotModule, LinksModule, NotificationsModule, ManagementModule, SettingsModule, PlatformModule, DocumentsModule,
+    DatabaseModule, VerificationModule, AuthModule, StaffModule, OrdersModule, PartsModule, BotModule, LinksModule, NotificationsModule, ManagementModule, SettingsModule, PlatformModule, DocumentsModule,
   ],
   controllers: [HealthController],
 })

@@ -2,7 +2,7 @@ const rawBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 export const API_BASE = rawBase.endsWith('/api') ? rawBase : rawBase.replace(/\/+$/, '') + '/api';
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number) { super(message); }
+  constructor(message: string, public status: number, public data?: Record<string, unknown>) { super(message); }
 }
 
 // AccessToken in-memory (sessionStorage fallback)
@@ -115,3 +115,31 @@ export async function login(loginId: string, password: string): Promise<void> {
 export async function logout(): Promise<void> {
   try { await api('/auth/logout', { method: 'POST' }); } finally { clearAccess(); }
 }
+
+/**
+ * Calls that work without signing in (sign-up, password reset, phone confirmation).
+ * The error keeps the server's body: a reset can answer with the accounts to choose from.
+ */
+export async function publicPost<T>(path: string, body: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(API_BASE + path, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Origin: window.location.origin },
+      body: JSON.stringify(body),
+    });
+  } catch { throw new ApiError('NETWORK_ERROR', 0); }
+  const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+  if (!res.ok) {
+    const message = Array.isArray(data.message) ? 'INVALID_INPUT' : typeof data.message === 'string' ? data.message : 'REQUEST_FAILED';
+    throw new ApiError(message, res.status, data);
+  }
+  return data as T;
+}
+export async function publicGet<T>(path: string): Promise<T> {
+  const res = await fetch(API_BASE + path, { credentials: 'include' });
+  if (!res.ok) throw new ApiError('REQUEST_FAILED', res.status);
+  return res.json() as Promise<T>;
+}
+/** Sign-up and reset answer like a login: keep the access token (the refresh cookie is already set). */
+export function signedIn(d: { accessToken: string; expiresIn: number }) { setAccessToken(d.accessToken, d.expiresIn); }

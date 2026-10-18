@@ -43,6 +43,19 @@ const TEXT: Record<string, string> = {
   'Positive amount required': "Summa noldan katta bo'lishi kerak.",
   FORBIDDEN: "Bu amal uchun ruxsat yo'q.",
   NETWORK_ERROR: "Server bilan aloqa yo'q. Internetni tekshiring.",
+  INVALID_INPUT: "Ma'lumotlar to'liq emas yoki noto'g'ri. Tekshirib qayta yuboring.",
+  CODE_WRONG: "Kod noto'g'ri. Qayta tekshirib yozing.",
+  CODE_EXPIRED: 'Kod eskirgan yoki ko‘p marta noto‘g‘ri yozildi. Yangi kod oling.',
+  RESEND_TOO_SOON: 'Yangi kodni 1 daqiqadan keyin so‘rash mumkin.',
+  TOO_MANY_CODES: 'Juda ko‘p kod so‘raldi. Bir soatdan keyin urinib ko‘ring yoki Telegram orqali tasdiqlang.',
+  SMS_UNAVAILABLE: 'SMS hozir yuborilmadi. Telegram orqali tasdiqlang yoki keyinroq urinib ko‘ring.',
+  TELEGRAM_UNAVAILABLE: 'Telegram orqali tasdiqlash hozir ishlamayapti. SMS koddan foydalaning.',
+  LINK_EXPIRED: 'Tasdiqlash vaqti tugadi. Qaytadan boshlang.',
+  PHONE_NOT_VERIFIED: 'Telefon tasdiqlanmagan yoki tasdiq muddati tugagan. Qaytadan tasdiqlang.',
+  LOGIN_TAKEN: 'Bu login band. Boshqasini tanlang.',
+  PHONE_TAKEN: 'Bu telefon raqami bilan ustaxona allaqachon ochilgan. Tizimga kiring yoki parolni tiklang.',
+  SIGNUP_CLOSED: "Ro'yxatdan o'tish vaqtincha yopiq. Yordam bo'limiga yozing.",
+  NO_ACCOUNT: 'Bu raqamga bog‘langan akkaunt topilmadi.',
 };
 
 export function errorText(e: unknown): string {

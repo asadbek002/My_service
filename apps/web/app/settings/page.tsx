@@ -22,6 +22,12 @@ const str = (v: unknown) => (typeof v === 'string' ? v : '');
 export default function Settings() {
   const { data: rows, isLoading, error } = useQuery({ queryKey: ['settings', 'general'], queryFn: () => api<Setting[]>('/settings/general') });
   const value = (key: string) => rows?.find(r => r.key === key)?.value ?? {};
+  // Links from the setup checklist (/settings#logo …) land on their block once the page has rendered.
+  useEffect(() => {
+    if (!rows || !location.hash) return;
+    const t = setTimeout(() => document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    return () => clearTimeout(t);
+  }, [rows]);
   return (
     <AppShell title="Sozlamalar" narrow>
       {error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading ? <Loading rows={4} /> : (
@@ -43,9 +49,9 @@ export default function Settings() {
   );
 }
 
-function Block({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+function Block({ title, hint, id, children }: { title: string; hint?: string; id?: string; children: ReactNode }) {
   return (
-    <section className="rounded-lg border bg-white p-4 sm:p-5">
+    <section id={id} className="scroll-mt-20 rounded-lg border bg-white p-4 sm:p-5 target:border-ink target:ring-2 target:ring-brand/40">
       <h2 className="font-semibold">{title}</h2>
       {hint && <p className="mt-0.5 text-sm text-mute">{hint}</p>}
       <div className="mt-4">{children}</div>
@@ -80,7 +86,7 @@ function ServiceForm({ general, receipt }: { general: Record<string, unknown>; r
     await save('receipt', { width, footer: String(d.get('footer') ?? '').trim(), telegram: String(d.get('telegram') ?? '').trim(), instagram: String(d.get('instagram') ?? '').trim() });
   }
   return (
-    <Block title="Servis va chek" hint="Chekning tepasida va pastida chiqadi">
+    <Block id="service" title="Servis va chek" hint="Chekning tepasida va pastida chiqadi">
       <form onSubmit={submit} className="grid gap-3">
         <FormField label="Servis nomi"><Input name="name" defaultValue={str(general.name)} placeholder="Masalan: Mobile Fix" /></FormField>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -113,7 +119,7 @@ function WarrantyForm({ terms }: { terms: string }) {
   const { save, busy, state } = useSave();
   const [text, setText] = useState(terms);
   return (
-    <Block title="Kafolat shartlari" hint="Berish chekida chiqadi. Kafolat kunlari har safar berishda so'raladi.">
+    <Block id="warranty" title="Kafolat shartlari" hint="Berish chekida chiqadi. Kafolat kunlari har safar berishda so'raladi.">
       <div className="grid gap-3">
         <Textarea value={text} onChange={e => setText(e.target.value)} rows={3} placeholder="Ta'mirlangan qism uchun kafolat. Namlik va zarbaga tatbiq etilmaydi." />
         <ErrorBox>{state.error}</ErrorBox><Notice>{state.ok}</Notice>
@@ -254,7 +260,7 @@ function MyTelegram() {
     catch (e) { setState({ error: errorText(e) }); }
   }
   return (
-    <Block title="Mening Telegramim" hint="Yangi qabul va tayyor qurilmalar haqida xabar, har kuni 20:00 da kunlik hisobot, buyurtma qidirish.">
+    <Block id="telegram" title="Mening Telegramim" hint="Yangi qabul va tayyor qurilmalar haqida xabar, har kuni 20:00 da kunlik hisobot, buyurtma qidirish.">
       {!data.configured ? (
         <p className="text-sm text-mute">Bot hali ishga tushirilmagan. Platforma egasi bot tokenini qo&apos;shgach, shu yerdan ulaysiz.</p>
       ) : data.linked ? (
@@ -590,7 +596,7 @@ function LogoBlock() {
     catch (e) { setState({ error: errorText(e) }); } finally { setBusy(false); }
   }
   return (
-    <Block title="Logotip" hint="Ilovaning tepasida (telefon va kompyuter), chekda va mijozning kuzatuv sahifasida chiqadi. Kvadrat rasm yaxshi ko'rinadi.">
+    <Block id="logo" title="Logotip" hint="Ilovaning tepasida (telefon va kompyuter), chekda va mijozning kuzatuv sahifasida chiqadi. Kvadrat rasm yaxshi ko'rinadi.">
       <div className="flex items-center gap-4">
         <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white">
           {data?.logo ? <img src={data.logo} alt="Logotip" className="h-full w-full object-contain" /> : <span className="text-xs text-mute">Yo&apos;q</span>}

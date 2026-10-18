@@ -230,3 +230,28 @@ test('bot: customers, staff, admins, alerts and receipt photo', async () => {
   await tg(customerChat, { text: '/stop' });
   assert.equal(await db.customer.count({ where: { telegramChatId: String(customerChat) } }), 0);
 });
+
+test('phone confirmed through the bot: open the link, share the contact, sign up with the proof', async () => {
+  const chat = 700000000 + Math.floor(Math.random() * 1e6);
+  const phoneDigits = '99895' + String(Math.floor(Math.random() * 1e7)).padStart(7, '0');
+  const link = await ok(await request('/auth/verify/telegram', { method: 'POST', body: { purpose: 'signup' } }));
+  assert.match(link.url, /^https:\/\/t\.me\/myservice_test_bot\?start=v_[A-Za-z0-9_-]{43}$/);
+  assert.deepEqual(await ok(await request('/auth/verify/telegram/status', { method: 'POST', body: { token: link.token } })), { verified: false });
+  assert.equal(await tg(chat, { text: '/start v_' + link.token }), 200);
+  assert.ok(lastTo(chat).reply_markup.keyboard[0][0].request_contact, 'asks for the contact');
+  // Someone else's forwarded contact does not count.
+  await tg(chat, { contact: { phone_number: phoneDigits, user_id: chat + 1 } });
+  assert.deepEqual(await ok(await request('/auth/verify/telegram/status', { method: 'POST', body: { token: link.token } })), { verified: false });
+  await tg(chat, { contact: { phone_number: phoneDigits, user_id: chat } });
+  assert.ok(lastTo(chat).text.includes('Raqam tasdiqlandi'));
+  const status = await ok(await request('/auth/verify/telegram/status', { method: 'POST', body: { token: link.token } }));
+  assert.equal(status.verified, true); assert.equal(status.phone, '+' + phoneDigits);
+  assert.equal((await request('/auth/verify/telegram/status', { method: 'POST', body: { token: link.token } })).status, 400, 'the link gives one proof');
+  const login = 'tg-' + randomUUID().slice(0, 8);
+  const created = await ok(await request('/auth/signup', { method: 'POST', body: { proof: status.proof, serviceName: 'Telegram Usta', ownerName: 'Bekzod', login, password: 'Telegram-Pass-1234' } }), 201);
+  assert.ok(created.accessToken);
+  assert.equal((await db.user.findUnique({ where: { login } })).phone, '+' + phoneDigits);
+  // An expired or unknown link is answered, not ignored.
+  await tg(chat, { text: '/start v_' + 'A'.repeat(43) });
+  assert.ok(lastTo(chat).text.includes('eskirgan'));
+});

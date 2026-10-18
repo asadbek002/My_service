@@ -10,6 +10,7 @@ import { errorText } from '../../lib/errors';
 import { deviceName, money, dateTime, today } from '../../lib/format';
 import { can, useDashboard, useMe, useOrders } from '../../lib/queries';
 import { OrderList } from '../../components/order-card';
+import { SetupCard } from '../../components/setup-steps';
 import { AppShell } from '../../components/layout/app-shell';
 import { AuthFrame } from '../../components/layout/auth-frame';
 import { Button } from '../../components/ui/button';
@@ -103,6 +104,7 @@ function MoneyHome() {
       {error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading || !data ? <Loading rows={4} /> : (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-5 lg:gap-6">
           <div className="min-w-0 space-y-5 lg:col-span-3">
+            <SetupCard />
             {/* The counter: how many devices are in the shop and where they stand, then the money. */}
             <section className="talon-dark on-ink overflow-hidden">
               <div className="p-5 sm:p-6">

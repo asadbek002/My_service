@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { Database } from '../database';
+import { PhoneVerification } from '../auth/verification';
 import { esc, fmtDate, som, STATUS_LABEL, tashkentDay, TelegramClient, type Keyboard } from './telegram.client';
 
 type Message = {
@@ -42,7 +43,7 @@ const adminKeyboard: Keyboard = { keyboard: [[{ text: BTN.platform }], [{ text: 
 @Injectable()
 export class BotService {
   private readonly logger = new Logger('Bot');
-  constructor(private readonly db: Database, readonly telegram: TelegramClient) {}
+  constructor(private readonly db: Database, readonly telegram: TelegramClient, @Optional() private readonly verification?: PhoneVerification) {}
 
   // ---------- Linking ----------
 
@@ -111,6 +112,11 @@ export class BotService {
   }
 
   private async onStart(chatId: string, payload: string | undefined, name?: string) {
+    if (payload && /^v_[A-Za-z0-9_-]{43}$/.test(payload)) {
+      // Phone confirmation for sign-up or a password reset in the web app.
+      if (!this.verification || !await this.verification.telegramOpened(payload.slice(2), chatId)) return this.telegram.send(chatId, 'Havola eskirgan. Ilovada «Telegram orqali tasdiqlash» ni qayta bosing.');
+      return this.telegram.send(chatId, 'MyService: telefon raqamingizni tasdiqlash uchun pastdagi tugmani bosing.', { keyboard: [[{ text: '📱 Raqamni tasdiqlash', request_contact: true }]], resize_keyboard: true });
+    }
     if (payload && /^[uag]_[A-Za-z0-9_-]{43}$/.test(payload)) {
       const kind = ({ u: 'USER', a: 'ADMIN', g: 'ALERT' } as const)[payload[0] as 'u' | 'a' | 'g'];
       const link = await this.db.telegramLink.findUnique({ where: { tokenHash: hash(payload.slice(2)) } });
@@ -160,6 +166,9 @@ export class BotService {
     // Only the sender's own contact proves the number; a forwarded card does not.
     if (!m.contact?.phone_number || m.contact.user_id !== m.from?.id) return this.telegram.send(chatId, 'Iltimos, o‘zingizning raqamingizni pastdagi tugma orqali yuboring.', shareKeyboard);
     const phone = '+' + m.contact.phone_number.replace(/\D/g, '');
+    // A pending web confirmation takes this contact; it is not a customer linking their orders.
+    const purpose = await this.verification?.telegramContact(chatId, phone);
+    if (purpose) return this.telegram.send(chatId, `✅ Raqam tasdiqlandi: ${esc(phone)}\n\nIlovaga qayting — ${purpose === 'signup' ? 'ro‘yxatdan o‘tishni davom ettiring' : 'yangi parol qo‘ying'}.`, await this.menu(chatId));
     const found = await this.db.customer.updateMany({ where: { phone }, data: { telegramChatId: chatId } });
     if (!found.count) {
       return this.telegram.send(chatId, `Bu raqam (${esc(phone)}) bo'yicha buyurtma topilmadi. Servisga qurilma topshirganingizda shu raqamni ayting — keyin bu yerda ko'rinadi.`, customerKeyboard);

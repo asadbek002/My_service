@@ -9,12 +9,12 @@ import { Public, allowedOrigins } from '../auth/security';
 import { LoginRateGuard } from '../auth/rate-limit';
 import { LoginDto } from '../auth/auth.dto';
 import { SubscriptionCache } from '../auth/subscription-cache';
-import { ALL_PERMISSIONS } from '../auth/permissions';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { BotModule } from '../bot/bot.module';
 import { BotService } from '../bot/bot.service';
 import { esc } from '../bot/telegram.client';
 import { billingSettings, saveBillingSettings, yearlyPriceOf } from './billing';
+import { createOrganization } from './organizations';
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 type AdminRequest = Request & { adminId: string; platformSessionId: string };
 @Injectable()
@@ -63,6 +63,8 @@ class BillingDto {
   @IsInt() @Min(0) @Max(60) graceDays!: number;
   @IsString() @Matches(MONEY) extraSmsPrice!: string;
   @IsInt() @Min(0) @Max(11) yearlyFreeMonths!: number;
+  @IsBoolean() signupOpen!: boolean;
+  @IsOptional() @IsString() @Length(1,100) signupPlanId?: string | null;
 }
 const checkFeatures = (f: Record<string, unknown>) => {
   if (Object.entries(f).some(([k,v])=>!PLAN_FEATURES.includes(k)||typeof v!=='boolean')) throw new BadRequestException('Unknown feature or non-boolean value');
@@ -84,8 +86,6 @@ class SubscriptionDto {
   @IsIn(['TRIAL','ACTIVE','SUSPENDED','EXPIRED']) status!: string;
   @IsISO8601() expiresAt!: string;
 }
-// Simplified product: the owner and staff share every business permission.
-const rolePermissions: Record<string, readonly string[]> = { OWNER: ALL_PERMISSIONS, STAFF: ALL_PERMISSIONS };
 @Controller('platform/auth') @Public()
 class PlatformAuthController {
   constructor(private readonly db: Database) {}
@@ -161,7 +161,8 @@ class PlatformController {
   billing() { return billingSettings(this.db); }
   @Put('billing-settings')
   async saveBilling(@Body() d: BillingDto, @Req() req: AdminRequest) {
-    const value = { trialDays: d.trialDays, graceDays: d.graceDays, extraSmsPrice: d.extraSmsPrice, yearlyFreeMonths: d.yearlyFreeMonths };
+    if (d.signupPlanId && !await this.db.plan.findFirst({ where: { id: d.signupPlanId, active: true } })) throw new BadRequestException('Sign-up plan must be an active plan');
+    const value = { trialDays: d.trialDays, graceDays: d.graceDays, extraSmsPrice: d.extraSmsPrice, yearlyFreeMonths: d.yearlyFreeMonths, signupOpen: d.signupOpen, signupPlanId: d.signupPlanId || null };
     await saveBillingSettings(this.db, value);
     await this.db.auditLog.create({data:{organizationId:'PLATFORM',actorId:req.adminId,action:'BILLING_SETTINGS_CHANGED',entityId:'billing'}});
     return value;
@@ -173,21 +174,7 @@ class PlatformController {
     try {
       const created = await this.db.$transaction(async tx => {
         if(!await tx.plan.findUnique({where:{id:d.planId}})) throw new NotFoundException('Plan not found');
-        const org=await tx.organization.create({data:{name:d.name,slug:d.slug}});
-        const branch=await tx.branch.create({data:{organizationId:org.id,name:'Asosiy filial'}});
-        const user=await tx.user.create({data:{organizationId:org.id,login:d.login.toLowerCase(),firstName:d.ownerName,phone:d.phone,passwordHash,mustChangePassword:true}});
-        await tx.userBranch.create({data:{organizationId:org.id,userId:user.id,branchId:branch.id}});
-        for(const [systemKey,keys] of Object.entries(rolePermissions)){
-          const role=await tx.role.create({data:{organizationId:org.id,name:systemKey,systemKey}});
-          for(const key of keys){
-            const permission=await tx.permission.upsert({where:{key},create:{key},update:{}});
-            await tx.rolePermission.create({data:{roleId:role.id,permissionId:permission.id}});
-          }
-          if(systemKey==='OWNER')await tx.userRole.create({data:{organizationId:org.id,userId:user.id,roleId:role.id}});
-        }
-        const trialEnds=new Date(Date.now()+billing.trialDays*86400000);
-        await tx.subscription.create({data:{organizationId:org.id,planId:d.planId,expiresAt:trialEnds,graceUntil:new Date(trialEnds.getTime()+billing.graceDays*86400000)}});
-        await tx.auditLog.create({data:{organizationId:org.id,actorId:req.adminId,action:'PLATFORM_ORGANIZATION_CREATED',entityId:org.id}});
+        const {org,user}=await createOrganization(tx,{name:d.name,slug:d.slug,planId:d.planId,login:d.login,passwordHash,ownerName:d.ownerName,phone:d.phone,mustChangePassword:true,actorId:req.adminId,action:'PLATFORM_ORGANIZATION_CREATED'},billing);
         return {id:org.id,name:org.name,ownerLogin:user.login};
       },{timeout:15000});
       void this.bot.notifyAdmins(`🆕 Yangi servis: <b>${esc(created.name)}</b> (egasi: ${esc(created.ownerLogin)}, ${esc(d.phone)})`).catch(() => undefined);

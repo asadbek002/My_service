@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -46,7 +47,10 @@ export default function Login() {
         </FormField>
         <ErrorBox>{errors.root?.message}</ErrorBox>
         <Button type="submit" variant="brand" size="lg" disabled={isSubmitting} className="w-full">{isSubmitting ? 'Kirilmoqda…' : 'Kirish'}</Button>
-        <p className="text-xs text-mute">Parolni unutdingizmi? Boshliq yoki xodim uni &laquo;Xodimlar&raquo; bo&apos;limida yangilab beradi.</p>
+        <div className="flex items-center justify-between text-sm">
+          <Link href="/reset" className="font-medium text-mute underline hover:text-ink">Parolni unutdingizmi?</Link>
+          <Link href="/signup" className="font-semibold text-ink underline">Ro&apos;yxatdan o&apos;tish</Link>
+        </div>
       </form>
     </AuthFrame>
   );

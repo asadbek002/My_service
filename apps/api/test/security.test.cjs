@@ -539,13 +539,102 @@ test('platform owner edits plan prices, limits and billing settings; new service
   assert.equal((await request('/platform/plans/' + plan.id, { ...(await owner(a)), method: 'PATCH', body: { monthlyPrice: '1' } })).status, 401);
   // Billing settings: trial length and grace days apply to the next service.
   const before = await json(await request('/platform/billing-settings', { token }));
-  assert.equal((await request('/platform/billing-settings', { token, method: 'PUT', body: { trialDays: 60, graceDays: 5, extraSmsPrice: '150', yearlyFreeMonths: 2, junk: 1 } })).status, 400);
-  assert.equal((await request('/platform/billing-settings', { token, method: 'PUT', body: { trialDays: 60, graceDays: 5, extraSmsPrice: '150', yearlyFreeMonths: 2 } })).status, 200);
+  assert.equal((await request('/platform/billing-settings', { token, method: 'PUT', body: { trialDays: 60, graceDays: 5, extraSmsPrice: '150', yearlyFreeMonths: 2, signupOpen: true, junk: 1 } })).status, 400);
+  assert.equal((await request('/platform/billing-settings', { token, method: 'PUT', body: { trialDays: 60, graceDays: 5, extraSmsPrice: '150', yearlyFreeMonths: 2, signupOpen: true } })).status, 200);
   const org = await json(await request('/platform/organizations', { token, method: 'POST', body: { name: 'Trial Usta', slug: 'trial-' + randomUUID().slice(0, 8), planId: plan.id, login: 'trial-' + randomUUID().slice(0, 8), temporaryPassword: 'Temporary-Pass-123', ownerName: 'Ali', phone: '+998907770000' } }));
   const sub = await db.subscription.findUnique({ where: { organizationId: org.id } });
   const days = (sub.expiresAt - Date.now()) / 86400000;
   assert.ok(days > 59.9 && days <= 60, 'trial is 60 days'); assert.equal(Math.round((sub.graceUntil - sub.expiresAt) / 86400000), 5);
   await request('/platform/billing-settings', { token, method: 'PUT', body: before });
+});
+
+const freshPhone = () => '+99897' + String(Math.floor(Math.random() * 1e7)).padStart(7, '0');
+const Redis = require('ioredis');
+async function verifiedProof(purpose, phone) {
+  // Skip the one-minute resend wait between the test's codes for one number.
+  const redis = new Redis(process.env.REDIS_URL); await redis.del(`pv:cool:${purpose}:${phone}`); await redis.quit();
+  const sent = await json(await request('/auth/verify/sms', { method: 'POST', body: { purpose, phone } }));
+  assert.match(sent.devCode, /^\d{6}$/);
+  return (await json(await request('/auth/verify/check', { method: 'POST', body: { purpose, phone, code: sent.devCode } }))).proof;
+}
+test('a new service registers itself with a verified phone and gets the trial; one phone, one service', async () => {
+  const token = await platformToken();
+  const plan = await json(await request('/platform/plans', { token, method: 'POST', body: { name: 'SIGNUP-' + randomUUID().slice(0, 8), monthlyPrice: '349000', features: { telegram: true, sms: true } } }));
+  const before = await json(await request('/platform/billing-settings', { token }));
+  await request('/platform/billing-settings', { token, method: 'PUT', body: { ...before, trialDays: 60, signupOpen: true, signupPlanId: plan.id } });
+  const info = await json(await request('/auth/signup/info'));
+  assert.equal(info.open, true); assert.equal(info.trialDays, 60);
+
+  const phone = freshPhone();
+  // A wrong code is refused; five wrong codes burn it.
+  const sent = await json(await request('/auth/verify/sms', { method: 'POST', body: { purpose: 'signup', phone } }));
+  assert.equal((await request('/auth/verify/sms', { method: 'POST', body: { purpose: 'signup', phone } })).status, 429, 'resend waits a minute');
+  const wrong = sent.devCode === '000000' ? '111111' : '000000';
+  assert.equal((await request('/auth/verify/check', { method: 'POST', body: { purpose: 'signup', phone, code: wrong } })).status, 400);
+  const proof = (await json(await request('/auth/verify/check', { method: 'POST', body: { purpose: 'signup', phone, code: sent.devCode } }))).proof;
+  assert.equal((await request('/auth/verify/check', { method: 'POST', body: { purpose: 'signup', phone, code: sent.devCode } })).status, 400, 'a code works once');
+  assert.equal((await request('/auth/verify/sms', { method: 'POST', body: { purpose: 'signup', phone: '+12025550123' } })).status, 400, 'SMS only to Uzbek numbers');
+
+  const loginName = 'self-' + randomUUID().slice(0, 8);
+  const body = { proof, serviceName: 'Usta Telefon Chilonzor', ownerName: 'Jahongir', login: loginName, password: 'Self-Signup-Pass-1' };
+  // A taken login does not use the proof up.
+  assert.equal((await request('/auth/signup', { method: 'POST', body: { ...body, login: (await db.user.findFirst()).login } })).status, 409);
+  assert.equal((await request('/auth/signup', { method: 'POST', body: { ...body, proof: 'x'.repeat(43) } })).status, 400);
+  const created = await request('/auth/signup', { method: 'POST', body });
+  assert.equal(created.status, 201, await created.clone().text());
+  const { accessToken } = await created.json();
+  const me = await json(await request('/auth/me', { token: accessToken }));
+  assert.equal(me.role, 'OWNER'); assert.equal(me.mustChangePassword, false); assert.equal(me.firstName, 'Jahongir');
+  const sub = await db.subscription.findUnique({ where: { organizationId: me.organizationId } });
+  assert.equal(sub.planId, plan.id); assert.equal(sub.status, 'TRIAL');
+  assert.ok(Math.abs((sub.expiresAt - Date.now()) / 86400000 - 60) < 0.1);
+  assert.equal((await json(await request('/settings/branding', { token: accessToken }))).name, 'Usta Telefon Chilonzor');
+  // The new owner can work at once: create a customer.
+  assert.equal((await request('/customers', { token: accessToken, method: 'POST', body: { firstName: 'Ali', phone: '+998901234567' } })).status, 201);
+  assert.equal((await request('/auth/signup', { method: 'POST', body })).status, 400, 'a proof works once');
+  // The same phone cannot open a second service.
+  assert.equal((await request('/auth/signup', { method: 'POST', body: { ...body, login: loginName + 'x', proof: await verifiedProof('signup', phone) } })).status, 409);
+  // A sign-up proof does not reset passwords.
+  assert.equal((await request('/auth/reset', { method: 'POST', body: { proof: await verifiedProof('signup', freshPhone()), newPassword: 'Another-Pass-123' } })).status, 400);
+
+  // Setup checklist for the new service.
+  const setup = await json(await request('/settings/setup', { token: accessToken }));
+  assert.equal(setup.total, 6); assert.equal(setup.dismissed, false);
+  assert.equal(setup.steps.find(x => x.key === 'logo').done, false);
+  assert.equal((await request('/settings/setup/dismiss', { token: accessToken, method: 'PUT' })).status, 200);
+  assert.equal((await json(await request('/settings/setup', { token: accessToken }))).dismissed, true);
+
+  // Closed sign-up refuses.
+  await request('/platform/billing-settings', { token, method: 'PUT', body: { ...before, signupOpen: false, signupPlanId: null } });
+  assert.equal((await request('/auth/signup', { method: 'POST', body: { ...body, login: loginName + 'y', proof: await verifiedProof('signup', freshPhone()) } })).status, 403);
+  await request('/platform/billing-settings', { token, method: 'PUT', body: { ...before, signupPlanId: null } });
+});
+test('forgotten password: a verified phone sets a new one and signs in; other sessions end', async () => {
+  const token = await platformToken();
+  const plan = await json(await request('/platform/plans', { token, method: 'POST', body: { name: 'RESET-' + randomUUID().slice(0, 8), monthlyPrice: '0', features: {} } }));
+  const phone = freshPhone(), loginName = 'reset-' + randomUUID().slice(0, 8);
+  await json(await request('/platform/organizations', { token, method: 'POST', body: { name: 'Reset Servis', slug: 'reset-' + randomUUID().slice(0, 8), planId: plan.id, login: loginName, temporaryPassword: 'Temporary-Pass-123', ownerName: 'Ozod', phone } }));
+  const old = await json(await request('/auth/login', { method: 'POST', body: { login: loginName, password: 'Temporary-Pass-123' } }));
+  // No account behind a number: same answer, nothing sent.
+  const none = await json(await request('/auth/verify/sms', { method: 'POST', body: { purpose: 'reset', phone: freshPhone() } }));
+  assert.equal(none.sent, true); assert.equal(none.devCode, undefined);
+  const proof = await verifiedProof('reset', phone);
+  assert.equal((await request('/auth/reset', { method: 'POST', body: { proof, newPassword: 'short' } })).status, 400);
+  const reset = await request('/auth/reset', { method: 'POST', body: { proof, newPassword: 'Brand-New-Pass-123' } });
+  assert.equal(reset.status, 200, await reset.clone().text());
+  assert.ok((await reset.json()).accessToken);
+  assert.equal((await request('/auth/me', { token: old.accessToken })).status, 401, 'old session revoked');
+  assert.equal((await request('/auth/login', { method: 'POST', body: { login: loginName, password: 'Temporary-Pass-123' } })).status, 401);
+  const fresh = await json(await request('/auth/login', { method: 'POST', body: { login: loginName, password: 'Brand-New-Pass-123' } }));
+  assert.equal((await json(await request('/auth/me', { token: fresh.accessToken }))).mustChangePassword, false);
+  // Two accounts on one phone: pick by login.
+  const staffLogin = 'reset-staff-' + randomUUID().slice(0, 6);
+  const org = await db.user.findUnique({ where: { login: loginName } });
+  await db.user.create({ data: { organizationId: org.organizationId, login: staffLogin, firstName: 'Ikki', phone, passwordHash: org.passwordHash, mustChangePassword: false } });
+  const many = await request('/auth/reset', { method: 'POST', body: { proof: await verifiedProof('reset', phone), newPassword: 'Third-Pass-12345' } });
+  assert.equal(many.status, 409);
+  const listed = await many.json();
+  assert.deepEqual(listed.accounts.map(x => x.login).sort(), [loginName, staffLogin].sort());
 });
 
 test('platform onboards a service with two roles, resets a password and enters in audited support mode', async () => {
