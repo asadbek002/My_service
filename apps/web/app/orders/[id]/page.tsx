@@ -7,7 +7,8 @@ import { Printer, Phone, Pencil, Share2, Undo2, Ban, ShieldCheck } from 'lucide-
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 import { errorText } from '../../../lib/errors';
-import { date, dateTime, deviceName, fullName, idempotencyKey, money, phone, PAYMENT_METHODS, som } from '../../../lib/format';
+import { date, dateTime, daysSince, deviceName, fullName, idempotencyKey, money, phone, PAYMENT_METHODS, som } from '../../../lib/format';
+import { LATE_AFTER, Ruler, rulerKind, type RulerKind } from '../../../components/ui/ruler';
 import { can, post, useMe, useOrder, useOrderMutation, usePaymentMethods, type Me, type OrderDetail, type Payment } from '../../../lib/queries';
 import { cn } from '../../../lib/utils';
 import { AppShell, ActionBar } from '../../../components/layout/app-shell';
@@ -128,30 +129,60 @@ function OrderPage() {
 }
 
 /** The repair talon: who, what, what's wrong — then the money, below the tear line. */
+const initials = (p: { firstName: string; lastName?: string | null }) => ((p.firstName[0] ?? '') + (p.lastName?.[0] ?? '')).toUpperCase() || '·';
+
+/** Qabul → Ta'mir → Tayyor → Berildi with the date each step was reached, and the ruler of days in the shop. */
+function Stages({ order, days, kind }: { order: OrderDetail; days: number; kind: RulerKind | null }) {
+  if (order.status === 'CANCELLED') return null;
+  const reached = (s: string) => [...order.history].reverse().find(h => h.toStatus === s)?.createdAt;
+  const order4 = ['RECEIVED', 'IN_REPAIR', 'READY', 'DELIVERED'];
+  const at = order4.indexOf(order.status);
+  const steps: [string, string][] = [['RECEIVED', 'Qabul'], ['IN_REPAIR', "Ta'mir"], ['READY', 'Tayyor'], ['DELIVERED', 'Berildi']];
+  return (
+    <div className="mt-4 space-y-3 rounded-lg bg-paper p-3.5">
+      <ol className="grid grid-cols-4 gap-1.5">
+        {steps.map(([s, label], i) => {
+          const when = i <= at ? reached(s) : undefined;
+          const state = i < at ? 'done' : i === at ? 'now' : 'todo';
+          return (
+            <li key={s} className="min-w-0">
+              <span className={cn('block h-3.5 w-3.5 rounded-full', state === 'done' && 'bg-ink', state === 'now' && 'border-4 border-st-tamir bg-white', state === 'todo' && 'border-2 border-tick')} />
+              <p className={cn('mt-1.5 text-[13px] font-semibold', state === 'now' ? 'text-st-tamir-ink' : state === 'todo' ? 'text-mute' : 'text-ink')}>{label}</p>
+              <p className="num font-mono text-[10px] leading-snug text-mute">{when ? dateTime(when).replace(', ', ' ') : '—'}</p>
+            </li>
+          );
+        })}
+      </ol>
+      {kind && <Ruler days={days} kind={kind} large />}
+    </div>
+  );
+}
+
 function Ticket({ order, canEditPrice, onEditPrice, canEditComplaint, onEditComplaint }: { order: OrderDetail; canEditPrice: boolean; onEditPrice: () => void; canEditComplaint: boolean; onEditComplaint: () => void }) {
   const balance = Number(order.balance);
+  const kind = rulerKind(order.status);
+  const days = daysSince(order.createdAt);
+  const late = kind === 'tayyor' && days > LATE_AFTER;
   return (
     <article className="talon">
       <div className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="num font-mono text-lg font-semibold tracking-tight">{order.number}</p>
-            <p className="text-xs text-mute">Qabul: {dateTime(order.createdAt)}</p>
-          </div>
-          <StatusBadge status={order.status} />
+        <div className="flex items-center justify-between gap-3">
+          <StatusBadge status={order.status} late={late} className="-rotate-2" />
+          {kind && <span className="text-[13px] text-mute">ustaxonada <b className="num font-mono font-semibold text-ink">{days} kun</b></span>}
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="min-w-0">
-            <p className="eyebrow">Mijoz</p>
-            <Link href={`/customers/${order.customer.id}`} className="mt-0.5 block truncate font-medium hover:underline">{fullName(order.customer)}</Link>
-            <a href={`tel:${order.customer.phone}`} className="num inline-flex items-center gap-1.5 font-mono text-sm text-mute hover:text-ink"><Phone className="h-3.5 w-3.5" />{phone(order.customer.phone)}</a>
-          </div>
-          <div className="min-w-0">
-            <p className="eyebrow">Qurilma</p>
-            <p className="mt-0.5 truncate font-medium">{deviceName(order.device)}</p>
-            <p className="text-sm text-mute">{order.device.category}</p>
-          </div>
+        <div className="mt-3">
+          <h2 className="truncate text-[1.75rem] font-bold leading-tight tracking-tight">{deviceName(order.device)}</h2>
+          <p className="text-[13px] text-mute">{order.device.category} · qabul {dateTime(order.createdAt)}</p>
         </div>
+        <div className="mt-4 flex items-center gap-3 border-t border-dashed pt-4">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-mat text-sm font-semibold text-white">{initials(order.customer)}</span>
+          <div className="min-w-0 flex-1">
+            <Link href={`/customers/${order.customer.id}`} className="block truncate font-semibold hover:underline">{fullName(order.customer)}</Link>
+            <span className="num font-mono text-xs text-mute">{phone(order.customer.phone)}</span>
+          </div>
+          <a href={`tel:${order.customer.phone}`} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border hover:bg-paper" aria-label="Qo'ng'iroq qilish"><Phone className="h-[18px] w-[18px]" /></a>
+        </div>
+        <Stages order={order} days={days} kind={kind} />
         <div className="mt-4">
           <div className="flex items-center justify-between gap-2">
             <p className="eyebrow">Nosozlik</p>
@@ -519,7 +550,7 @@ function OrderParts({ orderId, canAdd, canEdit, owner }: { orderId: string; canA
   return (
     <section className="rounded-lg border bg-white">
       <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
-        <h2 className="font-semibold">Zapchastlar {cost > 0 && <span className="num font-mono text-sm font-normal text-mute">· tannarx {money(cost)}</span>}</h2>
+        <div><h2 className="font-semibold">Zapchastlar</h2>{cost > 0 && <p className="num font-mono text-xs text-mute">tannarx {money(cost)}</p>}</div>
         {canAdd && <Link href={`/parts?order=${orderId}`} className="text-sm font-medium underline">Qo&apos;shish</Link>}
       </div>
       {items.length ? <ul className="divide-y">{items.map(p => <PartRow key={p.id} part={p} canEdit={canEdit} canFix={owner && canEdit} compact />)}</ul>

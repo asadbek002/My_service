@@ -520,7 +520,7 @@ function RolesBlock() {
               {items.map(([key, text]) => (
                 <li key={key}>
                   <label className={cn('flex items-center gap-3 px-3 py-2.5 text-sm', staff.editable && 'cursor-pointer')}>
-                    <input type="checkbox" className="h-5 w-5 shrink-0 accent-[#111113]" checked={current.includes(key)} disabled={!staff.editable} onChange={() => toggle(key)} />
+                    <input type="checkbox" className="h-5 w-5 shrink-0 accent-[#0C1615]" checked={current.includes(key)} disabled={!staff.editable} onChange={() => toggle(key)} />
                     <span>{text}</span>
                   </label>
                 </li>

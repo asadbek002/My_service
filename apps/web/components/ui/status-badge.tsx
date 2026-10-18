@@ -16,7 +16,25 @@ export const STATUS: Record<string, { label: string; variant: Variant; dot: stri
 };
 export const statusLabel = (status: string) => STATUS[status]?.label ?? status;
 
-export function StatusBadge({ status, className, ...props }: { status: string } & React.HTMLAttributes<HTMLSpanElement>) {
+/** Order statuses read as a stamp on the ticket; other statuses (staff, plans) stay plain badges. */
+const STAMP: Record<string, [string, string]> = {
+  RECEIVED: ['Qabulda', 'text-st-qabul-ink'],
+  IN_REPAIR: ["Ta'mirda", 'text-st-tamir-ink'],
+  READY: ['Tayyor', 'text-st-tayyor-ink'],
+  DELIVERED: ['Berildi', 'text-mute'],
+  CANCELLED: ['Bekor', 'text-red-700'],
+};
+
+export function StatusBadge({ status, late, className, ...props }: { status: string; late?: boolean } & React.HTMLAttributes<HTMLSpanElement>) {
+  const stamp = STAMP[status];
+  if (stamp) {
+    const [label, color] = late ? ['Kutmoqda', 'text-st-kutish-ink'] : stamp;
+    return (
+      <span className={cn('inline-flex shrink-0 items-center rounded-[6px] border-[1.5px] border-current px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em]', color, className)} {...props}>
+        {label}
+      </span>
+    );
+  }
   const s = STATUS[status] ?? { label: status, variant: 'default' as const, dot: 'bg-mute' };
   return (
     <Badge variant={s.variant} className={className} {...props}>

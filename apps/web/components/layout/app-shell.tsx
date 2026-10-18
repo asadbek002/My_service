@@ -72,7 +72,7 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
       ['--ab-pad' as string]: tabs ? '0.75rem' : 'calc(0.75rem + env(safe-area-inset-bottom))',
     }}>
       {/* Desktop sidebar — ink, so the work area stays paper */}
-      <aside className="on-ink sticky top-0 hidden h-[100dvh] w-64 shrink-0 flex-col bg-ink text-white lg:flex">
+      <aside className="on-ink sticky top-0 hidden h-[100dvh] w-64 shrink-0 flex-col mat text-white lg:flex">
         <Link href="/dashboard" className="flex h-16 items-center gap-2.5 px-5">
           <Mark src={brand?.logo} />
           <span className="min-w-0 truncate text-sm font-bold tracking-[0.14em]">{brand?.name ? brand.name.toUpperCase() : 'MY SERVICE'}</span>
@@ -161,7 +161,7 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
           <div className="safe-bottom absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-3xl bg-white">
             <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-black/15" aria-hidden="true" />
             <div className="flex items-center gap-3 px-4 pb-3 pt-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink text-base font-semibold text-white">{me?.firstName?.[0] ?? '·'}</span>
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-mat text-base font-semibold text-white">{me?.firstName?.[0] ?? '·'}</span>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold">{me?.firstName}</p>
                 <p className="text-xs text-mute">{me?.login} · {me?.role === 'OWNER' ? 'Boshliq' : 'Xodim'}</p>

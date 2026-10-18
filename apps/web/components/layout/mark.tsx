@@ -1,12 +1,14 @@
-/** The brand tile: ink letters on the signal orange. Reads on paper and on the ink sidebar. */
+/** The brand mark: a repair tag (orange, punched hole, "MS"). Reads on paper and on the mat sidebar. */
 export function Mark({ size = 'md', src }: { size?: 'md' | 'lg'; src?: string | null | undefined }) {
   // The service's own logo, when uploaded in Settings.
   if (src) {
     return <img src={src} alt="" className={(size === 'lg' ? 'h-11 w-auto max-w-[10rem] rounded-lg' : 'h-8 w-auto max-w-[8rem] rounded-md') + ' shrink-0 bg-white object-contain'} />;
   }
+  const lg = size === 'lg';
   return (
-    <span className={size === 'lg'
-      ? 'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand font-mono text-sm font-bold text-ink'
-      : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand font-mono text-[11px] font-bold text-ink'}>MS</span>
+    <span className={`relative flex shrink-0 items-center justify-end bg-brand font-mono font-semibold text-ink ${lg ? 'h-11 w-14 rounded-l-lg rounded-r-xl pr-2 text-sm' : 'h-8 w-10 rounded-l-md rounded-r-lg pr-1.5 text-[11px]'}`}>
+      <span aria-hidden="true" className={`absolute rounded-full bg-paper ${lg ? 'left-2 h-3 w-3' : 'left-1.5 h-2 w-2'}`} />
+      MS
+    </span>
   );
 }

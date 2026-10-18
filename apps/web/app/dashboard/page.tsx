@@ -7,7 +7,7 @@ import { ChevronRight } from 'lucide-react';
 import { changePasswordSchema, type ChangePasswordInput } from '../../lib/schemas';
 import { api, setAccessToken } from '../../lib/api';
 import { errorText } from '../../lib/errors';
-import { deviceName, money, som, dateTime } from '../../lib/format';
+import { deviceName, money, dateTime, today } from '../../lib/format';
 import { can, useDashboard, useMe, useOrders } from '../../lib/queries';
 import { OrderCard } from '../../components/order-card';
 import { AppShell } from '../../components/layout/app-shell';
@@ -51,9 +51,9 @@ function ChangePassword() {
 }
 
 const QUEUE = [
-  ['RECEIVED', 'Qabulda', 'Navbatda turibdi', 'bg-ink'],
-  ['IN_REPAIR', "Ta'mirda", 'Ustada', 'bg-blue-600'],
-  ['READY', 'Tayyor', 'Olib ketiladi', 'bg-emerald-600'],
+  ['RECEIVED', 'Qabulda', 'Navbatda turibdi', 'bg-[#A9B8B5]'],
+  ['IN_REPAIR', "Ta'mirda", 'Ustada', 'bg-[#6E93FF]'],
+  ['READY', 'Tayyor', 'Olib ketiladi', 'bg-[#33C47A]'],
 ] as const;
 
 function Home() {
@@ -93,66 +93,48 @@ function MoneyHome() {
   const { data: me } = useMe();
   const { data, isLoading, error } = useDashboard(!!me && can(me, 'reports.view'));
   const count = (s: string) => data?.statuses.find(x => x.status === s)?.count ?? 0;
-  const days = data?.revenueByDay ?? [];
-  const max = Math.max(1, ...days.map(d => Number(d.revenue)));
+  const open = count('RECEIVED') + count('IN_REPAIR') + count('READY');
+  // Ready devices that have waited longest first: these are the calls to make today.
+  const { data: ready } = useOrders('READY', !!me && can(me, 'orders.view'));
+  const waiting = [...(ready ?? [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(0, 5);
 
   return (
     <AppShell title={me ? `Salom, ${me.firstName}` : 'Asosiy'}>
       {error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading || !data ? <Loading rows={4} /> : (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-5 lg:gap-6">
-          <div className="min-w-0 space-y-4 lg:col-span-3 lg:space-y-5">
-            {/* Today's cash: the dark talon, the one loud block on the screen. */}
+          <div className="min-w-0 space-y-5 lg:col-span-3">
+            {/* The counter: how many devices are in the shop and where they stand, then the money. */}
             <section className="talon-dark on-ink overflow-hidden">
-              <div className="grid grid-cols-[1fr_auto] items-end gap-4 p-5 sm:p-6">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/60">Bugun kassa</p>
-                  <p className="num mt-1.5 truncate font-mono text-[2rem] font-semibold leading-none tracking-tight sm:text-4xl">{money(data.todayCash)}</p>
-                  <p className="mt-2 text-sm text-white/60">so&apos;m · {data.todayReceived} ta qabul</p>
+              <div className="p-5 sm:p-6">
+                <div className="flex justify-between font-mono text-[11px] uppercase tracking-[0.08em] text-white/60"><span>Peshtaxtada</span><span>{today().slice(8)}.{today().slice(5, 7)}</span></div>
+                <p className="mt-2 flex items-baseline gap-2.5"><span className="num font-mono text-[3.5rem] font-semibold leading-none tracking-tight">{open}</span><span className="text-lg font-medium">ta qurilma</span></p>
+                <div className="mt-4 flex h-2.5 gap-[3px]" role="img" aria-label={`${count('RECEIVED')} qabulda, ${count('IN_REPAIR')} ta'mirda, ${count('READY')} tayyor`}>
+                  {open === 0 ? <span className="flex-1 rounded-full bg-white/15" /> : QUEUE.map(([status, , , bar]) => count(status) > 0 && <span key={status} className={`rounded-full ${bar}`} style={{ flexGrow: count(status) }} />)}
                 </div>
-                <div className="text-right">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/60">Shu oy</p>
-                  <p className="num mt-1.5 font-mono text-base font-semibold sm:text-lg">{money(data.monthCash)}</p>
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-white/80">
+                  {QUEUE.map(([status, label, , bar]) => (
+                    <Link key={status} href={`/orders?status=${status}`} className="flex items-center gap-1.5 hover:text-white"><span className={`h-2 w-2 rounded-full ${bar}`} />{count(status)} {label.toLowerCase()}</Link>
+                  ))}
                 </div>
               </div>
               <div className="talon-cut" />
-              <div className="px-5 pb-4 pt-4 sm:px-6">
-                <div className="flex h-24 items-end gap-2" role="img" aria-label="7 kunlik tushum">
-                  {days.map((d, i) => {
-                    const last = i === days.length - 1;
-                    return (
-                      <div key={d.day} className="flex flex-1 flex-col items-center gap-1.5" title={`${d.day}: ${som(d.revenue)}`}>
-                        <div className={last ? 'w-full rounded-md bg-brand' : 'w-full rounded-md bg-white/20'} style={{ height: `${Math.max(4, (Number(d.revenue) / max) * 72)}px` }} />
-                        <span className={last ? 'num font-mono text-[11px] font-semibold text-brand' : 'num font-mono text-[11px] text-white/50'}>{d.day.slice(8)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+              <div className="grid grid-cols-3 gap-3 px-5 pb-5 pt-4 sm:px-6">
+                <div className="min-w-0"><p className="text-xs text-white/60">Bugungi kassa</p><p className="num mt-1 font-mono text-[15px] font-semibold sm:text-xl">{money(data.todayCash)}</p></div>
+                <div className="min-w-0"><p className="text-xs text-white/60">Shu oy</p><p className="num mt-1 font-mono text-[15px] font-semibold sm:text-xl">{money(data.monthCash)}</p></div>
+                {can(me, 'reports.finance') ? (
+                  <Link href="/reports#debtors" className="min-w-0"><p className="text-xs text-white/60">Mijozlar qarzi</p><p className="num mt-1 font-mono text-[15px] font-semibold text-[#FFB547] sm:text-xl">{money(data.debt)}</p></Link>
+                ) : <div />}
               </div>
             </section>
 
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
-              {QUEUE.map(([status, label, hint, dot]) => (
-                <Link key={status} href={`/orders?status=${status}`} className="group rounded-xl border bg-white p-3 transition-colors hover:border-ink/40 active:bg-paper sm:p-4">
-                  <div className="flex items-center justify-between">
-                    <span className={`h-2 w-2 rounded-full ${dot}`} aria-hidden="true" />
-                    <ChevronRight className="h-4 w-4 text-mute transition-transform group-hover:translate-x-0.5" />
-                  </div>
-                  <p className="num mt-3 font-mono text-3xl font-semibold leading-none">{count(status)}</p>
-                  <p className="mt-2 truncate text-[13px] font-semibold sm:text-sm">{label}</p>
-                  <p className="truncate text-xs text-mute">{hint}</p>
-                </Link>
-              ))}
-            </div>
-
-            {Number(data.debt) > 0 && can(me, 'reports.finance') && (
-              <Link href="/reports#debtors" className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 transition-colors hover:border-amber-300">
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-amber-900">Mijozlar qarzi</span>
-                  <span className="block text-xs text-amber-800">Berilgan, lekin to&apos;lanmagan</span>
-                </span>
-                <span className="num font-mono text-base font-semibold text-amber-900">{money(data.debt)}</span>
-                <ChevronRight className="h-4 w-4 text-amber-800" />
-              </Link>
+            {waiting.length > 0 && (
+              <section>
+                <div className="mb-2.5">
+                  <h2 className="text-base font-bold">Egasini kutayotganlar</h2>
+                  <p className="text-[13px] text-mute">{count('READY')} ta qurilma tayyor, olib ketilmagan</p>
+                </div>
+                <div className="grid gap-2.5">{waiting.map(o => <OrderCard key={o.id} order={o} />)}</div>
+              </section>
             )}
           </div>
 

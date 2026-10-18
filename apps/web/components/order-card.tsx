@@ -1,33 +1,44 @@
 import Link from 'next/link';
-import { dateTime, deviceName, fullName, money } from '../lib/format';
+import { dateTime, daysSince, deviceName, fullName, money } from '../lib/format';
 import { paidOf, type Order } from '../lib/queries';
-import { StatusBadge } from './ui/status-badge';
+import { cn } from '../lib/utils';
+import { StatusBadge, statusLabel } from './ui/status-badge';
+import { LATE_AFTER, Ruler, rulerKind } from './ui/ruler';
 
-/** One order as a stub of its talon: number and status on top, money below the tear line. */
+const STATE_INK: Record<string, string> = { qabul: 'text-st-qabul-ink', tamir: 'text-st-tamir-ink', tayyor: 'text-st-tayyor-ink' };
+
+/** One order: device and money on top, who and which ticket below, the ruler of days in the shop at the bottom. */
 export function OrderCard({ order }: { order: Order }) {
   const paid = paidOf(order.payments);
   const balance = Number(order.total) - paid;
-  // Owed money becomes a debt once the device has left the shop.
   const debt = balance > 0 && order.status === 'DELIVERED';
   const partial = !debt && balance > 0 && paid > 0 && order.status !== 'CANCELLED';
+  const kind = rulerKind(order.status);
+  const days = daysSince(order.createdAt);
+  const late = kind === 'tayyor' && days > LATE_AFTER;
   return (
-    <Link href={`/orders/${order.id}`} className="talon block transition-colors hover:border-ink/40">
-      <div className="px-4 pb-3 pt-3.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="num truncate font-mono text-sm font-semibold">{order.number}</span>
-          <StatusBadge status={order.status} />
+    <Link href={`/orders/${order.id}`} className="block rounded-xl border bg-white px-4 py-3.5 transition-colors hover:border-ink/30 active:bg-paper">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate font-semibold">{deviceName(order.device)}</p>
+          <p className="truncate text-[13px] text-mute">{fullName(order.customer)} · <span className="num font-mono text-xs">{order.number}</span></p>
         </div>
-        <p className="mt-2 truncate font-medium">{deviceName(order.device)}</p>
-        <p className="truncate text-sm text-mute">{fullName(order.customer)} · {order.complaint}</p>
+        <div className="shrink-0 text-right">
+          <p className="num font-mono text-sm font-semibold">{Number(order.total) > 0 ? money(order.total) : '—'}</p>
+          {debt && <p className="num font-mono text-xs font-semibold text-amber-700">qarz {money(balance)}</p>}
+          {partial && <p className="num font-mono text-xs font-semibold text-amber-700">qoldiq {money(balance)}</p>}
+        </div>
       </div>
-      <div className="talon-cut" />
-      <div className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm">
-        <span className="text-xs text-mute">{dateTime(order.createdAt)}</span>
-        <span className="num font-mono">
-          {debt ? <span className="font-semibold text-amber-700">qarz {money(balance)}</span>
-            : partial ? <><span className="text-mute">{money(order.total)} · </span><span className="font-semibold text-amber-700">qoldiq {money(balance)}</span></>
-            : <span className="font-semibold">{money(order.total)}</span>}
-        </span>
+      <p className="mt-1 line-clamp-1 text-[13px] text-ink/80">{order.complaint}</p>
+      <div className="mt-2.5 flex items-end justify-between gap-3">
+        {kind ? (
+          <span className="flex items-end gap-2.5">
+            <Ruler days={days} kind={kind} />
+            <span className={cn('text-xs font-semibold leading-none', late ? 'text-st-kutish-ink' : STATE_INK[kind])}>{statusLabel(order.status)} · {days} kun</span>
+          </span>
+        ) : (
+          <span className="flex items-center gap-2"><StatusBadge status={order.status} /><span className="text-xs text-mute">{dateTime(order.createdAt)}</span></span>
+        )}
       </div>
     </Link>
   );

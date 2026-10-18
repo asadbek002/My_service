@@ -6,8 +6,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: 'Servis markazlarini boshqarish',
     start_url: '/dashboard',
     display: 'standalone',
-    background_color: '#FAFAF9',
-    theme_color: '#FAFAF9',
+    background_color: '#EEF2F1',
+    theme_color: '#EEF2F1',
     // PNG first: Android install prompts and iOS need raster icons.
     // The /api/settings/icon endpoint returns the org's custom logo (or falls back to the static PNG).
     icons: [

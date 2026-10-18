@@ -39,3 +39,7 @@ export const EXPENSE_CATEGORIES: Record<string, string> = { RENT: 'Ijara', SALAR
 
 /** A key for one money-moving request, so a double tap cannot charge twice. */
 export const idempotencyKey = () => (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36) + Math.random().toString(36).slice(2));
+/** Days a device has been in the workshop, counting the intake day as day 1. */
+export function daysSince(value: string | Date) {
+  return Math.max(1, Math.floor((Date.now() - new Date(value).getTime()) / 86_400_000) + 1);
+}
