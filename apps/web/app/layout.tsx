@@ -1,13 +1,9 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
-import { Geologica, Martian_Mono } from 'next/font/google';
 import { NoZoom, ServiceWorkerRegister } from './sw-register';
 import { QueryProvider } from '../components/query-provider';
 import './styles.css';
 
-// Self-hosted at build time by next/font: same letters on every phone, Latin and Cyrillic.
-const sans = Geologica({ subsets: ['latin', 'cyrillic'], variable: '--font-sans', display: 'swap' });
-const mono = Martian_Mono({ subsets: ['latin', 'cyrillic'], variable: '--font-mono', display: 'swap', weight: ['400', '600'] });
 
 export const metadata: Metadata = {
   title: 'MyService',
@@ -24,7 +20,12 @@ export const viewport: Viewport = { width: 'device-width', initialScale: 1, maxi
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="uz" className={`${sans.variable} ${mono.variable}`}>
+    <html lang="uz">
+      <head>
+        {/* Fonts live in public/fonts (see styles.css); the Latin files are needed on the first paint. */}
+        <link rel="preload" href="/fonts/geologica-latin.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/martian-mono-latin.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+      </head>
       <body>
         <QueryProvider>{children}</QueryProvider>
         <ServiceWorkerRegister />

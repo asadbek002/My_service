@@ -1,0 +1,3 @@
+geologica-*.woff2: Geologica, Copyright The Geologica Project Authors. SIL Open Font License 1.1.
+martian-mono-*.woff2: Martian Mono, Copyright Evil Martians. SIL Open Font License 1.1.
+License text: https://openfontlicense.org/open-font-license-official-text/
