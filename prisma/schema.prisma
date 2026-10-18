@@ -185,8 +185,22 @@ model Plan {
   maxStaff      Int?
   monthlyOrders Int?
   monthlyPrice Decimal @default(0) @db.Decimal(18,2)
+  /// Price for 12 months paid at once; null = 12 × monthly minus the platform's free months.
+  yearlyPrice   Decimal? @db.Decimal(18,2)
+  /// SMS included each month when the service uses the platform's Eskiz account; null = unlimited.
+  smsPerMonth   Int?
+  description   String?
+  /// Hidden plans keep their subscribers but are not offered to new services.
+  active        Boolean @default(true)
+  sortOrder     Int     @default(0)
   features      Json
   subscriptions Subscription[]
+}
+/// Platform-wide billing knobs (trial length, grace days, extra SMS price), edited in the platform console.
+model PlatformSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
 }
 
 model Subscription {

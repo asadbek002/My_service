@@ -520,6 +520,34 @@ async function platformToken() {
   assert.equal(signedIn.status, 201);
   return platformTokenValue = (await signedIn.json()).accessToken;
 }
+test('platform owner edits plan prices, limits and billing settings; new services get the trial length', async () => {
+  const token = await platformToken();
+  const name = 'BIZ-' + randomUUID().slice(0, 8);
+  const plan = await json(await request('/platform/plans', { token, method: 'POST', body: { name, monthlyPrice: '199000', maxStaff: 5, smsPerMonth: 200, features: { telegram: true, sms: true } } }));
+  // Yearly price is computed from the free months until the plan sets its own.
+  let listed = (await json(await request('/platform/plans', { token }))).find(p => p.id === plan.id);
+  assert.equal(listed.yearlyTotal, '1990000.00'); assert.equal(listed.smsPerMonth, 200); assert.equal(listed._count.subscriptions, 0);
+  const updated = await request('/platform/plans/' + plan.id, { token, method: 'PATCH', body: { monthlyPrice: '249000', yearlyPrice: '2400000', maxStaff: null, description: 'O‘rta ustaxona', active: false, features: { telegram: true, sms: true, own_bot: true } } });
+  assert.equal(updated.status, 200);
+  listed = (await json(await request('/platform/plans', { token }))).find(p => p.id === plan.id);
+  assert.equal(listed.monthlyPrice, '249000'); assert.equal(listed.yearlyTotal, '2400000.00'); assert.equal(listed.maxStaff, null);
+  assert.equal(listed.active, false); assert.equal(listed.features.own_bot, true); assert.equal(listed.smsPerMonth, 200);
+  assert.equal((await request('/platform/plans/' + plan.id, { token, method: 'PATCH', body: { features: { free_money: true } } })).status, 400);
+  assert.equal((await request('/platform/plans/' + plan.id, { token, method: 'PATCH', body: { monthlyPrice: '-5' } })).status, 400);
+  assert.equal((await request('/platform/plans/nope', { token, method: 'PATCH', body: { monthlyPrice: '1' } })).status, 404);
+  // Tenants cannot touch plans or billing.
+  assert.equal((await request('/platform/plans/' + plan.id, { ...(await owner(a)), method: 'PATCH', body: { monthlyPrice: '1' } })).status, 401);
+  // Billing settings: trial length and grace days apply to the next service.
+  const before = await json(await request('/platform/billing-settings', { token }));
+  assert.equal((await request('/platform/billing-settings', { token, method: 'PUT', body: { trialDays: 60, graceDays: 5, extraSmsPrice: '150', yearlyFreeMonths: 2, junk: 1 } })).status, 400);
+  assert.equal((await request('/platform/billing-settings', { token, method: 'PUT', body: { trialDays: 60, graceDays: 5, extraSmsPrice: '150', yearlyFreeMonths: 2 } })).status, 200);
+  const org = await json(await request('/platform/organizations', { token, method: 'POST', body: { name: 'Trial Usta', slug: 'trial-' + randomUUID().slice(0, 8), planId: plan.id, login: 'trial-' + randomUUID().slice(0, 8), temporaryPassword: 'Temporary-Pass-123', ownerName: 'Ali', phone: '+998907770000' } }));
+  const sub = await db.subscription.findUnique({ where: { organizationId: org.id } });
+  const days = (sub.expiresAt - Date.now()) / 86400000;
+  assert.ok(days > 59.9 && days <= 60, 'trial is 60 days'); assert.equal(Math.round((sub.graceUntil - sub.expiresAt) / 86400000), 5);
+  await request('/platform/billing-settings', { token, method: 'PUT', body: before });
+});
+
 test('platform onboards a service with two roles, resets a password and enters in audited support mode', async () => {
   const token = await platformToken();
   const plan = await json(await request('/platform/plans', { token, method: 'POST', body: { name: 'START-' + randomUUID(), monthlyPrice: '0', features: {} } }));

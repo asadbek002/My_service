@@ -3,8 +3,8 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { platformApi } from './lib';
+import { PlansTab, type Plan } from './plans-editor';
 
-type Plan = { id: string; name: string; maxBranches: number | null; maxStaff: number | null; monthlyOrders: number | null; monthlyPrice: string; features: Record<string, boolean> };
 type Org = { id: string; name: string; slug: string; createdAt: string; _count: { users: number; branches: number; orders: number }; subscription: { status: string; expiresAt: string; plan: Plan } | null };
 type Analytics = { totalOrganizations: number; activeOrganizations: number; activeSubscriptions: number; trials: number; newOrganizations: number; churned: number; churnRate: number; mrr: string };
 type System = { database: string; organizations: number; activeSubscriptions: number; pendingOutbox: number; failedNotifications: number };
@@ -16,7 +16,6 @@ const TABS: [PlatformTab, string, string][] = [
   ['overview', 'Umumiy', '/platform'], ['organizations', 'Servislar', '/platform/organizations'], ['plans', 'Tariflar', '/platform/plans'],
   ['subscriptions', 'Obunalar', '/platform/subscriptions'], ['system', 'Tizim', '/platform/system'],
 ];
-const FEATURES: [string, string][] = [['telegram', 'Telegram'], ['sms', 'SMS'], ['exports', 'Eksport']];
 const money = (v: string | number) => Number(v).toLocaleString('ru-RU') + " so'm";
 const field = 'w-full h-11 sm:h-10 rounded-md border border-line bg-white px-3 text-base sm:text-sm focus:border-ink focus:outline-none';
 const card = 'rounded-lg border bg-white p-4 sm:p-5';
@@ -53,6 +52,11 @@ export default function PlatformConsole({ tab }: { tab: PlatformTab }) {
     e.preventDefault(); const form = e.currentTarget; const d = new FormData(form);
     setBusy(true); setError(''); setNotice('');
     try { await action(d); form.reset(); await load(); setNotice(done); } catch (err) { fail(err); } finally { setBusy(false); }
+  }
+  /** Run a console action: busy flag, reload, then a notice or the error. */
+  async function run(action: () => Promise<unknown>, done: string) {
+    setBusy(true); setError(''); setNotice('');
+    try { await action(); await load(); setNotice(done); } catch (err) { fail(err); } finally { setBusy(false); }
   }
   async function logout() {
     try { await platformApi('/auth/logout', { method: 'POST' }); } catch { /* token is dropped either way */ }
@@ -105,7 +109,7 @@ export default function PlatformConsole({ tab }: { tab: PlatformTab }) {
                 <form className="space-y-3" onSubmit={e => submit(e, d => platformApi('/organizations', { method: 'POST', body: JSON.stringify(Object.fromEntries(d)) }), "Servis yaratildi: egasi birinchi kirishda parolni almashtiradi")}>
                   <input name="name" required placeholder="Servis nomi" className={field} />
                   <input name="slug" required pattern="[a-z0-9-]{3,64}" placeholder="slug (lotin, kichik harf)" className={field} />
-                  <select name="planId" required className={field}>{plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                  <select name="planId" required className={field}>{plans.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
                   <input name="ownerName" required placeholder="Egasi ismi" className={field} />
                   <input name="phone" required pattern="\+[1-9][0-9]{7,14}" placeholder="+998901234567" className={field} />
                   <input name="login" required pattern="[a-zA-Z0-9_.\-]{3,64}" placeholder="Login" className={field} />
@@ -118,42 +122,7 @@ export default function PlatformConsole({ tab }: { tab: PlatformTab }) {
           </div>
         )}
 
-        {tab === 'plans' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <section className={card + ' lg:col-span-2 space-y-3'}>
-              <h2 className="font-semibold">Tariflar</h2>
-              {plans.map(p => (
-                <div key={p.id} className="p-3 rounded-lg border  text-sm">
-                  <p className="font-semibold">{p.name} · {money(p.monthlyPrice)}/oy</p>
-                  <p className="text-xs text-mute">Xodim: {p.maxStaff ?? '∞'} · Buyurtma/oy: {p.monthlyOrders ?? '∞'}</p>
-                  <p className="text-xs text-mute">{FEATURES.filter(([k]) => p.features?.[k]).map(([, l]) => l).join(' · ') || 'Qo‘shimcha imkoniyat yo‘q'}</p>
-                </div>
-              ))}
-            </section>
-            <section className={card}>
-              <h2 className="font-semibold mb-3">Yangi tarif</h2>
-              <form className="space-y-3" onSubmit={e => submit(e, d => platformApi('/plans', { method: 'POST', body: JSON.stringify({
-                name: d.get('name'),
-                ...(Number(d.get('maxStaff')) ? { maxStaff: Number(d.get('maxStaff')) } : {}),
-                ...(Number(d.get('monthlyOrders')) ? { monthlyOrders: Number(d.get('monthlyOrders')) } : {}),
-                monthlyPrice: String(d.get('monthlyPrice') || '0'),
-                features: Object.fromEntries(FEATURES.map(([k]) => [k, d.get(k) === 'on'])),
-              }) }), 'Tarif yaratildi')}>
-                <input name="name" required placeholder="Nomi (START, BUSINESS...)" className={field} />
-                <div className="grid grid-cols-2 gap-2">
-                  <input name="maxStaff" type="number" min={1} placeholder="Xodim" className={field} />
-                  <input name="monthlyOrders" type="number" min={1} placeholder="Buyurtma" className={field} />
-                </div>
-                <p className="text-[11px] text-mute">Bo&apos;sh qoldirilsa — cheksiz</p>
-                <input name="monthlyPrice" required pattern="\d{1,12}(\.\d{1,2})?" placeholder="Oylik narx" defaultValue="0" className={field} />
-                <div className="grid grid-cols-2 gap-1.5 text-sm">
-                  {FEATURES.map(([k, l]) => <label key={k} className="flex items-center gap-2"><input type="checkbox" name={k} defaultChecked className="h-4 w-4" />{l}</label>)}
-                </div>
-                <button className={button + ' w-full'} disabled={busy}>Tarif yaratish</button>
-              </form>
-            </section>
-          </div>
-        )}
+        {tab === 'plans' && <PlansTab plans={plans} busy={busy} run={run} />}
 
         {tab === 'subscriptions' && (
           <section className={card + ' space-y-3'}>

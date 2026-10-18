@@ -1,5 +1,5 @@
-import { Body, CanActivate, Controller, ExecutionContext, Get, Injectable, Module, Param, Patch, Post, Req, UseGuards, UnauthorizedException, ForbiddenException, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { IsString, Length, Matches, IsInt, Min, IsOptional, IsObject, IsIn, IsISO8601 } from 'class-validator';
+import { Body, CanActivate, Controller, ExecutionContext, Get, Injectable, Module, Param, Patch, Post, Put, Req, UseGuards, UnauthorizedException, ForbiddenException, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { IsString, Length, Matches, IsInt, Min, Max, IsOptional, IsObject, IsIn, IsISO8601, IsBoolean, MaxLength } from 'class-validator';
 import { createHash, randomBytes } from 'node:crypto';
 import * as argon2 from 'argon2';
 import { Prisma } from '@prisma/client';
@@ -14,6 +14,7 @@ import { JwtModule, JwtService } from '@nestjs/jwt';
 import { BotModule } from '../bot/bot.module';
 import { BotService } from '../bot/bot.service';
 import { esc } from '../bot/telegram.client';
+import { billingSettings, saveBillingSettings, yearlyPriceOf } from './billing';
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 type AdminRequest = Request & { adminId: string; platformSessionId: string };
 @Injectable()
@@ -28,14 +29,44 @@ class PlatformGuard implements CanActivate {
     req.adminId = session.adminId; req.platformSessionId = session.id; return true;
   }
 }
+const MONEY = /^\d{1,12}(\.\d{1,2})?$/;
+const PLAN_FEATURES = ['inventory','telegram','sms','advanced_reports','multi_branch','staff_commission','exports','own_bot'];
 class PlanDto {
   @IsString() @Length(1,100) name!: string;
   @IsOptional() @IsInt() @Min(1) maxBranches?: number;
   @IsOptional() @IsInt() @Min(1) maxStaff?: number;
   @IsOptional() @IsInt() @Min(1) monthlyOrders?: number;
-  @IsOptional() @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) monthlyPrice?: string;
+  @IsOptional() @IsString() @Matches(MONEY) monthlyPrice?: string;
+  @IsOptional() @IsString() @Matches(MONEY) yearlyPrice?: string;
+  @IsOptional() @IsInt() @Min(0) smsPerMonth?: number;
+  @IsOptional() @IsString() @MaxLength(500) description?: string;
+  @IsOptional() @IsBoolean() active?: boolean;
+  @IsOptional() @IsInt() @Min(0) @Max(1000) sortOrder?: number;
   @IsObject() features!: Record<string, boolean>;
 }
+/** Every field optional; null clears a limit (unlimited) or the yearly price (computed). */
+class PlanUpdateDto {
+  @IsOptional() @IsString() @Length(1,100) name?: string;
+  @IsOptional() @IsInt() @Min(1) maxBranches?: number | null;
+  @IsOptional() @IsInt() @Min(1) maxStaff?: number | null;
+  @IsOptional() @IsInt() @Min(1) monthlyOrders?: number | null;
+  @IsOptional() @IsString() @Matches(MONEY) monthlyPrice?: string;
+  @IsOptional() @IsString() @Matches(MONEY) yearlyPrice?: string | null;
+  @IsOptional() @IsInt() @Min(0) smsPerMonth?: number | null;
+  @IsOptional() @IsString() @MaxLength(500) description?: string | null;
+  @IsOptional() @IsBoolean() active?: boolean;
+  @IsOptional() @IsInt() @Min(0) @Max(1000) sortOrder?: number;
+  @IsOptional() @IsObject() features?: Record<string, boolean>;
+}
+class BillingDto {
+  @IsInt() @Min(0) @Max(365) trialDays!: number;
+  @IsInt() @Min(0) @Max(60) graceDays!: number;
+  @IsString() @Matches(MONEY) extraSmsPrice!: string;
+  @IsInt() @Min(0) @Max(11) yearlyFreeMonths!: number;
+}
+const checkFeatures = (f: Record<string, unknown>) => {
+  if (Object.entries(f).some(([k,v])=>!PLAN_FEATURES.includes(k)||typeof v!=='boolean')) throw new BadRequestException('Unknown feature or non-boolean value');
+};
 class OrganizationDto {
   @IsString() @Length(1,200) name!: string;
   @IsString() @Matches(/^[a-z0-9-]{3,64}$/) slug!: string;
@@ -82,21 +113,63 @@ class PlatformController {
     return this.db.organization.findMany({ select: { id:true,name:true,slug:true,createdAt:true,subscription:{include:{plan:true}},_count:{select:{users:true,branches:true,orders:true}} }, take:100, orderBy:{createdAt:'desc'} });
   }
   @Get('plans')
-  plans() { return this.db.plan.findMany({ orderBy:{name:'asc'} }); }
+  async plans() {
+    const [plans, settings] = await Promise.all([
+      this.db.plan.findMany({ orderBy:[{sortOrder:'asc'},{name:'asc'}], include:{_count:{select:{subscriptions:true}}} }),
+      billingSettings(this.db),
+    ]);
+    return plans.map(p => ({ ...p, yearlyTotal: yearlyPriceOf(p, settings) }));
+  }
   @Post('plans')
   async plan(@Body() d: PlanDto, @Req() req: AdminRequest) {
-    const allowed=['inventory','telegram','sms','advanced_reports','multi_branch','staff_commission','exports'];
-    if (Object.entries(d.features).some(([k,v])=>!allowed.includes(k)||typeof v!=='boolean')) throw new BadRequestException('Unknown feature or non-boolean value');
+    checkFeatures(d.features);
     try {
       return await this.db.$transaction(async tx => {
-        const plan=await tx.plan.create({data:{name:d.name,features:d.features as Prisma.InputJsonObject,maxBranches:d.maxBranches??null,maxStaff:d.maxStaff??null,monthlyOrders:d.monthlyOrders??null,monthlyPrice:d.monthlyPrice??'0'}});
+        const plan=await tx.plan.create({data:{name:d.name,features:d.features as Prisma.InputJsonObject,maxBranches:d.maxBranches??null,maxStaff:d.maxStaff??null,monthlyOrders:d.monthlyOrders??null,monthlyPrice:d.monthlyPrice??'0',
+          yearlyPrice:d.yearlyPrice??null,smsPerMonth:d.smsPerMonth??null,description:d.description?.trim()||null,active:d.active??true,sortOrder:d.sortOrder??0}});
         await tx.auditLog.create({data:{organizationId:'PLATFORM',actorId:req.adminId,action:'PLAN_CREATED',entityId:plan.id}});return plan;
       });
     } catch(e) { if(e instanceof Prisma.PrismaClientKnownRequestError&&e.code==='P2002') throw new ConflictException('Plan name exists');throw e; }
   }
+  /** Change a plan's price, limits or features. Services on it get the new terms at once. */
+  @Patch('plans/:id')
+  async updatePlan(@Param('id') id: string, @Body() d: PlanUpdateDto, @Req() req: AdminRequest) {
+    if (d.features) checkFeatures(d.features);
+    if (!await this.db.plan.findUnique({ where: { id } })) throw new NotFoundException('Plan not found');
+    const data: Prisma.PlanUpdateInput = {};
+    if (d.name !== undefined && d.name !== null) data.name = d.name.trim();
+    if (d.monthlyPrice !== undefined && d.monthlyPrice !== null) data.monthlyPrice = d.monthlyPrice;
+    if (d.active !== undefined && d.active !== null) data.active = d.active;
+    if (d.sortOrder !== undefined && d.sortOrder !== null) data.sortOrder = d.sortOrder;
+    if (d.features) data.features = d.features as Prisma.InputJsonObject;
+    // null is meaningful here: no limit / computed yearly price / no description.
+    if (d.maxBranches !== undefined) data.maxBranches = d.maxBranches;
+    if (d.maxStaff !== undefined) data.maxStaff = d.maxStaff;
+    if (d.monthlyOrders !== undefined) data.monthlyOrders = d.monthlyOrders;
+    if (d.yearlyPrice !== undefined) data.yearlyPrice = d.yearlyPrice;
+    if (d.smsPerMonth !== undefined) data.smsPerMonth = d.smsPerMonth;
+    if (d.description !== undefined) data.description = d.description?.trim() || null;
+    try {
+      return await this.db.$transaction(async tx => {
+        const plan = await tx.plan.update({ where: { id }, data });
+        await tx.auditLog.create({data:{organizationId:'PLATFORM',actorId:req.adminId,action:'PLAN_UPDATED',entityId:plan.id}});
+        return plan;
+      });
+    } catch(e) { if(e instanceof Prisma.PrismaClientKnownRequestError&&e.code==='P2002') throw new ConflictException('Plan name exists');throw e; }
+  }
+  @Get('billing-settings')
+  billing() { return billingSettings(this.db); }
+  @Put('billing-settings')
+  async saveBilling(@Body() d: BillingDto, @Req() req: AdminRequest) {
+    const value = { trialDays: d.trialDays, graceDays: d.graceDays, extraSmsPrice: d.extraSmsPrice, yearlyFreeMonths: d.yearlyFreeMonths };
+    await saveBillingSettings(this.db, value);
+    await this.db.auditLog.create({data:{organizationId:'PLATFORM',actorId:req.adminId,action:'BILLING_SETTINGS_CHANGED',entityId:'billing'}});
+    return value;
+  }
   @Post('organizations')
   async onboard(@Body() d: OrganizationDto, @Req() req: AdminRequest) {
     const passwordHash=await argon2.hash(d.temporaryPassword,{type:argon2.argon2id});
+    const billing=await billingSettings(this.db);
     try {
       const created = await this.db.$transaction(async tx => {
         if(!await tx.plan.findUnique({where:{id:d.planId}})) throw new NotFoundException('Plan not found');
@@ -112,7 +185,8 @@ class PlatformController {
           }
           if(systemKey==='OWNER')await tx.userRole.create({data:{organizationId:org.id,userId:user.id,roleId:role.id}});
         }
-        await tx.subscription.create({data:{organizationId:org.id,planId:d.planId,expiresAt:new Date(Date.now()+14*86400000)}});
+        const trialEnds=new Date(Date.now()+billing.trialDays*86400000);
+        await tx.subscription.create({data:{organizationId:org.id,planId:d.planId,expiresAt:trialEnds,graceUntil:new Date(trialEnds.getTime()+billing.graceDays*86400000)}});
         await tx.auditLog.create({data:{organizationId:org.id,actorId:req.adminId,action:'PLATFORM_ORGANIZATION_CREATED',entityId:org.id}});
         return {id:org.id,name:org.name,ownerLogin:user.login};
       },{timeout:15000});
@@ -124,8 +198,11 @@ class PlatformController {
   async subscription(@Param('id')id:string,@Body()d:SubscriptionDto,@Req()req:AdminRequest) {
     if(!await this.db.plan.findUnique({where:{id:d.planId}})) throw new NotFoundException('Plan not found');
     if(!await this.db.organization.findUnique({where:{id}})) throw new NotFoundException();
+    // The platform's grace days follow every new end date.
+    const expiresAt=new Date(d.expiresAt);
+    const graceUntil=new Date(expiresAt.getTime()+(await billingSettings(this.db)).graceDays*86400000);
     return this.db.$transaction(async tx=>{
-      const sub=await tx.subscription.upsert({where:{organizationId:id},create:{organizationId:id,planId:d.planId,status:d.status,expiresAt:new Date(d.expiresAt)},update:{planId:d.planId,status:d.status,expiresAt:new Date(d.expiresAt),graceUntil:null}});
+      const sub=await tx.subscription.upsert({where:{organizationId:id},create:{organizationId:id,planId:d.planId,status:d.status,expiresAt,graceUntil},update:{planId:d.planId,status:d.status,expiresAt,graceUntil}});
       await tx.auditLog.create({data:{organizationId:id,actorId:req.adminId,action:'SUBSCRIPTION_CHANGED',entityId:sub.id}});
       await this.subCache.invalidate(id);
       return sub;
