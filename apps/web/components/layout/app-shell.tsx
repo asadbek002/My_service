@@ -8,7 +8,7 @@ import {
   Plus, Menu, X, LogOut, Search, ChevronLeft, LifeBuoy, Wrench,
 } from 'lucide-react';
 import { useMe, can, useBranding } from '../../lib/queries';
-import { logout } from '../../lib/api';
+import { API_BASE, logout } from '../../lib/api';
 import { cn } from '../../lib/utils';
 import { Mark } from './mark';
 
@@ -39,6 +39,25 @@ const NAV = [
 const isActive = (pathname: string, href: string) =>
   href === '/dashboard' ? pathname === href : pathname === href || (pathname.startsWith(href + '/') && !(href === '/orders' && pathname === '/orders/new'));
 
+/**
+ * Point the install manifest and the iOS home-screen icon at this workshop's own logo,
+ * so "Add to Home screen" shows the workshop instead of the MyService tag.
+ */
+function useHomeScreenBrand(orgId: string | undefined, logo: string | null | undefined) {
+  useEffect(() => {
+    if (!orgId) return;
+    const base = `${API_BASE}/public/brand/${encodeURIComponent(orgId)}`;
+    const version = logo ? String(logo.length) + logo.slice(-16) : 'none';
+    const set = (rel: string, href: string) => {
+      let link = document.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+      if (!link) { link = Object.assign(document.createElement('link'), { rel }); document.head.appendChild(link); }
+      if (link.getAttribute('href') !== href) link.setAttribute('href', href);
+    };
+    set('manifest', `${base}/manifest`);
+    set('apple-touch-icon', logo ? `${base}/icon?v=${encodeURIComponent(version)}` : '/apple-touch-icon.png');
+  }, [orgId, logo]);
+}
+
 export function AppShell({ children, title, back, action, narrow }: AppShellProps) {
   const pathname = usePathname() ?? '';
   const router = useRouter();
@@ -54,6 +73,7 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
     if (error?.message === 'SESSION_EXPIRED') router.replace('/login');
   }, [error, router]);
   useEffect(() => { setMenuOpen(false); }, [pathname]);
+  useHomeScreenBrand(me?.support ? undefined : me?.organizationId, brand?.logo);
 
   const onLogout = async () => {
     try { await logout(); } finally { router.replace(me?.support ? '/platform' : '/login'); }

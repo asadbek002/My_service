@@ -554,6 +554,20 @@ async function shrinkImage(file: File): Promise<string> {
   } finally { URL.revokeObjectURL(url); }
 }
 
+/** The home-screen icon: the picture centred on a white 512 px square, inside the maskable safe zone. */
+async function squareIcon(dataUrl: string): Promise<string> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => reject(new Error('Rasmni ochib bo\'lmadi')); i.src = dataUrl; });
+  const size = 512, box = size * 0.72;
+  const scale = box / Math.max(img.width, img.height);
+  const w = img.width * scale, h = img.height * scale;
+  const canvas = Object.assign(document.createElement('canvas'), { width: size, height: size });
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, size, size);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+  return canvas.toDataURL('image/png');
+}
+
 function LogoBlock() {
   const qc = useQueryClient();
   const { data } = useBranding();
@@ -564,7 +578,8 @@ function LogoBlock() {
     setBusy(true); setState({});
     try {
       const image = await shrinkImage(file);
-      await api('/settings/logo', { method: 'PUT', body: JSON.stringify({ image }) });
+      const icon = await squareIcon(image);
+      await api('/settings/logo', { method: 'PUT', body: JSON.stringify({ image, icon }) });
       await qc.invalidateQueries({ queryKey: ['branding'] });
       setState({ ok: 'Logotip saqlandi' });
     } catch (e) { setState({ error: errorText(e) }); } finally { setBusy(false); }

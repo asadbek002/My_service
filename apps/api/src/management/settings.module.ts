@@ -1,13 +1,14 @@
-import{BadRequestException,Body,Controller,Delete,Get,HttpCode,Module,Param,Put,Req,Res}from'@nestjs/common';
-import{IsBoolean,IsObject,IsString,Length,Matches,MaxLength}from'class-validator';
+import{BadRequestException,Body,Controller,Delete,Get,HttpCode,Module,Param,Put,Res}from'@nestjs/common';
+import{IsBoolean,IsObject,IsOptional,IsString,Length,Matches,MaxLength}from'class-validator';
 import{Prisma}from'@prisma/client';
-import type{Request,Response}from'express';
+import{createHash}from'node:crypto';
+import type{Response}from'express';
 import{Database}from'../database';
 import{TelegramClient}from'../bot/telegram.client';
 import{CurrentActor,Permissions,Public}from'../auth/security';
 import type{Actor}from'../auth/security';
 class SettingsDto{@IsObject()value!:Record<string,unknown>}
-class LogoDto{@IsString()@MaxLength(400000)image!:string}
+class LogoDto{@IsString()@MaxLength(400000)image!:string;@IsOptional()@IsString()@MaxLength(700000)icon?:string}
 class TemplateDto{@IsString()@Length(1,4000)body!:string;@IsBoolean()active!:boolean}
 class PaymentMethodDto{@IsString()@Length(1,64)@Matches(/^[A-Z0-9_]+$/)key!:string;@IsString()@Length(1,100)label!:string}
 @Controller('settings')
@@ -56,30 +57,14 @@ class SettingsController{
   const name=typeof v('general').name==='string'&&String(v('general').name).trim()?String(v('general').name).trim():org.name;
   return{name,logo:typeof v('logo').image==='string'?v('logo').image:null};
  }
- /** PWA icon: returns the org logo image from the refresh-token cookie, no access token needed. */
- @Get('icon')@Public()
- async icon(@Req()req:Request,@Res()res:Response){
-  const raw=req.cookies?.myservice_refresh as string|undefined;
-  const id=raw?.split('.')[0];
-  const session=id?await this.db.session.findUnique({where:{id},include:{user:true}}):null;
-  if(!session||session.status!=='ACTIVE'||session.expiresAt<=new Date()||session.user.status!=='ACTIVE'){
-   return res.redirect('/icon-192.png');
-  }
-  const row=await this.db.organizationSetting.findUnique({where:{organizationId_key:{organizationId:session.user.organizationId,key:'logo'}}});
-  const image=(row?.value as Record<string,unknown>|null)?.image;
-  if(typeof image!=='string'||!image.startsWith('data:image/')){return res.redirect('/icon-192.png');}
-  const comma=image.indexOf(',');
-  const mime=image.slice(5,image.indexOf(';'));
-  res.setHeader('Content-Type',mime||'image/png');
-  res.setHeader('Cache-Control','private, max-age=3600');
-  return res.send(Buffer.from(image.slice(comma+1),'base64'));
- }
  /** Logo as a small image (the browser resizes it to 256 px before upload). */
  @Put('logo')@Permissions('settings.manage')
  async logo(@CurrentActor()a:Actor,@Body()d:LogoDto){
   if(!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(d.image))throw new BadRequestException('PNG, JPEG or WebP image required');
   if(Buffer.byteLength(d.image)>400000)throw new BadRequestException('Logo too large');
-  const value={image:d.image} as Prisma.InputJsonObject;
+  // The square home-screen icon the browser drew from the same picture (logo centred on white).
+  if(d.icon!==undefined&&!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(d.icon))throw new BadRequestException('PNG icon required');
+  const value=(d.icon?{image:d.image,icon:d.icon}:{image:d.image}) as Prisma.InputJsonObject;
   await this.db.organizationSetting.upsert({where:{organizationId_key:{organizationId:a.organizationId,key:'logo'}},create:{organizationId:a.organizationId,key:'logo',value},update:{value}});
   await this.db.auditLog.create({data:{organizationId:a.organizationId,actorId:a.userId,action:'SETTING_CHANGED',entityId:'logo'}});return{ok:true};
  }
@@ -100,4 +85,51 @@ class SettingsController{
  @Get('audit')@Permissions('staff.manage')
  audit(@CurrentActor()a:Actor){return this.db.auditLog.findMany({where:{organizationId:a.organizationId},orderBy:{createdAt:'desc'},take:100})}
 }
-@Module({controllers:[SettingsController]})export class SettingsModule{}
+/**
+ * Home-screen icon and install manifest of one workshop, for the installed PWA.
+ * Public by organisation id: the logo is already shown on every public tracking page, and the
+ * browser fetches manifests and icons without the access token.
+ */
+@Controller('public/brand')
+class BrandController{
+ constructor(private readonly db:Database){}
+ private async brand(orgId:string){
+  if(!/^[a-z0-9]{10,40}$/.test(orgId))return null;
+  const [org,rows]=await Promise.all([this.db.organization.findUnique({where:{id:orgId}}),this.db.organizationSetting.findMany({where:{organizationId:orgId,key:{in:['general','logo']}}})]);
+  if(!org)return null;
+  const v=(k:string)=>(rows.find(r=>r.key===k)?.value??{}) as Record<string,unknown>;
+  const general=v('general').name;
+  const name=typeof general==='string'&&general.trim()?general.trim():org.name;
+  const pick=(x:unknown)=>typeof x==='string'&&x.startsWith('data:image/')&&x.includes(';base64,')?x:null;
+  return{name,icon:pick(v('logo').icon)??pick(v('logo').image)};
+ }
+ @Get(':orgId/icon')@Public()
+ async icon(@Param('orgId')orgId:string,@Res()res:Response){
+  const b=await this.brand(orgId);
+  if(!b?.icon){res.setHeader('Cache-Control','public, max-age=300');return res.redirect('/icon-512.png');}
+  const comma=b.icon.indexOf(',');
+  res.setHeader('Content-Type',b.icon.slice(5,b.icon.indexOf(';')));
+  res.setHeader('Cache-Control','public, max-age=86400');
+  res.setHeader('Cross-Origin-Resource-Policy','cross-origin');
+  return res.send(Buffer.from(b.icon.slice(comma+1),'base64'));
+ }
+ @Get(':orgId/manifest')@Public()
+ async manifest(@Param('orgId')orgId:string,@Res()res:Response){
+  const b=await this.brand(orgId);
+  const fallback=[
+   {src:'/icon-192.png',sizes:'192x192',type:'image/png',purpose:'any'},
+   {src:'/icon-512.png',sizes:'512x512',type:'image/png',purpose:'any'},
+   {src:'/icon-512.png',sizes:'512x512',type:'image/png',purpose:'maskable'},
+  ];
+  // The version in the URL changes with the logo, so a new logo is never hidden behind a cached old one.
+  const own=b?.icon?(()=>{const src=`/api/public/brand/${orgId}/icon?v=${createHash('sha256').update(b.icon).digest('hex').slice(0,12)}`;const type=b.icon.slice(5,b.icon.indexOf(';'));
+   return[{src,sizes:'512x512',type,purpose:'any'},{src,sizes:'192x192',type,purpose:'any'},{src,sizes:'512x512',type,purpose:'maskable'}];})():[];
+  res.setHeader('Content-Type','application/manifest+json; charset=utf-8');
+  res.setHeader('Cache-Control','public, max-age=300');
+  return res.send(JSON.stringify({
+   id:'/dashboard',name:b?.name??"MyService — ta'mir servisi",short_name:(b?.name??'MyService').slice(0,24),description:'Servis markazlarini boshqarish',
+   start_url:'/dashboard',scope:'/',display:'standalone',background_color:'#EEF2F1',theme_color:'#EEF2F1',icons:[...own,...fallback],
+  }));
+ }
+}
+@Module({controllers:[SettingsController,BrandController]})export class SettingsModule{}

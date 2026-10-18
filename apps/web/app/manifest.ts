@@ -8,12 +8,8 @@ export default function manifest(): MetadataRoute.Manifest {
     display: 'standalone',
     background_color: '#EEF2F1',
     theme_color: '#EEF2F1',
-    // PNG first: Android install prompts and iOS need raster icons.
-    // The /api/settings/icon endpoint returns the org's custom logo (or falls back to the static PNG).
+    // Signed-in pages swap this for the workshop's own manifest (its logo as the icon), see AppShell.
     icons: [
-      { src: '/api/settings/icon', sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: '/api/settings/icon', sizes: '512x512', type: 'image/png', purpose: 'any' },
-      { src: '/api/settings/icon', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
       { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
       { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
       { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },

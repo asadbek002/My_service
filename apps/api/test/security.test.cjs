@@ -401,6 +401,29 @@ test('public tracking hides personal data', async () => {
   assert.equal((await request('/public/track/' + 'x'.repeat(43))).status, 404);
   assert.equal((await request('/public/approval/' + 'x'.repeat(43))).status, 404);
 });
+test('installed app shows the workshop logo: public icon and manifest by organisation', async () => {
+  const a = await tenant(); const auth = await owner(a);
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000000020001e221bc330000000049454e44ae426082', 'hex');
+  const logo = 'data:image/png;base64,' + png.toString('base64');
+  const get = path => fetch(base + path, { redirect: 'manual' });
+  // No logo yet: the stock icon, and a manifest that still installs.
+  let r = await get('/public/brand/' + a.org.id + '/icon');
+  assert.equal(r.status, 302); assert.equal(r.headers.get('location'), '/icon-512.png');
+  let m = await (await get('/public/brand/' + a.org.id + '/manifest')).json();
+  assert.equal(m.start_url, '/dashboard'); assert.ok(m.icons.every(i => i.src.startsWith('/icon-')));
+  assert.equal((await request('/settings/logo', { ...auth, method: 'PUT', body: { image: logo, icon: 'data:image/svg+xml;base64,PHN2Zz4=' } })).status, 400);
+  assert.equal((await request('/settings/logo', { ...auth, method: 'PUT', body: { image: logo, icon: logo } })).status, 200);
+  r = await get('/public/brand/' + a.org.id + '/icon');
+  assert.equal(r.status, 200); assert.equal(r.headers.get('content-type'), 'image/png');
+  assert.deepEqual(Buffer.from(await r.arrayBuffer()), png);
+  m = await (await get('/public/brand/' + a.org.id + '/manifest')).json();
+  assert.equal(m.name, a.org.name); assert.match(m.icons[0].src, new RegExp('^/api/public/brand/' + a.org.id + '/icon\\?v=[0-9a-f]{12}$'));
+  // Unknown or malformed ids fall back; the old session-cookie icon endpoint is gone.
+  assert.equal((await get('/public/brand/nope/icon')).status, 302);
+  assert.equal((await get('/public/brand/' + 'z'.repeat(25) + '/manifest')).status, 200);
+  assert.notEqual((await get('/settings/icon')).status, 200);
+});
+
 test('thermal receipt data follows the configured paper width', async () => {
   const auth = await owner(a);
   const { order } = await newOrder(a, { labor: '120000', parts: '80000' });
