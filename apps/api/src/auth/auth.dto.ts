@@ -44,6 +44,8 @@ export class SignupDto {
   @ApiProperty() @IsString() @Length(1, 100) ownerName!: string;
   @ApiProperty() @IsString() @Length(3, 64) @Matches(LOGIN) login!: string;
   @ApiProperty() @IsString() @Length(12, 128) password!: string;
+  /** The offer and the privacy policy were shown and accepted (checkbox on the sign-up page). */
+  @ApiProperty() @IsIn([true]) acceptTerms!: true;
 }
 export class ResetDto {
   @ApiProperty() @IsString() @Length(10, 64) proof!: string;

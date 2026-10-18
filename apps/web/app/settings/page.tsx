@@ -36,6 +36,7 @@ export default function Settings() {
           <ServiceForm general={value('general')} receipt={value('receipt')} />
           <BotContactForm saved={rows?.find(r => r.key === 'bot_contact')?.value} general={value('general')} receipt={value('receipt')} />
           <MyTelegram />
+          <OwnBotBlock />
           <OrderAlerts />
           <RolesBlock />
           <WarrantyForm terms={str(value('warranty_terms').text)} />
@@ -188,37 +189,76 @@ function TemplateForm({ channel, template }: { channel: 'TELEGRAM' | 'SMS'; temp
   );
 }
 
-type Telegram = { botConfigured: boolean; botUsername: string | null; webhookConfigured: boolean; linkedCustomers: number; totalCustomers: number };
-type Eskiz = { configured: boolean; sender: string; testMode: boolean; balance: number; smsCount: number; error?: string | null };
+type Telegram = { botConfigured: boolean; botUsername: string | null; webhookConfigured: boolean; linkedCustomers: number; totalCustomers: number; botLink?: string | null };
 function Check({ ok, children }: { ok: boolean; children: ReactNode }) {
   return <p className="flex items-start gap-2 text-sm">{ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />}<span>{children}</span></p>;
 }
+type SmsInfo = { mode: 'platform' | 'own'; email: string | null; from: string | null; balance: number | null; error: string | null;
+  platform: { available: boolean; limit: number | null; sent: number; extra: number; testMode: boolean } };
+
+/** Telegram status, and how SMS go out: the MyService account (plan allowance) or the service's own Eskiz. */
 function Channels() {
+  const qc = useQueryClient();
   const telegram = useQuery({ queryKey: ['settings', 'telegram'], queryFn: () => api<Telegram>('/settings/telegram') });
-  const eskiz = useQuery({ queryKey: ['settings', 'eskiz'], queryFn: () => api<Eskiz>('/notifications/eskiz-status') });
-  const [testPhone, setTestPhone] = useState('');
+  const sms = useQuery({ queryKey: ['settings', 'sms'], queryFn: () => api<SmsInfo>('/notifications/sms') });
+  const [mode, setMode] = useState<'platform' | 'own' | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [from, setFrom] = useState('');
   const [state, setState] = useState<{ ok?: string; error?: string }>({});
-  async function test() {
-    setState({});
-    try { await api('/notifications/test-sms', { method: 'POST', body: JSON.stringify({ phone: normalizePhone(testPhone) }) }); setState({ ok: 'Test SMS yuborildi' }); }
-    catch (e) { setState({ error: errorText(e) }); }
+  const [busy, setBusy] = useState(false);
+  const t = telegram.data, s = sms.data;
+  const shownMode = mode ?? s?.mode ?? 'platform';
+  // Start the form from what is saved.
+  useEffect(() => { if (s) { setEmail(s.email ?? ''); setFrom(s.from ?? ''); } }, [s?.email, s?.from]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function run(fn: () => Promise<unknown>, ok: string) {
+    setBusy(true); setState({});
+    try { await fn(); await qc.invalidateQueries({ queryKey: ['settings', 'sms'] }); setState({ ok }); setPassword(''); setMode(null); }
+    catch (e) { setState({ error: errorText(e) }); } finally { setBusy(false); }
   }
-  const t = telegram.data, s = eskiz.data;
   return (
-    <Block title="Telegram va SMS">
-      <div className="grid gap-2">
+    <Block id="sms" title="Telegram va SMS" hint="Qurilma tayyor bo'lganda mijozga avval Telegram, bo'lmasa SMS boradi.">
+      <div className="grid gap-3">
         {t && <>
           <Check ok={t.botConfigured && !!t.botUsername}>Telegram bot {t.botUsername ? '@' + t.botUsername : 'sozlanmagan'}</Check>
-          <p className="pl-6 text-xs text-mute">{t.linkedCustomers} / {t.totalCustomers} mijoz Telegramga ulangan. Ulash: buyurtma sahifasidagi &laquo;Holat havolasi&raquo;.</p>
-        </>}
-        {s && <>
-          <Check ok={s.configured && !s.error}>SMS (Eskiz) {s.configured ? (s.error ? '— ulanishda xato' : `— balans ${money(s.balance)}`) : 'sozlanmagan'}{s.testMode ? ' · test rejimi' : ''}</Check>
-          {s.configured && (
-            <div className="mt-2 flex gap-2 pl-6">
-              <Input value={testPhone} onChange={e => setTestPhone(e.target.value)} inputMode="tel" placeholder="+998 90 123 45 67" aria-label="Test uchun telefon" />
-              <Button variant="secondary" onClick={test} disabled={!testPhone.trim()}>Test SMS</Button>
+          <p className="-mt-2 pl-6 text-xs text-mute">{t.linkedCustomers} / {t.totalCustomers} mijoz Telegramga ulangan.</p>
+          {t.botLink && (
+            <div className="pl-6 text-xs">
+              <p className="text-mute">Botdagi sahifangiz — Instagram, vizitka yoki peshtaxtaga qo&apos;ying. Bu havola orqali kelgan mijoz manzil va telefoningizni darhol ko&apos;radi:</p>
+              <button type="button" className="mt-1 break-all text-left font-mono text-ink underline" onClick={() => { void navigator.clipboard?.writeText(t.botLink!); setState({ ok: 'Havola nusxalandi' }); }}>{t.botLink}</button>
             </div>
           )}
+        </>}
+        {s && <>
+          <div className="flex gap-2" role="radiogroup" aria-label="SMS yuborish usuli">
+            {([['platform', 'MyService orqali'], ['own', "O'z Eskiz akkauntim"]] as const).map(([k, l]) => (
+              <button key={k} type="button" role="radio" aria-checked={shownMode === k} onClick={() => setMode(k)} className="chip">{l}</button>
+            ))}
+          </div>
+          {shownMode === 'platform' ? (
+            <div className="grid gap-1 text-sm">
+              {s.platform.available
+                ? <p>Shu oy: <b className="num font-mono">{s.platform.sent}</b>{s.platform.limit !== null ? <> / {s.platform.limit} SMS tarifda</> : ' SMS (cheksiz)'}{s.platform.extra > 0 && <span className="text-amber-700"> · {s.platform.extra} ta ortiqcha</span>}</p>
+                : <p className="text-mute">Tarifingizda SMS yo&apos;q yoki platforma SMS hali ulanmagan. O&apos;z Eskiz akkauntingizni ulashingiz mumkin.</p>}
+              {s.platform.testMode && <p className="text-xs text-amber-700">Platforma SMS hozir test rejimida.</p>}
+              {s.mode === 'own' && <Button variant="secondary" className="mt-2 w-fit" disabled={busy} onClick={() => run(() => api('/notifications/sms', { method: 'PUT', body: JSON.stringify({ mode: 'platform' }) }), 'SMS endi MyService orqali ketadi')}>MyService orqali yuborish</Button>}
+            </div>
+          ) : (
+            <form className="grid gap-3" onSubmit={e => { e.preventDefault(); void run(() => api('/notifications/sms', { method: 'PUT', body: JSON.stringify({ mode: 'own', email: email.trim(), ...(password ? { password } : {}), ...(from.trim() ? { from: from.trim() } : {}) }) }), 'Eskiz akkaunti ulandi'); }}>
+              {s.mode === 'own' && <Check ok={!s.error}>Ulangan: {s.email}{s.balance !== null ? ` · balans ${money(s.balance)} so'm` : ''}{s.error ? ' — ulanishda xato' : ''}</Check>}
+              <p className="text-xs text-mute">SMS puli to&apos;g&apos;ridan-to&apos;g&apos;ri sizning <a href="https://eskiz.uz" target="_blank" rel="noopener noreferrer" className="underline">eskiz.uz</a> balansingizdan yechiladi, tarif limiti qo&apos;llanmaydi. Parol shifrlangan holda saqlanadi.</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <FormField label="Eskiz email"><Input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="off" /></FormField>
+                <FormField label={s.mode === 'own' ? "Parol (o'zgartirish uchun)" : 'Eskiz parol'}><Input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" /></FormField>
+              </div>
+              <FormField label="Yuboruvchi nomi" description="Eskiz tasdiqlagan nom. Bo'lmasa 4546 qoladi."><Input value={from} onChange={e => setFrom(e.target.value)} placeholder="4546" maxLength={11} /></FormField>
+              <Button disabled={busy} className="sm:w-fit">{busy ? 'Tekshirilmoqda…' : s.mode === 'own' ? 'Saqlash' : 'Ulash'}</Button>
+            </form>
+          )}
+          <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+            <Button variant="secondary" disabled={busy} onClick={() => run(async () => { const r = await api<{ phone: string }>('/notifications/sms/test', { method: 'POST' }); setState({ ok: `Test SMS ${r.phone} raqamiga yuborildi` }); }, 'Test SMS yuborildi')}>Menga test SMS</Button>
+            <span className="text-xs text-mute">O&apos;z telefoningizga keladi (kuniga 5 tagacha).</span>
+          </div>
         </>}
         <ErrorBox>{state.error}</ErrorBox><Notice>{state.ok}</Notice>
       </div>
@@ -610,6 +650,52 @@ function LogoBlock() {
         </div>
       </div>
       <ErrorBox className="mt-3">{state.error}</ErrorBox><Notice className="mt-3">{state.ok}</Notice>
+    </Block>
+  );
+}
+
+type OwnBot = { allowed: boolean; connected: boolean; username: string | null; customers: number; webhook: { ok: boolean; error: string | null; pending: number } | null };
+
+/** The service's own Telegram bot: customers write to @its_bot instead of the MyService bot. */
+function OwnBotBlock() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ['own-bot'], queryFn: () => api<OwnBot>('/bot/own') });
+  const [token, setToken] = useState('');
+  const [state, setState] = useState<{ ok?: string; error?: string }>({});
+  const [busy, setBusy] = useState(false);
+  if (!data) return null;
+  async function run(fn: () => Promise<unknown>, ok: string) {
+    setBusy(true); setState({});
+    try { await fn(); await qc.invalidateQueries({ queryKey: ['own-bot'] }); setState({ ok }); setToken(''); }
+    catch (e) { setState({ error: errorText(e) }); } finally { setBusy(false); }
+  }
+  return (
+    <Block id="own-bot" title="O'z Telegram botingiz" hint="Mijozlar sizning nomingizdagi botdan xabar oladi (masalan @mobilefix_bot), MyService botidan emas.">
+      {!data.allowed && !data.connected ? (
+        <p className="text-sm">Bu imkoniyat Pro tarifida bor. <a href="/account" className="font-semibold underline">Tariflarni ko&apos;rish</a></p>
+      ) : data.connected ? (
+        <div className="grid gap-3 text-sm">
+          <p className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-st-tayyor" /> Ulangan: <a href={`https://t.me/${data.username}`} target="_blank" rel="noopener noreferrer" className="font-semibold underline">@{data.username}</a> · {data.customers} mijoz</p>
+          {data.webhook && !data.webhook.ok && <p className="flex items-start gap-2 text-red-700"><XCircle className="mt-0.5 h-4 w-4 shrink-0" />Telegram botga xabar yetkazmayapti: {data.webhook.error}. Botni qayta ulang yoki yordam bo&apos;limiga yozing.</p>}
+          {!data.allowed && <p className="text-amber-700">Tarifingizda bu imkoniyat yo&apos;q: xabarlar SMS orqali ketadi. <a href="/account" className="underline">Tarifni o&apos;zgartirish</a></p>}
+          <p className="text-mute">Chek va mijoz havolalaridagi Telegram tugmasi endi shu botni ochadi. Xodimlar uchun xabarlar MyService botida qoladi.</p>
+          <Button variant="ghost" className="w-fit text-red-600" disabled={busy} onClick={() => { if (window.confirm("Botni uzasizmi? Unga ulangan mijozlar qaytadan ulanishi kerak bo'ladi.")) void run(() => api('/bot/own', { method: 'DELETE' }), 'Bot uzildi'); }}>Botni uzish</Button>
+        </div>
+      ) : (
+        <form className="grid gap-3" onSubmit={e => { e.preventDefault(); void run(() => api('/bot/own', { method: 'PUT', body: JSON.stringify({ token: token.trim() }) }), 'Bot ulandi! Endi mijozlar unga yozishi mumkin.'); }}>
+          <ol className="list-decimal space-y-1 pl-5 text-sm text-mute">
+            <li>Telegramda <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="font-semibold text-ink underline">@BotFather</a> ni oching va <code className="font-mono text-ink">/newbot</code> yozing.</li>
+            <li>Bot nomini yozing (masalan: <i>Mobile Fix servis</i>), keyin <code className="font-mono text-ink">_bot</code> bilan tugaydigan username (masalan: <i>mobilefix_bot</i>).</li>
+            <li>BotFather bergan tokenni (<code className="font-mono text-ink">123456789:AA…</code>) pastga qo&apos;ying.</li>
+          </ol>
+          <FormField label="Bot tokeni"><Input value={token} onChange={e => setToken(e.target.value)} placeholder="123456789:AAH…" autoComplete="off" autoCapitalize="none" spellCheck={false} className="font-mono" /></FormField>
+          <p className="text-xs text-mute">Token shifrlangan holda saqlanadi. Uni boshqa hech kimga bermang.</p>
+          <ErrorBox>{state.error}</ErrorBox>
+          <Button disabled={busy || token.trim().length < 20} className="sm:w-fit">{busy ? 'Tekshirilmoqda…' : 'Botni ulash'}</Button>
+        </form>
+      )}
+      {data.connected && <><ErrorBox className="mt-3">{state.error}</ErrorBox></>}
+      <Notice className="mt-3">{state.ok}</Notice>
     </Block>
   );
 }

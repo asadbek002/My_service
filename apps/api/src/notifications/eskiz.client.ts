@@ -1,7 +1,8 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import Redis from 'ioredis';
 
-const ESKIZ_BASE = 'https://notify.eskiz.uz/api';
+// Tests point the client at a local mock.
+const eskizBase = () => process.env.NODE_ENV === 'test' && process.env.ESKIZ_API_URL ? process.env.ESKIZ_API_URL.replace(/\/$/, '') : 'https://notify.eskiz.uz/api';
 const TOKEN_CACHE_KEY = 'eskiz:token';
 const TOKEN_TTL = 86400; // 24 soat (Eskiz JWT 30 kun amal qiladi, 24 soat kesh yetarli)
 
@@ -29,6 +30,16 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
   private inMemoryToken: string | undefined = undefined;
   private inMemoryExpiry = 0;
   private readonly logger = new Logger('EskizClient');
+  /** A service's own Eskiz account; unset = the platform account from the environment. */
+  private account?: { email: string; password: string; from: string };
+
+  /** A client for a service's own Eskiz account (token kept in memory of this instance). */
+  static forAccount(email: string, password: string, from?: string) {
+    const client = new EskizClient();
+    client.account = { email, password, from: from?.trim() || '4546' };
+    return client;
+  }
+  private get cacheKey() { return this.account ? null : TOKEN_CACHE_KEY; }
 
   async onModuleInit() {
     if (!process.env.REDIS_URL) return;
@@ -55,7 +66,7 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
     // 1. Redis keshini tekshirish
     if (this.redis) {
       try {
-        const cached = await this.redis.get(TOKEN_CACHE_KEY);
+        const cached = this.cacheKey ? await this.redis.get(this.cacheKey) : null;
         if (cached) return cached;
       } catch {
         // Redis xatosi yuz bersa in-memoryga o'tadi
@@ -88,8 +99,8 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
    * POST /api/auth/login — Yangi Bearer token olish
    */
   private async loginToken(): Promise<string> {
-    const email = process.env.SMS_API_KEY || process.env.ESKIZ_EMAIL;
-    const password = process.env.SMS_API_SECRET || process.env.ESKIZ_PASSWORD;
+    const email = this.account?.email ?? (process.env.SMS_API_KEY || process.env.ESKIZ_EMAIL);
+    const password = this.account?.password ?? (process.env.SMS_API_SECRET || process.env.ESKIZ_PASSWORD);
 
     if (!email || !password) {
       throw new Error('ESKIZ_CREDENTIALS_MISSING');
@@ -99,7 +110,7 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
     formData.append('email', email);
     formData.append('password', password);
 
-    const res = await fetch(`${ESKIZ_BASE}/auth/login`, {
+    const res = await fetch(`${eskizBase()}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       signal: AbortSignal.timeout(10000),
@@ -130,7 +141,7 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
    * PATCH /api/auth/refresh — Tokenni yangilash
    */
   private async refreshToken(oldToken: string): Promise<string> {
-    const res = await fetch(`${ESKIZ_BASE}/auth/refresh`, {
+    const res = await fetch(`${eskizBase()}/auth/refresh`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${oldToken}`,
@@ -160,7 +171,7 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
 
     if (this.redis) {
       try {
-        await this.redis.set(TOKEN_CACHE_KEY, token, 'EX', TOKEN_TTL);
+        if (this.cacheKey) await this.redis.set(this.cacheKey, token, 'EX', TOKEN_TTL);
       } catch {
         // ignore redis caching errors
       }
@@ -179,12 +190,12 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
       throw new Error('ESKIZ_INVALID_PHONE');
     }
 
-    const from = process.env.SMS_FROM || process.env.ESKIZ_FROM || '4546';
+    const from = this.account?.from ?? (process.env.SMS_FROM || process.env.ESKIZ_FROM || '4546');
     const callbackUrl = process.env.ESKIZ_CALLBACK_URL || '';
 
     // Test rejimida bo'lsa, Eskiz talabiga binoan test matnidan foydalanish mumkin
     let finalMessage = message;
-    if (process.env.ESKIZ_TEST_MODE === 'true' && !message.includes('Eskiz')) {
+    if (!this.account && process.env.ESKIZ_TEST_MODE === 'true' && !message.includes('Eskiz')) {
       finalMessage = `Bu Eskiz dan test: ${message}`;
     }
 
@@ -198,7 +209,7 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
       formData.append('callback_url', callbackUrl);
     }
 
-    let res = await fetch(`${ESKIZ_BASE}/message/sms/send`, {
+    let res = await fetch(`${eskizBase()}/message/sms/send`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -214,7 +225,7 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
       this.inMemoryExpiry = 0;
       if (this.redis) {
         try {
-          await this.redis.del(TOKEN_CACHE_KEY);
+          if (this.cacheKey) await this.redis.del(this.cacheKey);
         } catch {
           // ignore
         }
@@ -223,7 +234,7 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
       const newToken = await this.loginToken();
       await this.cacheToken(newToken);
 
-      res = await fetch(`${ESKIZ_BASE}/message/sms/send`, {
+      res = await fetch(`${eskizBase()}/message/sms/send`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${newToken}`,
@@ -250,7 +261,7 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
    */
   async getStatus(smsId: string): Promise<string> {
     const token = await this.getToken();
-    const res = await fetch(`${ESKIZ_BASE}/message/sms/status_by_id/${encodeURIComponent(smsId)}`, {
+    const res = await fetch(`${eskizBase()}/message/sms/status_by_id/${encodeURIComponent(smsId)}`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -275,7 +286,7 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
    */
   async getUserLimit(): Promise<{ balance: number; smsCount: number }> {
     const token = await this.getToken();
-    const res = await fetch(`${ESKIZ_BASE}/user/get-limit`, {
+    const res = await fetch(`${eskizBase()}/user/get-limit`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -304,7 +315,7 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
    */
   async getPrices(): Promise<EskizPrice[]> {
     const token = await this.getToken();
-    const res = await fetch(`${ESKIZ_BASE}/user/prices`, {
+    const res = await fetch(`${eskizBase()}/user/prices`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -331,7 +342,7 @@ export class EskizClient implements OnModuleInit, OnModuleDestroy {
     formData.append('dispatch_id', dispatchId);
     formData.append('is_ad', isAd);
 
-    const res = await fetch(`${ESKIZ_BASE}/report/total-by-dispatch${query}`, {
+    const res = await fetch(`${eskizBase()}/report/total-by-dispatch${query}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,

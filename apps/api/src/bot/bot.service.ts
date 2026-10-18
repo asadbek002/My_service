@@ -1,6 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
+import Redis from 'ioredis';
 import { Database } from '../database';
 import { PhoneVerification } from '../auth/verification';
 import { esc, fmtDate, som, STATUS_LABEL, tashkentDay, TelegramClient, type Keyboard } from './telegram.client';
@@ -43,6 +44,8 @@ const adminKeyboard: Keyboard = { keyboard: [[{ text: BTN.platform }], [{ text: 
 @Injectable()
 export class BotService {
   private readonly logger = new Logger('Bot');
+  // Which service a visitor came from (its public bot link), so its contacts show before a phone is shared.
+  private readonly redis = process.env.REDIS_URL ? new Redis(process.env.REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 1 }) : null;
   constructor(private readonly db: Database, readonly telegram: TelegramClient, @Optional() private readonly verification?: PhoneVerification) {}
 
   // ---------- Linking ----------
@@ -112,6 +115,12 @@ export class BotService {
   }
 
   private async onStart(chatId: string, payload: string | undefined, name?: string) {
+    if (payload && /^s_[a-z0-9]{10,40}$/.test(payload)) {
+      // The service's public bot link (Instagram, a sticker on the counter): its contacts, nobody else's.
+      const org = await this.db.organization.findUnique({ where: { id: payload.slice(2) }, select: { id: true, name: true } });
+      if (org && this.redis) await this.redis.set('bot:visit:' + chatId, org.id, 'EX', 30 * 86400).catch(() => undefined);
+      if (org) return this.telegram.send(chatId, `Assalomu alaykum${name ? ', ' + esc(name) : ''}! 👋\n\n<b>${esc(org.name)}</b> servisi. Pastdagi tugmalar orqali manzil va telefonni ko‘ring yoki raqamingizni yuborib buyurtmalaringizni kuzating.`, await this.menu(chatId));
+    }
     if (payload && /^v_[A-Za-z0-9_-]{43}$/.test(payload)) {
       // Phone confirmation for sign-up or a password reset in the web app.
       if (!this.verification || !await this.verification.telegramOpened(payload.slice(2), chatId)) return this.telegram.send(chatId, 'Havola eskirgan. Ilovada «Telegram orqali tasdiqlash» ni qayta bosing.');
@@ -148,7 +157,7 @@ export class BotService {
         if (!used.count) return null;
         const order = await tx.order.findFirst({ where: { id: link.orderId, organizationId: link.organizationId }, include: { organization: true } });
         if (!order) return null;
-        await tx.customer.update({ where: { organizationId_id: { organizationId: link.organizationId, id: order.customerId } }, data: { telegramChatId: chatId } });
+        await tx.customer.update({ where: { organizationId_id: { organizationId: link.organizationId, id: order.customerId } }, data: { telegramChatId: chatId, telegramBot: null } });
         await tx.auditLog.create({ data: { organizationId: link.organizationId, action: 'TELEGRAM_LINKED', entityId: order.customerId } });
         return order;
       });
@@ -169,7 +178,8 @@ export class BotService {
     // A pending web confirmation takes this contact; it is not a customer linking their orders.
     const purpose = await this.verification?.telegramContact(chatId, phone);
     if (purpose) return this.telegram.send(chatId, `✅ Raqam tasdiqlandi: ${esc(phone)}\n\nIlovaga qayting — ${purpose === 'signup' ? 'ro‘yxatdan o‘tishni davom ettiring' : 'yangi parol qo‘ying'}.`, await this.menu(chatId));
-    const found = await this.db.customer.updateMany({ where: { phone }, data: { telegramChatId: chatId } });
+    // Customers already connected to a service's own bot stay there.
+    const found = await this.db.customer.updateMany({ where: { phone, OR: [{ telegramBot: null }, { telegramChatId: null }] }, data: { telegramChatId: chatId, telegramBot: null } });
     if (!found.count) {
       return this.telegram.send(chatId, `Bu raqam (${esc(phone)}) bo'yicha buyurtma topilmadi. Servisga qurilma topshirganingizda shu raqamni ayting — keyin bu yerda ko'rinadi.`, customerKeyboard);
     }
@@ -224,24 +234,22 @@ export class BotService {
    * is used, so the customer can always call. Each service also gets a tappable contact card.
    */
   /**
-   * Which services to show under "contact": the customer's own; for staff, their service; for anyone
-   * else (new visitors) the services that published bot contacts, or every active service.
+   * Which services to show under "contact": the customer's own; for staff, their service; nobody else's.
    */
   private async contactServices(chatId: string): Promise<string[]> {
-    const own = await this.db.customer.findMany({ where: { telegramChatId: chatId }, select: { organizationId: true } });
+    const own = await this.db.customer.findMany({ where: { telegramChatId: chatId, telegramBot: null }, select: { organizationId: true } });
     if (own.length) return [...new Set(own.map(c => c.organizationId))];
     const staff = await this.db.user.findMany({ where: { telegramChatId: chatId, status: 'ACTIVE' }, select: { organizationId: true } });
     if (staff.length) return [...new Set(staff.map(u => u.organizationId))];
-    const now = new Date();
-    const active = { subscription: { is: { status: { in: ['ACTIVE', 'TRIAL'] }, expiresAt: { gt: now } } } };
-    const orgs = (await this.db.organization.findMany({ where: active, select: { id: true }, orderBy: { createdAt: 'asc' }, take: 50 })).map(o => o.id);
-    const published = new Set((await this.db.organizationSetting.findMany({ where: { key: 'bot_contact', organizationId: { in: orgs } }, select: { organizationId: true } })).map(x => x.organizationId));
-    return (published.size ? orgs.filter(id => published.has(id)) : orgs).slice(0, 10);
+    // A visitor who has not shared a phone sees only the service whose public link brought them: the
+    // platform bot never lists one service's contacts to strangers or to another service's customers.
+    const visited = this.redis ? await this.redis.get('bot:visit:' + chatId).catch(() => null) : null;
+    return visited ? [visited] : [];
   }
 
   private async sendContactItem(chatId: string, item: 'tg' | 'ig' | 'addr' | 'call') {
     const orgIds = await this.contactServices(chatId);
-    if (!orgIds.length) return this.send(chatId, 'Servis ma\'lumotlari topilmadi.');
+    if (!orgIds.length) return this.send(chatId, 'Avval telefon raqamingizni yuboring — qaysi servisda buyurtmangiz borligini topamiz.');
     const [orgs, settings, owners] = await Promise.all([
       this.db.organization.findMany({ where: { id: { in: orgIds } } }),
       this.db.organizationSetting.findMany({ where: { key: { in: ['general', 'receipt', 'bot_contact'] }, organizationId: { in: orgIds } } }),
@@ -284,56 +292,13 @@ export class BotService {
 
   private async sendServices(chatId: string) {
     const orgIds = await this.contactServices(chatId);
-    if (!orgIds.length) return this.send(chatId, 'Servis ma’lumotlari hali kiritilmagan.');
-    const organizations = await this.db.organization.findMany({ where: { id: { in: orgIds } } });
-    const [settings, owners] = await Promise.all([
-      this.db.organizationSetting.findMany({ where: { key: { in: ['general', 'receipt', 'bot_contact'] }, organizationId: { in: orgIds } } }),
-      this.db.user.findMany({ where: { organizationId: { in: orgIds }, status: 'ACTIVE', roles: { some: { role: { systemKey: 'OWNER' } } } }, select: { organizationId: true, phone: true }, orderBy: { createdAt: 'asc' } }),
-    ]);
-    const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
-    const handle = (v: string) => v.replace(/^@/, '').replace(/^https?:\/\/(www\.)?(t\.me|instagram\.com)\//, '').replace(/\/.*$/, '');
-    for (const orgId of orgIds) {
-      const org = organizations.find(o => o.id === orgId)!;
-      const value = (key: string) => (settings.find(x => x.organizationId === orgId && x.key === key)?.value ?? {}) as Record<string, unknown>;
-      const g = value('general'), r = value('receipt');
-      // Settings → "Telegram bot: bog'lanish" wins field by field once saved (an empty field hides
-      // that line); before it is saved, the receipt details and the owner's phone are used.
-      const b = settings.some(x => x.organizationId === orgId && x.key === 'bot_contact') ? value('bot_contact') : null;
-      const pick = (field: string, fallback: string) => b && typeof b[field] === 'string' ? text(b[field]) : fallback;
-      const name = pick('name', text(g.name)) || text(g.name) || org.name;
-      const phone = pick('phone', text(g.phone) || owners.find(o => o.organizationId === orgId)?.phone || '');
-      const phone2 = pick('phone2', '');
-      const address = pick('address', text(g.address));
-      const landmark = pick('landmark', '');
-      const hours = pick('hours', '');
-      const note = pick('note', '');
-      const mapUrl = pick('mapUrl', '');
-      // Same handles as on the printed receipt unless set here (unset → MyService's own, empty → hidden).
-      const telegram = handle(pick('telegram', typeof r.telegram === 'string' ? r.telegram.trim() : '@myserviceuzz'));
-      const instagram = handle(pick('instagram', typeof r.instagram === 'string' ? r.instagram.trim() : 'myserviceuz'));
-      const lines = [`🛠 <b>${esc(name)}</b>`];
-      if (phone) lines.push(`📞 ${esc(prettyPhone(phone))}`);
-      if (phone2) lines.push(`📞 ${esc(prettyPhone(phone2))}`);
-      if (address) lines.push(`📍 ${esc(address)}`);
-      if (landmark) lines.push(`🧭 Mo'ljal: ${esc(landmark)}`);
-      if (hours) lines.push(`🕘 Ish vaqti: ${esc(hours)}`);
-      if (telegram) lines.push(`✈️ Telegram: @${esc(telegram)}`);
-      if (instagram) lines.push(`📷 Instagram: ${esc(instagram)}`);
-      if (note) lines.push('', esc(note));
-      if (!phone && !address) lines.push('Aloqa ma’lumotlari hali kiritilmagan.');
-      const map = /^https?:\/\/\S+$/.test(mapUrl) ? mapUrl : address ? 'https://yandex.uz/maps/?text=' + encodeURIComponent(address) : '';
-      // Only http(s) links are valid in inline buttons; calling is the contact card sent below.
-      const buttons = [
-        ...(telegram ? [{ text: '✈️ Telegram', url: `https://t.me/${telegram}` }] : []),
-        ...(instagram ? [{ text: '📷 Instagram', url: `https://instagram.com/${instagram}` }] : []),
-        ...(map ? [{ text: '📍 Manzil', url: map }] : []),
-      ];
-      await this.telegram.send(chatId, lines.join('\n'), buttons.length ? { inline_keyboard: [buttons] } : await this.menu(chatId));
-      if (phone) await this.telegram.sendContact(chatId, phone, name);
+    if (!orgIds.length) return this.send(chatId, 'Servis aloqa ma’lumotlarini ko‘rish uchun avval telefon raqamingizni yuboring — qaysi servisda buyurtmangiz borligini topamiz.');
+    for (const card of await serviceCards(this.db, orgIds)) {
+      await this.telegram.send(chatId, card.text, card.buttons.length ? { inline_keyboard: [card.buttons] } : await this.menu(chatId));
+      if (card.phone) await this.telegram.sendContact(chatId, card.phone, card.name);
     }
-    if (orgIds.length) await this.telegram.send(chatId, 'Bosh menyu:', await this.menu(chatId));
+    await this.telegram.send(chatId, 'Bosh menyu:', await this.menu(chatId));
   }
-
 
   private async help(chatId: string) {
     const w = await this.who(chatId);
@@ -435,4 +400,56 @@ export class BotService {
     const admins = await this.db.platformAdmin.findMany({ where: { active: true, telegramChatId: { not: null } }, select: { telegramChatId: true } });
     for (const a of admins) await this.telegram.send(a.telegramChatId!, text);
   }
+}
+
+/**
+ * A service's contact card for the bot: what it entered in Settings → "Telegram bot: bog'lanish"
+ * (field by field once saved; an empty field hides that line), else the receipt details and the
+ * owner's phone. Used by the platform bot and by the service's own bot.
+ */
+export async function serviceCards(db: Database, orgIds: string[]) {
+  const [organizations, settings, owners] = await Promise.all([
+    db.organization.findMany({ where: { id: { in: orgIds } } }),
+    db.organizationSetting.findMany({ where: { key: { in: ['general', 'receipt', 'bot_contact'] }, organizationId: { in: orgIds } } }),
+    db.user.findMany({ where: { organizationId: { in: orgIds }, status: 'ACTIVE', roles: { some: { role: { systemKey: 'OWNER' } } } }, select: { organizationId: true, phone: true }, orderBy: { createdAt: 'asc' } }),
+  ]);
+  const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const handle = (v: string) => v.replace(/^@/, '').replace(/^https?:\/\/(www\.)?(t\.me|instagram\.com)\//, '').replace(/\/.*$/, '');
+  return orgIds.flatMap(orgId => {
+    const org = organizations.find(o => o.id === orgId);
+    if (!org) return [];
+    const value = (key: string) => (settings.find(x => x.organizationId === orgId && x.key === key)?.value ?? {}) as Record<string, unknown>;
+    const g = value('general'), r = value('receipt');
+    const b = settings.some(x => x.organizationId === orgId && x.key === 'bot_contact') ? value('bot_contact') : null;
+    const pick = (field: string, fallback: string) => b && typeof b[field] === 'string' ? text(b[field]) : fallback;
+    const name = pick('name', text(g.name)) || text(g.name) || org.name;
+    const phone = pick('phone', text(g.phone) || owners.find(o => o.organizationId === orgId)?.phone || '');
+    const phone2 = pick('phone2', '');
+    const address = pick('address', text(g.address));
+    const landmark = pick('landmark', '');
+    const hours = pick('hours', '');
+    const note = pick('note', '');
+    const mapUrl = pick('mapUrl', '');
+    // Same handles as on the printed receipt unless set here (unset → MyService's own, empty → hidden).
+    const telegram = handle(pick('telegram', typeof r.telegram === 'string' ? r.telegram.trim() : '@myserviceuzz'));
+    const instagram = handle(pick('instagram', typeof r.instagram === 'string' ? r.instagram.trim() : 'myserviceuz'));
+    const lines = [`🛠 <b>${esc(name)}</b>`];
+    if (phone) lines.push(`📞 ${esc(prettyPhone(phone))}`);
+    if (phone2) lines.push(`📞 ${esc(prettyPhone(phone2))}`);
+    if (address) lines.push(`📍 ${esc(address)}`);
+    if (landmark) lines.push(`🧭 Mo'ljal: ${esc(landmark)}`);
+    if (hours) lines.push(`🕘 Ish vaqti: ${esc(hours)}`);
+    if (telegram) lines.push(`✈️ Telegram: @${esc(telegram)}`);
+    if (instagram) lines.push(`📷 Instagram: ${esc(instagram)}`);
+    if (note) lines.push('', esc(note));
+    if (!phone && !address) lines.push('Aloqa ma’lumotlari hali kiritilmagan.');
+    const map = /^https?:\/\/\S+$/.test(mapUrl) ? mapUrl : address ? 'https://yandex.uz/maps/?text=' + encodeURIComponent(address) : '';
+    // Only http(s) links are valid in inline buttons; calling is the contact card sent after.
+    const buttons = [
+      ...(telegram ? [{ text: '✈️ Telegram', url: `https://t.me/${telegram}` }] : []),
+      ...(instagram ? [{ text: '📷 Instagram', url: `https://instagram.com/${instagram}` }] : []),
+      ...(map ? [{ text: '📍 Manzil', url: map }] : []),
+    ];
+    return [{ orgId, name, phone, address, map, telegram, instagram, text: lines.join('\n'), buttons }];
+  });
 }

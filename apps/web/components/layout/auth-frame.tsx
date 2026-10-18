@@ -34,6 +34,7 @@ export function AuthFrame({ eyebrow, title, children }: { eyebrow: string; title
             <h1 className="mt-1 text-2xl font-bold tracking-tight">{title}</h1>
             <div className="mt-5">{children}</div>
           </div>
+          <p className="mt-4 flex justify-center gap-4 text-xs text-mute"><a href="/terms" className="hover:text-ink hover:underline">Ommaviy oferta</a><a href="/privacy" className="hover:text-ink hover:underline">Maxfiylik siyosati</a></p>
         </section>
       </div>
     </main>

@@ -10,9 +10,17 @@ export class TelegramClient {
 
   // Values pasted into .env often carry quotes, spaces or a Windows line ending.
   private static clean(value: string | undefined) { return (value ?? '').trim().replace(/^['"]|['"]$/g, '').trim(); }
-  private get token() { return TelegramClient.clean(process.env.TELEGRAM_BOT_TOKEN); }
+  /** Set for a service's own bot; the platform bot reads its token from the environment. */
+  private fixed?: { token: string; username: string | null };
+  /** A client for a bot other than the platform one (a service's own bot). */
+  static forBot(token: string, username: string | null) {
+    const client = new TelegramClient();
+    client.fixed = { token: TelegramClient.clean(token), username };
+    return client;
+  }
+  private get token() { return this.fixed ? this.fixed.token : TelegramClient.clean(process.env.TELEGRAM_BOT_TOKEN); }
   get enabled() { return !!this.token; }
-  get username() { return TelegramClient.clean(process.env.TELEGRAM_BOT_USERNAME).replace(/^@/, '') || null; }
+  get username() { return this.fixed ? this.fixed.username : TelegramClient.clean(process.env.TELEGRAM_BOT_USERNAME).replace(/^@/, '') || null; }
   /** t.me deep link that opens the bot with a /start payload. */
   deepLink(payload: string) { return this.username ? `https://t.me/${this.username}?start=${payload}` : null; }
 

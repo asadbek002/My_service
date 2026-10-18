@@ -17,6 +17,17 @@ import { FormField } from '../../components/ui/form-field';
 import { Empty, ErrorBox, Loading } from '../../components/ui/feedback';
 import { TicketStamp, type Ticket } from './ticket';
 
+const FAQ: [string, string][] = [
+  ['Qurilmani qanday qabul qilaman?', "Pastdagi to'q sariq «+ Qabul» tugmasi. Telefon raqamini yozing — oldin kelgan mijoz o'zi topiladi. Qurilma, nosozlik va narxni yozib «Qabul qilish» ni bosing, chek chiqadi."],
+  ['Mijozga «qurilmangiz tayyor» xabari qanday boradi?', "Buyurtmani «Tayyor» qilganingizda: mijoz Telegram botga ulangan bo'lsa — Telegramga, bo'lmasa SMS ga. Mijoz botga telefon raqamini yuborib yoki buyurtma sahifasidagi «Mijozga havola» tugmasi bilan yuborilgan Telegram havolasi orqali ulanadi."],
+  ["Chek printeri noto'g'ri chiqaryapti", "Sozlamalar → «Servis va chek» da qog'oz enini (58 yoki 80 mm) tanlang. Qog'oz rulonining enini o'lchab ko'ring."],
+  ["Xodim qo'shsam bo'ladimi?", "Ha: Menyu → Xodimlar → «Yangi xodim». Xodim o'z login va parolida kiradi, nimalarni qila olishini Sozlamalar → «Rollar va ruxsatlar» da belgilaysiz."],
+  ["Mijoz to'liq to'lamasdan olib ketdi", "Berishda «Qarzga (qisman yoki umuman to'lamagan)» variantini tanlang. Qarzdorlar Hisobot → «Qarzdorlar» da turadi; to'laganda buyurtma sahifasidan to'lovni qo'shasiz."],
+  ['Parolimni unutdim', "Kirish sahifasida «Parolni unutdingizmi?» → telefoningizni SMS yoki Telegram orqali tasdiqlang → yangi parol qo'ying."],
+  ["O'z Telegram botimni ulasam bo'ladimi?", "Pro tarifida: Sozlamalar → «O'z Telegram botingiz». @BotFather da bot ochib, tokenni qo'yasiz — mijozlarga xabar sizning nomingizdagi botdan boradi."],
+  ["Obuna tugasa ma'lumotlarim o'chadimi?", "Yo'q. Obuna tugagach bir necha imtiyozli kun to'liq ishlaydi, keyin faqat ko'rish rejimi qoladi. To'lovdan keyin hammasi avvalgidek ishlaydi."],
+];
+
 /** Yordam: write to the platform and follow the answers. Works even when the service is blocked. */
 export default function Help() {
   const router = useRouter();
@@ -54,6 +65,17 @@ export default function Help() {
           <span className="min-w-0 flex-1"><b className="block">Shoshilinchmi?</b><span className="text-mute">Telegramda to&apos;g&apos;ridan-to&apos;g&apos;ri yozing</span></span>
           <ChevronRight className="h-4 w-4 shrink-0 text-mute" />
         </a>
+        <section>
+          <h2 className="mb-2 text-base font-bold">Ko&apos;p beriladigan savollar</h2>
+          <div className="divide-y overflow-hidden rounded-2xl border bg-white">
+            {FAQ.map(([q, a]) => (
+              <details key={q} className="group px-4 py-3 [&_summary::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold">{q}<ChevronRight className="h-4 w-4 shrink-0 text-mute transition-transform group-open:rotate-90" /></summary>
+                <p className="mt-2 whitespace-pre-line text-sm text-mute">{a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
         <h2 className="pt-2 text-base font-bold">Murojaatlarim</h2>
         {error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading ? <Loading rows={2} /> : !data?.length ? <Empty title="Hali murojaat yo'q" /> : (
           <ul className="divide-y overflow-hidden rounded-2xl border bg-white">

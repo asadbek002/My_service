@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { platformApi } from './lib';
 import { PlansTab, type Plan } from './plans-editor';
-import { AnnouncementsTab, OrgDetail, OrgList, TicketsTab, TwoFactorCard } from './parts';
+import { AnnouncementsTab, LegalCard, MonitorCard, OrgDetail, OrgList, TicketsTab, TwoFactorCard } from './parts';
 
 type Org = { id: string; name: string; slug: string; createdAt: string; _count: { users: number; branches: number; orders: number }; subscription: { status: string; expiresAt: string; plan: Plan } | null };
 type Analytics = { totalOrganizations: number; activeOrganizations: number; activeSubscriptions: number; trials: number; newOrganizations: number; churned: number; churnRate: number; mrr: string };
@@ -143,7 +143,9 @@ export default function PlatformConsole({ tab, orgId, ticketId }: { tab: Platfor
         {tab === 'system' && system && (
           <>
             <TwoFactorCard onError={fail} />
+            <MonitorCard onError={fail} />
             <BotCard onError={fail} />
+            <LegalCard onError={fail} />
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <Stat label="Database" value={system.database} />
               <Stat label="Faol obunalar" value={system.activeSubscriptions} />

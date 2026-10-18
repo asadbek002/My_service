@@ -15,6 +15,7 @@ import { BotModule } from './bot/bot.module';
 import { HealthController } from './health.controller';
 import { VerificationModule } from './auth/verification';
 import { AccountModule } from './management/account.module';
+import { MonitorModule } from './platform/monitor';
 
 @Module({
   imports: [
@@ -30,7 +31,7 @@ import { AccountModule } from './management/account.module';
         return config;
       },
     }),
-    DatabaseModule, VerificationModule, AuthModule, StaffModule, OrdersModule, PartsModule, BotModule, LinksModule, NotificationsModule, ManagementModule, SettingsModule, PlatformModule, DocumentsModule, AccountModule,
+    DatabaseModule, VerificationModule, AuthModule, StaffModule, OrdersModule, PartsModule, BotModule, LinksModule, NotificationsModule, ManagementModule, SettingsModule, PlatformModule, DocumentsModule, AccountModule, MonitorModule,
   ],
   controllers: [HealthController],
 })

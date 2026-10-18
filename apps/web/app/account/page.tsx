@@ -17,7 +17,7 @@ type Plan = { id: string; name: string; description: string | null; monthlyPrice
 type Account = {
   organization: { name: string; createdAt: string; blocked: { at: string; reason: string | null } | null };
   subscription: { status: string; expiresAt: string; graceUntil: string | null; daysLeft: number; inGrace: boolean; readOnly: boolean; plan: Plan; nextPlanId: string | null; billingPeriod: 'MONTH' | 'YEAR' } | null;
-  usage: { month: string; orders: number; ordersLimit: number | null; sms: number; smsLimit: number | null; staff: number; staffLimit: number | null; branches: number; branchesLimit: number | null };
+  usage: { month: string; orders: number; ordersLimit: number | null; sms: number; smsLimit: number | null; smsExtra: number; smsExtraCost: string; smsOwnAccount: boolean; staff: number; staffLimit: number | null; branches: number; branchesLimit: number | null };
   plans: Plan[];
   billing: { extraSmsPrice: string; yearlyFreeMonths: number };
   invoices: { id: string; amount: string; status: string; issuedAt: string; dueAt: string }[];
@@ -91,7 +91,9 @@ export default function AccountPage() {
           <div className="flex items-baseline justify-between"><h2 className="font-bold">Shu oy</h2><span className="num font-mono text-xs text-mute">{data.usage.month}</span></div>
           <div className="mt-3 space-y-3">
             <Usage label="Buyurtmalar" used={data.usage.orders} limit={data.usage.ordersLimit} />
-            <Usage label="SMS" used={data.usage.sms} limit={data.usage.smsLimit} hint={data.usage.smsLimit !== null ? `Ortig'i — ${som(data.billing.extraSmsPrice)} dan` : undefined} />
+            {data.usage.smsOwnAccount
+              ? <div className="flex items-baseline justify-between text-sm"><span className="font-medium">SMS</span><span className="text-xs text-mute">o&apos;z Eskiz akkauntingizdan</span></div>
+              : <Usage label="SMS" used={data.usage.sms} limit={data.usage.smsLimit} hint={data.usage.smsExtra > 0 ? `${data.usage.smsExtra} ta ortiqcha × ${som(data.billing.extraSmsPrice)} = ${som(data.usage.smsExtraCost)} (keyingi to'lovga qo'shiladi)` : data.usage.smsLimit !== null ? `Ortig'i — ${som(data.billing.extraSmsPrice)} dan` : undefined} />}
             <Usage label="Xodimlar" used={data.usage.staff} limit={data.usage.staffLimit} />
             <Usage label="Filiallar" used={data.usage.branches} limit={data.usage.branchesLimit} />
           </div>

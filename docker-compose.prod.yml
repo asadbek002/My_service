@@ -1,5 +1,13 @@
+# Container logs rotate at 10 MB x 5 files each, so they never fill the disk.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   postgres:
+    logging: *logging
     image: postgres:17-alpine
     restart: unless-stopped
     env_file: .env
@@ -19,6 +27,7 @@ services:
       retries: 10
 
   redis:
+    logging: *logging
     image: redis:7-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
@@ -28,6 +37,7 @@ services:
       - redis_data:/data
 
   api:
+    logging: *logging
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -49,11 +59,13 @@ services:
         condition: service_started
 
   web:
+    logging: *logging
     build:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_SUPPORT_TELEGRAM: ${NEXT_PUBLIC_SUPPORT_TELEGRAM:-myserviceuzz}
     restart: unless-stopped
     ports:
       - "127.0.0.1:3003:3000"

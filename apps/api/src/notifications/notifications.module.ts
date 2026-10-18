@@ -1,10 +1,12 @@
-import { Controller, Get, Post, Body, Injectable, Module, OnModuleInit, OnModuleDestroy, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Put, Body, HttpCode, HttpException, Injectable, Module, OnModuleInit, OnModuleDestroy, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { BotModule } from '../bot/bot.module';
 import { BotService } from '../bot/bot.service';
+import { OwnBots } from '../bot/own-bot';
 import { esc, fmtDate, som as fmtSom, TelegramClient } from '../bot/telegram.client';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { IsOptional, IsString, Length, Matches } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, Length, Matches } from 'class-validator';
 import { EskizClient } from './eskiz.client';
+import { platformSmsConfigured, SmsAccounts } from './sms-accounts';
 import { Queue, Worker } from 'bullmq';
 import { Database } from '../database';
 import { createLink } from './links.module';
@@ -12,9 +14,12 @@ import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { orderScope } from '../orders/orders.module';
 
-class TestSmsDto {
-  @IsString() @Matches(/^\+?[1-9][0-9]{7,14}$/) phone!: string;
-  @IsOptional() @IsString() @Length(1, 500) message?: string;
+class SmsSettingsDto {
+  @IsIn(['platform', 'own']) mode!: 'platform' | 'own';
+  @IsOptional() @IsEmail() email?: string;
+  @IsOptional() @IsString() @Length(1, 200) password?: string;
+  /** Eskiz sender name (nickname) approved for the account; 4546 is Eskiz's default. */
+  @IsOptional() @IsString() @Matches(/^[A-Za-z0-9 ._-]{1,11}$/) from?: string;
 }
 
 function render(template:string,values:Record<string,string>){return template.replace(/{{([a-z_]+)}}/g,(_,key:string)=>values[key]??'');}
@@ -36,7 +41,7 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
   private timer?: ReturnType<typeof setInterval>;
   private dispatching = false;
   private readonly logger = new Logger('Notifications');
-  constructor(private readonly db: Database, private readonly eskiz: EskizClient, @Optional() private readonly bot?: BotService) {}
+  constructor(private readonly db: Database, private readonly eskiz: EskizClient, private readonly sms: SmsAccounts, @Optional() private readonly bot?: BotService, @Optional() private readonly own?: OwnBots) {}
   async onModuleInit() {
     if (process.env.NOTIFICATIONS_ENABLED !== 'true') return;
     const url = new URL(process.env.REDIS_URL!);
@@ -78,6 +83,17 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
       : `✅ <b>Tayyor</b> ${esc(order.number)}\n${esc(order.device.brand + ' ' + order.device.model)}\n${esc(order.customer.firstName)} ${esc(order.customer.phone)}${actor ? '\nUsta: ' + esc(actor.firstName) : ''}${web}`;
     await this.bot.notifyStaff(event.organizationId, text, actorId, event.type === 'ORDER_RECEIVED' ? 'newOrder' : 'ready');
   }
+  /** Send through the platform's provider (Eskiz, or a generic HTTPS webhook). Returns the provider id. */
+  async platformSms(phone: string, text: string, reference: string) {
+    if (process.env.SMS_PROVIDER === 'eskiz') return (await this.eskiz.send(phone, text)).id;
+    const apiUrl = process.env.SMS_API_URL;
+    if (!apiUrl) throw new Error('SMS_NOT_CONFIGURED');
+    const endpoint = new URL(apiUrl);
+    if (endpoint.protocol !== 'https:' && !(process.env.NODE_ENV === 'test' && ['127.0.0.1','localhost'].includes(endpoint.hostname))) throw new Error('SMS_HTTPS_REQUIRED');
+    const sms = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.SMS_API_KEY, 'Idempotency-Key': reference }, signal: AbortSignal.timeout(10000), body: JSON.stringify({ to: phone, message: text, reference }) });
+    if (!sms.ok) throw new Error('SMS_PROVIDER_REJECTED');
+    return String(((await sms.json()) as { id?: string }).id ?? '');
+  }
   async deliver(eventId: string) {
     const event = await this.db.outboxEvent.findUniqueOrThrow({ where: { id: eventId } });
     const notification = await this.db.notification.upsert({ where: { eventId }, create: { eventId, organizationId: event.organizationId, orderId: event.entityId, type: event.type }, update: {} });
@@ -106,8 +122,9 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
     let channel = 'SMS';
     try {
       // Same client as the bot: token clean-up, TELEGRAM_API_BASE and error reasons apply here too.
-      const telegram = this.bot?.telegram ?? new TelegramClient();
-      if (order.customer.telegramChatId && telegram.enabled && flags?.telegram) {
+      // A customer connected through the service's own bot hears from that bot.
+      const telegram = order.customer.telegramBot === 'own' ? await this.own?.client(order.organizationId) ?? null : this.bot?.telegram ?? new TelegramClient();
+      if (order.customer.telegramChatId && telegram?.enabled && flags?.telegram) {
         const result = await telegram.call<{ message_id?: number }>('sendMessage', { chat_id: order.customer.telegramChatId, text: message('TELEGRAM') }, 10000);
         if (result.ok) {
           channel = 'TELEGRAM';
@@ -120,22 +137,15 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
         // Courtesy messages are never worth an SMS.
         await this.db.notification.update({ where: { id: notification.id }, data: { status: 'SKIPPED', errorCode: order.customer.telegramChatId ? 'TELEGRAM_REJECTED' : 'NO_TELEGRAM' } }); return;
       }
-      if (!flags?.sms || !process.env.SMS_PROVIDER || !process.env.SMS_API_KEY) throw new Error('SMS_NOT_CONFIGURED');
+      // The service's own Eskiz account (its balance, no limit), else the platform's (plan allowance, then extra).
+      const ownSms = await this.sms.own(order.organizationId);
       let smsProviderId = '';
-      if (process.env.SMS_PROVIDER === 'eskiz') {
-        // EskizClient: token cache + refresh + send
-        const result = await this.eskiz.send(order.customer.phone, message('SMS'));
-        smsProviderId = result.id;
+      if (ownSms) {
+        smsProviderId = (await ownSms.send(order.customer.phone, message('SMS'))).id;
       } else {
-        // Generic webhook provider
-        const apiUrl = process.env.SMS_API_URL;
-        if (!apiUrl) throw new Error('SMS_NOT_CONFIGURED');
-        const endpoint = new URL(apiUrl);
-        if (endpoint.protocol !== 'https:' && !(process.env.NODE_ENV === 'test' && ['127.0.0.1','localhost'].includes(endpoint.hostname))) throw new Error('SMS_HTTPS_REQUIRED');
-        const sms = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.SMS_API_KEY, 'Idempotency-Key': event.id }, signal: AbortSignal.timeout(10000), body: JSON.stringify({ to: order.customer.phone, message: message('SMS'), reference: event.id }) });
-        if (!sms.ok) throw new Error('SMS_PROVIDER_REJECTED');
-        const smsResult = await sms.json() as { id?: string };
-        smsProviderId = String(smsResult.id ?? '');
+        if (!flags?.sms || !platformSmsConfigured()) throw new Error('SMS_NOT_CONFIGURED');
+        smsProviderId = await this.platformSms(order.customer.phone, message('SMS'), event.id);
+        await this.sms.count(order.organizationId, order.organization.subscription?.plan.smsPerMonth ?? null);
       }
       await this.db.notification.update({ where: { id: notification.id }, data: { status: 'SENT', channel, providerId: smsProviderId, sentAt: new Date(), errorCode: null } });
     } catch (error) {
@@ -148,38 +158,60 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
 @ApiTags('notifications') @ApiBearerAuth()
 @Controller('notifications')
 class NotificationsController {
-  constructor(private readonly db: Database, private readonly eskiz: EskizClient, @Optional() private readonly bot?: BotService) {}
+  constructor(private readonly db: Database, private readonly sms: SmsAccounts, private readonly notifications: Notifications) {}
   @Get() @Permissions('orders.view')
   async list(@CurrentActor() actor: Actor) {
     const orders = await this.db.order.findMany({ where: orderScope(actor), select: { id: true } });
     return this.db.notification.findMany({ where: { organizationId: actor.organizationId, orderId: { in: orders.map(order => order.id) } }, orderBy: { createdAt: 'desc' }, take: 200 });
   }
 
-  @Get('eskiz-status') @Permissions('settings.manage')
-  async eskizStatus() {
-    const configured = !!process.env.SMS_API_KEY && !!process.env.SMS_API_SECRET;
-    // Missing credentials or an unreachable provider is a status to show, not a server error.
-    let limits = { balance: 0, smsCount: 0 }, error: string | null = null;
-    if (configured) {
-      try { limits = await this.eskiz.getUserLimit(); } catch (e) { error = e instanceof Error ? e.message : 'ESKIZ_UNAVAILABLE'; }
+  /** How this service sends SMS, this month's platform SMS against the plan, and the own account's balance. */
+  @Get('sms') @Permissions('settings.manage')
+  async smsSettings(@CurrentActor() a: Actor) {
+    const [setting, usage, sub] = await Promise.all([
+      this.sms.setting(a.organizationId), this.sms.usage(a.organizationId),
+      this.db.subscription.findUnique({ where: { organizationId: a.organizationId }, include: { plan: true } }),
+    ]);
+    let balance: number | null = null, error: string | null = null;
+    if (setting.mode === 'own') {
+      try { balance = (await (await this.sms.own(a.organizationId))!.getUserLimit()).balance; }
+      catch (e) { error = e instanceof Error ? e.message : 'ESKIZ_UNAVAILABLE'; }
     }
+    const features = sub?.plan.features as Record<string, unknown> | undefined;
     return {
-      provider: process.env.SMS_PROVIDER || 'eskiz',
-      sender: process.env.SMS_FROM || '4546',
-      testMode: process.env.ESKIZ_TEST_MODE === 'true',
-      balance: limits.balance,
-      smsCount: limits.smsCount,
-      configured,
-      error,
+      mode: setting.mode, email: setting.email ?? null, from: setting.from ?? null, balance, error,
+      platform: { available: platformSmsConfigured() && !!features?.sms, limit: sub?.plan.smsPerMonth ?? null, sent: usage.sent, extra: usage.extra, testMode: process.env.ESKIZ_TEST_MODE === 'true' },
     };
   }
-
-  @Post('test-sms') @Permissions('settings.manage')
-  async testSms(@Body() dto: TestSmsDto) {
-    const message = dto.message?.trim() || (process.env.ESKIZ_TEST_MODE === 'true' ? 'Bu Eskiz dan test' : 'MyService: SMS xizmati muvaffaqiyatli ulandi!');
-    const result = await this.eskiz.send(dto.phone, message);
-    return { ok: true, result, message };
+  @Put('sms') @Permissions('settings.manage')
+  async saveSms(@CurrentActor() a: Actor, @Body() d: SmsSettingsDto) {
+    const saved = await this.sms.save(a.organizationId, d);
+    await this.db.auditLog.create({ data: { organizationId: a.organizationId, actorId: a.userId, action: 'SETTING_CHANGED', entityId: 'sms', newValue: { mode: saved.mode } } });
+    return saved;
+  }
+  /** A test SMS to the signed-in person's own phone (never to an arbitrary number), through the chosen route. */
+  @Post('sms/test') @Permissions('settings.manage') @HttpCode(200)
+  async testSms(@CurrentActor() a: Actor) {
+    const user = await this.db.user.findUniqueOrThrow({ where: { id: a.userId }, select: { phone: true } });
+    const today = await this.db.auditLog.count({ where: { organizationId: a.organizationId, action: 'SMS_TEST', createdAt: { gte: new Date(Date.now() - 86400000) } } });
+    if (today >= 5) throw new HttpException('TOO_MANY_TESTS', 429);
+    const own = await this.sms.own(a.organizationId);
+    const text = 'MyService: SMS sozlamasi ishlayapti.';
+    try {
+      if (own) await own.send(user.phone, text);
+      else {
+        const sub = await this.db.subscription.findUnique({ where: { organizationId: a.organizationId }, include: { plan: true } });
+        if (!platformSmsConfigured() || !(sub?.plan.features as Record<string, unknown> | undefined)?.sms) throw new BadRequestException('SMS_NOT_CONFIGURED');
+        await this.notifications.platformSms(user.phone, process.env.ESKIZ_TEST_MODE === 'true' ? 'Bu Eskiz dan test' : text, 'test-' + a.userId + '-' + Date.now());
+        await this.sms.count(a.organizationId, sub?.plan.smsPerMonth ?? null);
+      }
+    } catch (e) {
+      if (e instanceof HttpException) throw e;
+      throw new ServiceUnavailableException(e instanceof Error && e.message.startsWith('ESKIZ') ? e.message : 'SMS_FAILED');
+    }
+    await this.db.auditLog.create({ data: { organizationId: a.organizationId, actorId: a.userId, action: 'SMS_TEST', entityId: user.phone } });
+    return { ok: true, phone: user.phone };
   }
 }
-@Module({ imports: [BotModule], controllers: [NotificationsController], providers: [Notifications, EskizClient], exports: [EskizClient] })
+@Module({ imports: [BotModule], controllers: [NotificationsController], providers: [Notifications, EskizClient, SmsAccounts], exports: [EskizClient, SmsAccounts] })
 export class NotificationsModule {}

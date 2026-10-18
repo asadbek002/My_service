@@ -1,4 +1,10 @@
-const { test, before, after } = require('node:test');
+const { test, before, after, beforeEach } = require('node:test');
+// The whole suite signs in from one IP far more than the real 60-per-15-minutes limit allows;
+// each test starts with fresh limiter counters (the limit itself is tested where it matters).
+beforeEach(async () => {
+  const Redis = require('ioredis'); const r = new Redis(process.env.REDIS_URL);
+  const keys = await r.keys('auth-rate:*'); if (keys.length) await r.del(...keys); await r.quit();
+});
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
@@ -576,7 +582,7 @@ test('a new service registers itself with a verified phone and gets the trial; o
   assert.equal((await request('/auth/verify/sms', { method: 'POST', body: { purpose: 'signup', phone: '+12025550123' } })).status, 400, 'SMS only to Uzbek numbers');
 
   const loginName = 'self-' + randomUUID().slice(0, 8);
-  const body = { proof, serviceName: 'Usta Telefon Chilonzor', ownerName: 'Jahongir', login: loginName, password: 'Self-Signup-Pass-1' };
+  const body = { proof, serviceName: 'Usta Telefon Chilonzor', ownerName: 'Jahongir', login: loginName, password: 'Self-Signup-Pass-1', acceptTerms: true };
   // A taken login does not use the proof up.
   assert.equal((await request('/auth/signup', { method: 'POST', body: { ...body, login: (await db.user.findFirst()).login } })).status, 409);
   assert.equal((await request('/auth/signup', { method: 'POST', body: { ...body, proof: 'x'.repeat(43) } })).status, 400);
@@ -683,7 +689,8 @@ test('ready event: permanent Telegram failure falls back to idempotent SMS', asy
     await db.order.update({ where: { id: order.id }, data: { status: 'READY' } });
     const event = await db.outboxEvent.create({ data: { organizationId: a.org.id, type: 'ORDER_READY', entityId: order.id, payload: {} } });
     const { Notifications } = require('../dist/notifications/notifications.module.js');
-    await new Notifications(db).deliver(event.id);
+    const { SmsAccounts } = require('../dist/notifications/sms-accounts.js');
+    await new Notifications(db, undefined, new SmsAccounts(db)).deliver(event.id);
     const notification = await db.notification.findUnique({ where: { eventId: event.id } });
     assert.equal(notification.status, 'SENT'); assert.equal(notification.channel, 'SMS'); assert.equal(notification.providerId, 'sms-1');
     assert.equal(calls.length, 2); assert.ok(calls[0].url.includes('/sendMessage')); assert.equal(calls[1].headers['idempotency-key'], event.id);
@@ -813,4 +820,24 @@ test('platform admin two-factor sign-in with an authenticator code', async () =>
   assert.equal((await signIn({ code: totp(setup.secret) })).status, 201);
   assert.equal((await request('/platform/auth/two-factor/disable', { token, method: 'POST', body: { code: totp(setup.secret) } })).status, 201);
   assert.equal((await signIn({})).status, 201);
+});
+
+test('legal pages read the company details the platform owner saves; sign-up needs consent', async () => {
+  const token = await platformToken();
+  const before = await json(await request('/public/legal'));
+  assert.deepEqual(Object.keys(before).sort(), ['address', 'company', 'dataLocation', 'email', 'inn', 'phone']);
+  const details = { company: 'MChJ "Test Servis"', inn: '301234567', address: 'Toshkent', phone: '+998901234567', email: 'info@test.uz', dataLocation: "Toshkent, O'zbekiston" };
+  assert.equal((await request('/platform/legal', { token, method: 'PUT', body: details })).status, 200);
+  assert.deepEqual(await json(await request('/public/legal')), details);
+  assert.equal((await request('/platform/legal', { ...(await owner(a)), method: 'PUT', body: details })).status, 401);
+  const proof = await verifiedProof('signup', freshPhone());
+  const res = await request('/auth/signup', { method: 'POST', body: { proof, serviceName: 'Rozisiz', ownerName: 'X', login: 'noterms-' + randomUUID().slice(0, 6), password: 'No-Terms-Pass-123' } });
+  assert.equal(res.status, 400);
+});
+
+test('monitor checks the platform on demand', async () => {
+  const token = await platformToken();
+  const m = await json(await request('/platform/monitor?run=1', { token }));
+  assert.ok(m.at); assert.ok(m.checks.find(c => c.key === 'database').ok); assert.ok(m.checks.find(c => c.key === 'redis').ok);
+  assert.equal((await request('/platform/monitor', await owner(a))).status, 401);
 });

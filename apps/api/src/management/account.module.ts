@@ -36,11 +36,13 @@ class AccountController {
       billingSettings(this.db),
       this.db.plan.findMany({ where: { active: true }, orderBy: [{ sortOrder: 'asc' }, { monthlyPrice: 'asc' }] }),
       this.db.order.count({ where: { organizationId: a.organizationId, createdAt: { gte: since } } }),
-      this.db.notification.count({ where: { organizationId: a.organizationId, channel: 'SMS', status: 'SENT', createdAt: { gte: since } } }),
+      this.db.usageRecord.findMany({ where: { organizationId: a.organizationId, period: tashkentDay().slice(0, 7), metric: { in: ['sms', 'sms_extra'] } } }),
       this.db.user.count({ where: { organizationId: a.organizationId, status: { not: 'ARCHIVED' } } }),
       this.db.branch.count({ where: { organizationId: a.organizationId } }),
       this.db.subscriptionInvoice.findMany({ where: { organizationId: a.organizationId }, orderBy: { issuedAt: 'desc' }, take: 24 }),
     ]);
+    const smsOwn = (await this.db.organizationSetting.findUnique({ where: { organizationId_key: { organizationId: a.organizationId, key: 'sms' } } }))?.value as { mode?: string } | undefined;
+    const smsSent = sms.find(r => r.metric === 'sms')?.quantity ?? 0, smsExtra = sms.find(r => r.metric === 'sms_extra')?.quantity ?? 0;
     const now = Date.now();
     const end = sub ? (sub.graceUntil ?? sub.expiresAt) : null;
     const shown = sub && !plans.some(p => p.id === sub.planId) ? [...plans, sub.plan] : plans;
@@ -62,7 +64,8 @@ class AccountController {
       usage: {
         month: tashkentDay().slice(0, 7),
         orders, ordersLimit: sub?.plan.monthlyOrders ?? null,
-        sms, smsLimit: sub?.plan.smsPerMonth ?? null,
+        // Platform SMS only: an own Eskiz account is paid by the service and not limited here.
+        sms: smsSent, smsLimit: sub?.plan.smsPerMonth ?? null, smsExtra, smsExtraCost: (smsExtra * Number(settings.extraSmsPrice)).toFixed(2), smsOwnAccount: smsOwn?.mode === 'own',
         staff, staffLimit: sub?.plan.maxStaff ?? null,
         branches, branchesLimit: sub?.plan.maxBranches ?? null,
       },

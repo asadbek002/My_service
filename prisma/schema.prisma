@@ -233,6 +233,8 @@ model Customer {
   telegramUsername String?
   telegramUserId String?
   telegramChatId String?
+  /// Which bot the chat belongs to: null = the platform bot, "own" = the service's own bot.
+  telegramBot String?
   notificationPreference String @default("AUTO")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

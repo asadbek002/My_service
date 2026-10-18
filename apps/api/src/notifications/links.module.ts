@@ -5,6 +5,8 @@ import { CurrentActor, Permissions, Public } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { orderScope } from '../orders/orders.module';
 import { LoginRateGuard } from '../auth/rate-limit';
+import { BotModule } from '../bot/bot.module';
+import { OwnBots } from '../bot/own-bot';
 export const hashLink = (raw: string) => createHash('sha256').update(raw).digest('hex');
 export async function createLink(db: Database, organizationId: string, orderId: string, purpose: 'TRACK' | 'TELEGRAM') {
   const raw = randomBytes(32).toString('base64url');
@@ -13,14 +15,17 @@ export async function createLink(db: Database, organizationId: string, orderId: 
 }
 @Controller('orders')
 class LinkController {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: Database, private readonly own: OwnBots) {}
   @Post(':id/links') @Permissions('orders.edit') @Header('Cache-Control','no-store')
   async links(@CurrentActor() actor: Actor, @Param('id') id: string) {
     const order = await this.db.order.findFirst({ where: { id, ...orderScope(actor) } });
     if (!order) throw new NotFoundException();
     const track = await createLink(this.db, actor.organizationId, id, 'TRACK');
-    const telegram = process.env.TELEGRAM_BOT_USERNAME ? await createLink(this.db, actor.organizationId, id, 'TELEGRAM') : null;
-    return { tracking: process.env.WEB_URL + '/track/' + track, telegram: telegram ? 'https://t.me/' + process.env.TELEGRAM_BOT_USERNAME + '?start=' + telegram : null };
+    // The service's own bot when it has one, else the platform bot.
+    const ownBot = await this.own.client(actor.organizationId);
+    const username = ownBot?.username ?? process.env.TELEGRAM_BOT_USERNAME;
+    const telegram = username ? await createLink(this.db, actor.organizationId, id, 'TELEGRAM') : null;
+    return { tracking: process.env.WEB_URL + '/track/' + track, telegram: telegram ? 'https://t.me/' + username + '?start=' + telegram : null };
   }
   @Get(':id/notifications') @Permissions('orders.view')
   async history(@CurrentActor() actor: Actor, @Param('id') id: string) {
@@ -49,5 +54,5 @@ class TrackingController {
       number: order.number, status: order.status, device: order.device.brand + ' ' + order.device.model, total: order.total, paid: order.total.minus(balance), balance, receivedAt: order.createdAt, warrantyEnd: order.warranty?.endDate ?? null };
   }
 }
-@Module({ controllers: [LinkController, TrackingController], providers: [LoginRateGuard] })
+@Module({ imports: [BotModule], controllers: [LinkController, TrackingController], providers: [LoginRateGuard] })
 export class LinksModule {}

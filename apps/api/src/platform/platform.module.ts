@@ -17,6 +17,7 @@ import { billingSettings, saveBillingSettings, yearlyPriceOf } from './billing';
 import { createOrganization } from './organizations';
 import { newTotpSecret, otpauthUrl, verifyTotp } from './totp';
 import { setupProgress } from '../management/settings.module';
+import { Monitor, MonitorModule } from './monitor';
 import QRCode from 'qrcode';
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 type AdminRequest = Request & { adminId: string; platformSessionId: string };
@@ -98,6 +99,17 @@ class AnnouncementDto {
   @IsIn(['INFO','WARNING']) level!: 'INFO' | 'WARNING';
 }
 class AnnouncementUpdateDto { @IsBoolean() active!: boolean; }
+/** Company details printed in the public offer and the privacy policy. */
+class LegalDto {
+  @IsString() @MaxLength(200) company!: string;
+  @IsString() @MaxLength(20) inn!: string;
+  @IsString() @MaxLength(300) address!: string;
+  @IsString() @MaxLength(40) phone!: string;
+  @IsString() @MaxLength(120) email!: string;
+  /** Where the servers (the data) are, e.g. "Toshkent, O'zbekiston (Uztelecom DC)". */
+  @IsString() @MaxLength(200) dataLocation!: string;
+}
+export const LEGAL_FIELDS = ['company', 'inn', 'address', 'phone', 'email', 'dataLocation'] as const;
 /** Where a service stands, for filters: blocked beats everything, then trial / active / expired. */
 type OrgState = 'blocked' | 'trial' | 'active' | 'expired';
 function orgState(o: { blockedAt: Date | null; subscription: { status: string; expiresAt: Date; graceUntil: Date | null } | null }): OrgState {
@@ -114,6 +126,16 @@ class SubscriptionDto {
   @IsString() @Length(1,100) planId!: string;
   @IsIn(['TRIAL','ACTIVE','SUSPENDED','EXPIRED']) status!: string;
   @IsISO8601() expiresAt!: string;
+}
+/** The company details the public offer and privacy policy pages show. */
+@Controller('public/legal') @Public()
+class LegalController {
+  constructor(private readonly db: Database) {}
+  @Get()
+  async legal() {
+    const v = ((await this.db.platformSetting.findUnique({ where: { key: 'legal' } }))?.value ?? {}) as Record<string, unknown>;
+    return Object.fromEntries(LEGAL_FIELDS.map(k => [k, typeof v[k] === 'string' ? v[k] : '']));
+  }
 }
 @Controller('platform/auth') @Public()
 class PlatformAuthController {
@@ -173,7 +195,7 @@ class PlatformAuthController {
 }
 @Controller('platform') @Public() @UseGuards(PlatformGuard)
 class PlatformController {
-  constructor(private readonly db: Database, private readonly subCache: SubscriptionCache, private readonly jwt: JwtService, private readonly bot: BotService) {}
+  constructor(private readonly db: Database, private readonly subCache: SubscriptionCache, private readonly jwt: JwtService, private readonly bot: BotService, private readonly monitor: Monitor) {}
   /** Services, newest first; `q` matches name, slug, owner login or phone; `state` filters. */
   @Get('organizations')
   async organizations(@Query('q') q?: string, @Query('state') state?: string) {
@@ -285,6 +307,17 @@ class PlatformController {
     const done = await this.db.supportTicket.updateMany({ where: { id }, data: { status: 'CLOSED' } });
     if (!done.count) throw new NotFoundException();
     return { ok: true };
+  }
+
+  // ---- Company details for the legal pages ----
+  @Get('legal')
+  async legal() { return (await this.db.platformSetting.findUnique({ where: { key: 'legal' } }))?.value ?? {}; }
+  @Put('legal')
+  async saveLegal(@Body() d: LegalDto, @Req() req: AdminRequest) {
+    const value = Object.fromEntries(LEGAL_FIELDS.map(k => [k, d[k].trim()])) as Prisma.InputJsonObject;
+    await this.db.platformSetting.upsert({ where: { key: 'legal' }, create: { key: 'legal', value }, update: { value } });
+    await this.db.auditLog.create({ data: { organizationId: 'PLATFORM', actorId: req.adminId, action: 'LEGAL_CHANGED', entityId: 'legal' } });
+    return value;
   }
 
   // ---- Announcements ----
@@ -478,8 +511,11 @@ class PlatformController {
   invoices(){return this.db.subscriptionInvoice.findMany({orderBy:{issuedAt:'desc'},take:100})}
   @Get('usage')
   usage(){return this.db.usageRecord.findMany({orderBy:{period:'desc'},take:200})}
+  /** The monitor's last checks; `run=1` checks now. */
+  @Get('monitor')
+  async monitorStatus(@Query('run') run?: string) { return run === '1' ? this.monitor.run() : this.monitor.last; }
   @Get('system')
   async system() { await this.db.$queryRaw`SELECT 1`; return {database:'ok',organizations:await this.db.organization.count(),activeSubscriptions:await this.db.subscription.count({where:{status:'ACTIVE',expiresAt:{gt:new Date()}}}),pendingOutbox:await this.db.outboxEvent.count({where:{publishedAt:null}}),failedNotifications:await this.db.notification.count({where:{status:'FAILED'}})}; }
 }
-@Module({imports:[BotModule,JwtModule.registerAsync({useFactory:()=>({secret:process.env.JWT_ACCESS_SECRET!})})],controllers:[PlatformAuthController,PlatformController],providers:[PlatformGuard,LoginRateGuard,SubscriptionCache]})
+@Module({imports:[BotModule,MonitorModule,JwtModule.registerAsync({useFactory:()=>({secret:process.env.JWT_ACCESS_SECRET!})})],controllers:[PlatformAuthController,PlatformController,LegalController],providers:[PlatformGuard,LoginRateGuard,SubscriptionCache]})
 export class PlatformModule {}

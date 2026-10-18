@@ -11,6 +11,8 @@ import { createOrganization, slugFor } from '../platform/organizations';
 import { BotService } from '../bot/bot.service';
 import { esc } from '../bot/telegram.client';
 
+/** Bump when the offer or the privacy policy text changes in a way users must accept again. */
+export const TERMS_VERSION = '2026-10-19';
 const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -137,6 +139,7 @@ export class AuthService implements OnModuleInit {
         }, billing);
         // The sign-up name is the one on receipts and the tracking page until changed in Settings.
         await tx.organizationSetting.create({ data: { organizationId: org.id, key: 'general', value: { name: org.name, phone } } });
+        await tx.auditLog.create({ data: { organizationId: org.id, actorId: user.id, action: 'TERMS_ACCEPTED', entityId: user.id, newValue: { version: TERMS_VERSION } } });
         const session = await this.openSession(tx, user.id, org.id, 'AUTH_LOGIN');
         return { org, user, session };
       }, { timeout: 15000 });

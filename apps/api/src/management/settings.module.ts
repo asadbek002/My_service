@@ -67,7 +67,8 @@ class SettingsController{
  async telegram(@CurrentActor()a:Actor){
   const [linked,total]=await Promise.all([this.db.customer.count({where:{organizationId:a.organizationId,telegramChatId:{not:null}}}),this.db.customer.count({where:{organizationId:a.organizationId}})]);
   const tg=new TelegramClient();
-  return{botConfigured:tg.enabled,botUsername:tg.username,webhookConfigured:!!process.env.TELEGRAM_WEBHOOK_SECRET,linkedCustomers:linked,totalCustomers:total};
+  // Public link for Instagram or a sticker: visitors see this service's contacts before sharing a phone.
+  return{botConfigured:tg.enabled,botUsername:tg.username,botLink:tg.deepLink('s_'+a.organizationId),webhookConfigured:!!process.env.TELEGRAM_WEBHOOK_SECRET,linkedCustomers:linked,totalCustomers:total};
  }
  // Logo and display name for the app header, receipt and tracking page (every signed-in user).
  @Get('branding')

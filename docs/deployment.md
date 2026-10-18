@@ -13,7 +13,7 @@ This repository contains a single-host Docker Compose baseline. It is not a subs
 
 ## Backups
 
-Run docker/backup.sh from a restricted scheduler. BACKUP_DIR must be an encrypted volume that is copied off-host. The script creates a PostgreSQL custom dump and checksums (all data lives in PostgreSQL), and removes local daily sets older than 30 days. Implement weekly/monthly off-host retention at the backup destination.
+See docs/operations.md (Uzbek) for the nightly cron, the off-site copy to Telegram and restoring with docker/restore.sh. Run docker/backup.sh from a restricted scheduler. BACKUP_DIR must be an encrypted volume that is copied off-host. The script creates a PostgreSQL custom dump and checksums (all data lives in PostgreSQL), and removes local daily sets older than 30 days. Implement weekly/monthly off-host retention at the backup destination.
 
 A restore drill is mandatory:
 - stop API/workers;

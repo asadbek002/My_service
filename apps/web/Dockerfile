@@ -4,6 +4,8 @@ RUN corepack enable
 WORKDIR /app
 ARG NEXT_PUBLIC_API_URL=/api
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_SUPPORT_TELEGRAM=myserviceuzz
+ENV NEXT_PUBLIC_SUPPORT_TELEGRAM=$NEXT_PUBLIC_SUPPORT_TELEGRAM
 COPY . .
 RUN pnpm install --no-frozen-lockfile
 RUN pnpm --filter @myservice/web build

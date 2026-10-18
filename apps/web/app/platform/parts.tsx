@@ -372,3 +372,49 @@ export function TwoFactorCard({ onError }: { onError: (e: unknown) => void }) {
     </section>
   );
 }
+
+// ---------- Monitoring ----------
+
+type MonitorState = { at: string | null; checks: { key: string; ok: boolean; detail: string }[] };
+const CHECK: Record<string, string> = { database: "Ma'lumotlar bazasi", redis: 'Redis', outbox: 'Xabarlar navbati', failed: 'Yuborilmagan xabarlar (1 soat)', sms: 'Platforma SMS balansi' };
+export function MonitorCard({ onError }: { onError: (e: unknown) => void }) {
+  const [m, setM] = useState<MonitorState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback((run = false) => { setBusy(true); return platformApi<MonitorState>('/monitor' + (run ? '?run=1' : '')).then(setM).catch(onError).finally(() => setBusy(false)); }, [onError]);
+  useEffect(() => { void load(); }, [load]);
+  return (
+    <section className={card + ' space-y-2'}>
+      <div className="flex items-center justify-between gap-2"><h2 className="font-semibold">Monitoring</h2><button className={ghost} disabled={busy} onClick={() => load(true)}>Hozir tekshirish</button></div>
+      <p className="text-xs text-mute">Har 5 daqiqada tekshiriladi. Biror narsa buzilsa yoki tiklansa, Telegramingizga xabar keladi (Telegramingiz ulangan bo&apos;lishi kerak).{m?.at ? ` Oxirgi: ${when(m.at)}` : ''}</p>
+      {m?.checks.length ? m.checks.map(c => <p key={c.key} className="flex gap-2 text-sm"><span className={c.ok ? 'text-emerald-600' : 'text-red-500'}>{c.ok ? '✓' : '✕'}</span><span>{CHECK[c.key] ?? c.key}: {c.detail}</span></p>) : <p className="text-sm text-mute">Hali tekshirilmagan.</p>}
+      <p className="text-xs text-mute">Tashqi kuzatuv uchun UptimeRobot kabi xizmatda <code className="font-mono">/api/health</code> manzilini qo&apos;shing — server butunlay o&apos;chsa ham xabar beradi.</p>
+    </section>
+  );
+}
+
+// ---------- Company details for the legal pages ----------
+
+const LEGAL: [string, string, string][] = [
+  ['company', 'Kompaniya nomi', 'MChJ "MyService"'], ['inn', 'STIR', '123456789'], ['address', 'Yuridik manzil', 'Toshkent sh., …'],
+  ['phone', 'Telefon', '+998 90 000 00 00'], ['email', 'Email', 'info@myserviceuz.uz'], ['dataLocation', 'Serverlar joylashuvi', "Toshkent, O'zbekiston"],
+];
+export function LegalCard({ onError }: { onError: (e: unknown) => void }) {
+  const [v, setV] = useState<Record<string, string> | null>(null);
+  const [notice, setNotice] = useState('');
+  useEffect(() => { platformApi<Record<string, string>>('/legal').then(setV).catch(onError); }, [onError]);
+  if (!v) return null;
+  return (
+    <section className={card + ' space-y-3'}>
+      <h2 className="font-semibold">Huquqiy sahifalar uchun rekvizitlar</h2>
+      <p className="text-xs text-mute"><a href="/terms" target="_blank" className="underline">Ommaviy oferta</a> va <a href="/privacy" target="_blank" className="underline">maxfiylik siyosati</a> sahifalarida chiqadi. Bo&apos;sh maydon [ … ] ko&apos;rinishida qoladi. Matnni yurist bilan ko&apos;rib chiqing.</p>
+      {notice && <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
+      <form className="grid gap-2 sm:grid-cols-2" onSubmit={(e: FormEvent<HTMLFormElement>) => {
+        e.preventDefault(); const d = new FormData(e.currentTarget);
+        platformApi<Record<string, string>>('/legal', { method: 'PUT', body: JSON.stringify(Object.fromEntries(LEGAL.map(([k]) => [k, String(d.get(k) ?? '')]))) }).then(r => { setV(r); setNotice('Saqlandi'); }).catch(onError);
+      }}>
+        {LEGAL.map(([k, l, ph]) => <label key={k} className="block space-y-1 text-sm"><span className="font-medium">{l}</span><input name={k} defaultValue={v[k] ?? ''} placeholder={ph} className={field} /></label>)}
+        <button className={button + ' sm:col-span-2 sm:w-fit'}>Saqlash</button>
+      </form>
+    </section>
+  );
+}

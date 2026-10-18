@@ -8,6 +8,7 @@ import { CurrentActor, Permissions, Public } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { orderScope } from '../orders/orders.module';
 import { BotService, type Update } from './bot.service';
+import { OwnBots } from './own-bot';
 import { esc, som, tashkentDay, TelegramClient } from './telegram.client';
 
 class ReceiptPhotoDto {
@@ -22,10 +23,18 @@ class AlertEventsDto {
 }
 class AlertUserDto { @ApiProperty() @IsBoolean() enabled!: boolean; }
 class AlertChatDto { @ApiProperty() @IsString() @Length(1, 60) label!: string; }
+class OwnBotDto { @ApiProperty() @IsString() @Length(20, 100) token!: string; }
 
 @Controller('telegram')
 class TelegramWebhookController {
-  constructor(private readonly bot: BotService) {}
+  constructor(private readonly bot: BotService, private readonly own: OwnBots) {}
+  /** Updates from a service's own bot; its secret header is the one set when it was connected. */
+  @Post('own/:orgId') @Public() @HttpCode(200)
+  async ownWebhook(@Param('orgId') orgId: string, @Headers('x-telegram-bot-api-secret-token') provided: string | undefined, @Body() body: unknown) {
+    if (!/^[a-z0-9]{10,40}$/.test(orgId) || !await this.own.verify(orgId, provided)) throw new ForbiddenException();
+    await this.own.handle(orgId, body as Update);
+    return { ok: true };
+  }
   @Post('webhook') @Public() @HttpCode(200)
   async webhook(@Headers('x-telegram-bot-api-secret-token') provided: string | undefined, @Body() body: unknown) {
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -39,7 +48,16 @@ class TelegramWebhookController {
 @ApiTags('bot') @ApiBearerAuth()
 @Controller('bot')
 class BotController {
-  constructor(private readonly db: Database, private readonly bot: BotService) {}
+  constructor(private readonly db: Database, private readonly bot: BotService, private readonly own: OwnBots) {}
+
+  // ---- The service's own bot (Settings → "O'z Telegram botingiz") ----
+  @Get('own') @Permissions('settings.manage')
+  ownStatus(@CurrentActor() a: Actor) { return this.own.status(a.organizationId); }
+  @Put('own') @Permissions('settings.manage')
+  ownConnect(@CurrentActor() a: Actor, @Body() d: OwnBotDto) { return this.own.connect(a.organizationId, d.token, a.userId); }
+  @Delete('own') @Permissions('settings.manage') @HttpCode(200)
+  ownDisconnect(@CurrentActor() a: Actor) { return this.own.disconnect(a.organizationId, a.userId); }
+
   /** Whether the bot is set up and whether the signed-in user's Telegram is connected. */
   @Get('me')
   async me(@CurrentActor() a: Actor) {
@@ -108,19 +126,20 @@ class BotController {
 @ApiTags('bot') @ApiBearerAuth()
 @Controller('orders')
 class ReceiptPhotoController {
-  constructor(private readonly db: Database, private readonly bot: BotService) {}
+  constructor(private readonly db: Database, private readonly bot: BotService, private readonly own: OwnBots) {}
   /** Send the receipt, rendered by the browser as PNG, to the customer's Telegram (when the printer is down). */
   @Post(':id/receipt/telegram') @Permissions('orders.view')
   async send(@CurrentActor() a: Actor, @Param('id') id: string, @Body() d: ReceiptPhotoDto) {
     const order = await this.db.order.findFirst({ where: { id, ...orderScope(a) }, include: { customer: true, organization: true } });
     if (!order) throw new NotFoundException();
-    if (!this.bot.telegram.enabled) throw new ServiceUnavailableException('BOT_NOT_CONFIGURED');
+    const telegram = order.customer.telegramBot === 'own' ? await this.own.client(order.organizationId) : this.bot.telegram;
+    if (!telegram?.enabled) throw new ServiceUnavailableException('BOT_NOT_CONFIGURED');
     const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(d.image);
     const png = match ? Buffer.from(match[1]!, 'base64') : null;
     if (!png || png.length < 60 || png.length > 1_500_000 || png.readUInt32BE(0) !== 0x89504e47) throw new BadRequestException('PNG image required');
     // The web app then offers the order's bot link (POST /orders/:id/links) so the customer can connect.
     if (!order.customer.telegramChatId) throw new ConflictException('CUSTOMER_NOT_ON_TELEGRAM');
-    const result = await this.bot.telegram.sendPhoto(order.customer.telegramChatId, png, `🧾 <b>${esc(order.organization.name)}</b> · ${esc(order.number)}\nJami: ${som(order.total)}`);
+    const result = await telegram.sendPhoto(order.customer.telegramChatId, png, `🧾 <b>${esc(order.organization.name)}</b> · ${esc(order.number)}\nJami: ${som(order.total)}`);
     if (!result.ok) throw new ServiceUnavailableException(result.status === 403 ? 'CUSTOMER_BLOCKED_BOT' : 'TELEGRAM_FAILED');
     await this.db.auditLog.create({ data: { organizationId: a.organizationId, actorId: a.userId, action: 'RECEIPT_SENT_TELEGRAM', entityId: id } });
     return { ok: true };
@@ -216,7 +235,7 @@ export class BotPoller implements OnModuleInit, OnModuleDestroy {
 
 @Module({
   controllers: [TelegramWebhookController, BotController, ReceiptPhotoController],
-  providers: [TelegramClient, BotService, BotScheduler, BotPoller],
-  exports: [TelegramClient, BotService],
+  providers: [TelegramClient, BotService, BotScheduler, BotPoller, OwnBots],
+  exports: [TelegramClient, BotService, OwnBots],
 })
 export class BotModule {}

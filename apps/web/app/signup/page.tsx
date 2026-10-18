@@ -56,6 +56,7 @@ function Details({ proof, phone, onRestart, onDone }: { proof: string; phone: st
   const [loginTouched, setLoginTouched] = useState(false);
   const [password, setPassword] = useState('');
   const [repeat, setRepeat] = useState('');
+  const [accept, setAccept] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const shownLogin = loginTouched ? login : suggestLogin(serviceName);
@@ -67,9 +68,10 @@ function Details({ proof, phone, onRestart, onDone }: { proof: string; phone: st
     if (!/^[a-zA-Z0-9_.-]{3,64}$/.test(shownLogin)) return setError("Login kamida 3 belgi: lotin harflari, raqam va _ . -");
     if (password.length < 12) return setError("Parol kamida 12 belgidan iborat bo'lsin");
     if (password !== repeat) return setError('Parollar bir xil emas');
+    if (!accept) return setError('Oferta va maxfiylik siyosatiga rozilik belgisini qo‘ying');
     setBusy(true); setError('');
     try {
-      signedIn(await publicPost<{ accessToken: string; expiresIn: number }>('/auth/signup', { proof, serviceName: serviceName.trim(), ownerName: ownerName.trim(), login: shownLogin, password }));
+      signedIn(await publicPost<{ accessToken: string; expiresIn: number }>('/auth/signup', { proof, serviceName: serviceName.trim(), ownerName: ownerName.trim(), login: shownLogin, password, acceptTerms: true }));
       onDone();
     } catch (err) {
       const message = err instanceof Error ? err.message : '';
@@ -88,6 +90,10 @@ function Details({ proof, phone, onRestart, onDone }: { proof: string; phone: st
       </FormField>
       <FormField label="Parol" description="Kamida 12 belgi"><Input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" /></FormField>
       <FormField label="Parolni takrorlang"><Input type="password" value={repeat} onChange={e => setRepeat(e.target.value)} autoComplete="new-password" /></FormField>
+      <label className="flex items-start gap-2.5 text-sm">
+        <input type="checkbox" checked={accept} onChange={e => setAccept(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-ink" />
+        <span><Link href="/terms" target="_blank" className="font-semibold underline">Ommaviy oferta</Link> va <Link href="/privacy" target="_blank" className="font-semibold underline">maxfiylik siyosati</Link> bilan tanishdim va roziman</span>
+      </label>
       <ErrorBox>{error}</ErrorBox>
       <Button type="submit" variant="brand" size="lg" className="w-full" disabled={busy}>{busy ? 'Ochilmoqda…' : 'Ustaxonani ochish'}</Button>
     </form>

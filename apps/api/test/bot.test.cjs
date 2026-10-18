@@ -14,6 +14,7 @@ const base = 'http://localhost:3001/api';
 const SECRET = 'webhook-secret-for-tests';
 let server, mock, output = '';
 const calls = [];
+const OWN_TOKEN = '987654321:AAOwnBotTokenForTheServiceTestsXyz12';
 
 function request(p, { token, body, method = 'GET', headers = {} } = {}) {
   return fetch(base + p, { method, headers: { Origin: 'http://localhost:3000', ...headers, ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
@@ -43,14 +44,25 @@ before(async () => {
   mock = http.createServer((req, res) => {
     let raw = ''; req.on('data', c => { raw += c; }); req.on('end', () => {
       const method = req.url.split('/').pop();
-      let body = raw; try { body = JSON.parse(raw); } catch { /* multipart */ }
-      calls.push({ method, body, contentType: req.headers['content-type'] });
+      // /bot<token>/<method> for Telegram; /eskiz/... for the Eskiz mock.
+      const token = /^\/bot([^/]+)\//.exec(req.url)?.[1] ?? null;
+      let body = raw; try { body = JSON.parse(raw); } catch { if (String(req.headers['content-type']).includes('urlencoded')) body = Object.fromEntries(new URLSearchParams(raw)); }
+      calls.push({ method, body, token, url: req.url, contentType: req.headers['content-type'] });
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify(method === 'getWebhookInfo' ? { ok: true, result: { url: '', pending_update_count: 0 } } : { ok: true, result: { message_id: calls.length } }));
+      if (req.url.startsWith('/eskiz/')) {
+        if (method === 'login') { if (body.password === 'bad') { res.statusCode = 401; return res.end('{}'); } return res.end(JSON.stringify({ data: { token: 'eskiz-' + body.email } })); }
+        if (method === 'get-limit') return res.end(JSON.stringify({ data: { balance: 54321, sms_count: 9 } }));
+        if (method === 'send') return res.end(JSON.stringify({ id: 'sms-' + calls.length, status: 'waiting' }));
+        return res.end('{}');
+      }
+      if (method === 'getMe') return res.end(JSON.stringify(token === OWN_TOKEN ? { ok: true, result: { id: 777000111, is_bot: true, username: 'shop_test_bot' } } : { ok: false, error_code: 401, description: 'Unauthorized' }));
+      res.end(JSON.stringify(method === 'getWebhookInfo' ? { ok: true, result: { url: 'https://x', pending_update_count: 0 } } : { ok: true, result: { message_id: calls.length } }));
     });
   });
   await new Promise(r => mock.listen(0, '127.0.0.1', r));
-  Object.assign(process.env, { TELEGRAM_BOT_TOKEN: '123456789:AAHtestTokenWithTheSameShapeAsReal_1', TELEGRAM_BOT_USERNAME: 'myservice_test_bot', TELEGRAM_WEBHOOK_SECRET: SECRET, TELEGRAM_API_URL: 'http://127.0.0.1:' + mock.address().port + '/' });
+  const mockUrl = 'http://127.0.0.1:' + mock.address().port + '/';
+  Object.assign(process.env, { TELEGRAM_BOT_TOKEN: '123456789:AAHtestTokenWithTheSameShapeAsReal_1', TELEGRAM_BOT_USERNAME: 'myservice_test_bot', TELEGRAM_WEBHOOK_SECRET: SECRET, TELEGRAM_API_URL: mockUrl,
+    ESKIZ_API_URL: mockUrl + 'eskiz', SMS_PROVIDER: 'eskiz', SMS_API_KEY: 'platform@myservice.uz', SMS_API_SECRET: 'platform-pass' });
   server = spawn(process.execPath, [path.resolve(__dirname, '..', 'dist', 'main.js')], { cwd: path.resolve(__dirname, '..'), env: process.env });
   server.stdout.on('data', d => { output += d; }); server.stderr.on('data', d => { output += d; });
   for (let i = 0; i < 60; i++) { try { if ((await fetch(base + '/health')).ok) return; } catch {} await new Promise(r => setTimeout(r, 500)); }
@@ -59,7 +71,7 @@ before(async () => {
 after(async () => {
   if (server) { server.kill(); await new Promise(r => server.once('exit', r)); }
   await new Promise(r => mock.close(r));
-  for (const k of ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_BOT_USERNAME', 'TELEGRAM_WEBHOOK_SECRET', 'TELEGRAM_API_URL']) delete process.env[k];
+  for (const k of ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_BOT_USERNAME', 'TELEGRAM_WEBHOOK_SECRET', 'TELEGRAM_API_URL', 'ESKIZ_API_URL', 'SMS_PROVIDER', 'SMS_API_KEY', 'SMS_API_SECRET']) delete process.env[k];
   await db.$disconnect();
 });
 
@@ -127,7 +139,8 @@ test('bot: customers, staff, admins, alerts and receipt photo', async () => {
   const { Notifications } = require('../dist/notifications/notifications.module.js');
   const { BotService } = require('../dist/bot/bot.service.js');
   const { TelegramClient } = require('../dist/bot/telegram.client.js');
-  const worker = new Notifications(db, undefined, new BotService(db, new TelegramClient()));
+  const { SmsAccounts } = require('../dist/notifications/sms-accounts.js');
+  const worker = new Notifications(db, undefined, new SmsAccounts(db), new BotService(db, new TelegramClient()));
   const orgA = await db.order.findUniqueOrThrow({ where: { id: orders[0].id } });
   const event = await db.outboxEvent.findFirstOrThrow({ where: { entityId: orders[0].id, type: 'ORDER_RECEIVED' } });
   const before = calls.length;
@@ -213,9 +226,17 @@ test('bot: customers, staff, admins, alerts and receipt photo', async () => {
   assert.ok(sent.some(c => c.body.text.includes('Servis b' + id) && c.body.text.includes('@myserviceuzz')));
   assert.ok(calls.slice(beforeBot).some(c => c.method === 'sendContact' && c.body.phone_number === '+998971112233' && c.body.first_name === 'Mobile Fix'));
 
-  // Someone who never brought a device can still reach the service from the first screen.
+  // A stranger without a link sees no service's contacts (no leak between services)…
+  const nosy = 4000000 + Math.floor(Math.random() * 1e6);
+  await tg(nosy, { text: '/start' });
+  await tg(nosy, { text: '📍 Manzil' });
+  assert.ok(lastTo(nosy).text.includes('telefon raqamingizni'), lastTo(nosy).text);
+  // …but someone who came through the service's public bot link reaches that service from the first screen.
+  const tgInfo = await ok(await request('/settings/telegram', { token: bosses[0] }));
+  assert.match(tgInfo.botLink, /\?start=s_[a-z0-9]+$/);
   const stranger = 5000000 + Math.floor(Math.random() * 1e6);
-  await tg(stranger, { text: '/start' });
+  await tg(stranger, { text: '/start ' + tgInfo.botLink.split('start=')[1] });
+  assert.ok(lastTo(stranger).text.includes('Mobile Fix') || lastTo(stranger).text.includes('Servis a'), lastTo(stranger).text);
   const firstScreen = lastTo(stranger).reply_markup.keyboard.flat().map(b => b.text);
   for (const button of ['✈️ Telegram', '📷 Instagram', '📍 Manzil', "📞 Qo'ng'iroq"]) assert.ok(firstScreen.includes(button), button);
   const beforeStranger = calls.length;
@@ -248,10 +269,126 @@ test('phone confirmed through the bot: open the link, share the contact, sign up
   assert.equal(status.verified, true); assert.equal(status.phone, '+' + phoneDigits);
   assert.equal((await request('/auth/verify/telegram/status', { method: 'POST', body: { token: link.token } })).status, 400, 'the link gives one proof');
   const login = 'tg-' + randomUUID().slice(0, 8);
-  const created = await ok(await request('/auth/signup', { method: 'POST', body: { proof: status.proof, serviceName: 'Telegram Usta', ownerName: 'Bekzod', login, password: 'Telegram-Pass-1234' } }), 201);
+  const created = await ok(await request('/auth/signup', { method: 'POST', body: { proof: status.proof, serviceName: 'Telegram Usta', ownerName: 'Bekzod', login, password: 'Telegram-Pass-1234', acceptTerms: true } }), 201);
   assert.ok(created.accessToken);
   assert.equal((await db.user.findUnique({ where: { login } })).phone, '+' + phoneDigits);
   // An expired or unknown link is answered, not ignored.
   await tg(chat, { text: '/start v_' + 'A'.repeat(43) });
   assert.ok(lastTo(chat).text.includes('eskirgan'));
+});
+
+/** A fresh service on a plan with the given features; returns its owner token and org id. */
+async function serviceOn(features, extra = {}) {
+  const id = randomUUID().slice(0, 8);
+  await db.platformAdmin.create({ data: { login: 'own-admin-' + id, passwordHash: await argon2.hash('Platform-Pass-123') } });
+  const platform = (await ok(await request('/platform/auth/login', { method: 'POST', body: { login: 'own-admin-' + id, password: 'Platform-Pass-123' } }), 201)).accessToken;
+  const plan = await ok(await request('/platform/plans', { token: platform, method: 'POST', body: { name: 'OWN-' + id, monthlyPrice: '349000', features, ...extra } }), 201);
+  const org = await ok(await request('/platform/organizations', { token: platform, method: 'POST', body: { name: 'Usta ' + id, slug: 'own-' + id, planId: plan.id, login: 'own' + id, temporaryPassword: 'Temporary-Pass-123', ownerName: 'Boss', phone: '+998901119900' } }), 201);
+  return { token: await signIn('own' + id, 'Temporary-Pass-123', 'Boss-Password-123'), orgId: org.id, planId: plan.id, platform };
+}
+async function orderFor(token, phone) {
+  const customer = await ok(await request('/customers', { token, method: 'POST', body: { firstName: 'Dilshod', phone } }), 201);
+  const device = await ok(await request('/devices', { token, method: 'POST', body: { customerId: customer.id, category: 'Telefon', brand: 'Samsung', model: 'A54' } }), 201);
+  const order = await ok(await request('/orders', { token, method: 'POST', body: { customerId: customer.id, deviceId: device.id, complaint: 'Ekran', accessories: [], labor: '100000', partsTotal: '0' } }), 201);
+  return { customer, order };
+}
+async function deliverReady(orderId, orgId) {
+  await db.order.update({ where: { id: orderId }, data: { status: 'READY' } });
+  const event = await db.outboxEvent.create({ data: { organizationId: orgId, type: 'ORDER_READY', entityId: orderId, payload: {} } });
+  const { Notifications } = require('../dist/notifications/notifications.module.js');
+  const { SmsAccounts } = require('../dist/notifications/sms-accounts.js');
+  const { BotService } = require('../dist/bot/bot.service.js');
+  const { OwnBots } = require('../dist/bot/own-bot.js');
+  const { EskizClient } = require('../dist/notifications/eskiz.client.js');
+  const { TelegramClient } = require('../dist/bot/telegram.client.js');
+  await new Notifications(db, new EskizClient(), new SmsAccounts(db), new BotService(db, new TelegramClient()), new OwnBots(db)).deliver(event.id);
+  return db.notification.findUnique({ where: { eventId: event.id } });
+}
+
+test("a service's own bot: connect with a token, its customers link and hear from it, then disconnect", async () => {
+  const basic = await serviceOn({ telegram: true });
+  assert.equal((await request('/bot/own', { token: basic.token, method: 'PUT', body: { token: OWN_TOKEN } })).status, 403, 'not in the plan');
+  const pro = await serviceOn({ telegram: true, own_bot: true });
+  assert.equal((await ok(await request('/bot/own', { token: pro.token }))).allowed, true);
+  assert.equal((await request('/bot/own', { token: pro.token, method: 'PUT', body: { token: '123:short' } })).status, 400);
+  assert.equal((await request('/bot/own', { token: pro.token, method: 'PUT', body: { token: '111111111:AAWrongTokenWrongTokenWrongTokenXyz' } })).status, 400, 'Telegram refuses the token');
+  const before = calls.length;
+  assert.equal((await ok(await request('/bot/own', { token: pro.token, method: 'PUT', body: { token: OWN_TOKEN } }))).username, 'shop_test_bot');
+  const hook = calls.slice(before).find(c => c.method === 'setWebhook' && c.token === OWN_TOKEN);
+  assert.ok(hook.body.url.endsWith('/api/telegram/own/' + pro.orgId)); assert.ok(hook.body.secret_token.length >= 20);
+  // The token is stored encrypted, never in plain text.
+  const stored = await db.organizationSetting.findUnique({ where: { organizationId_key: { organizationId: pro.orgId, key: 'own_bot' } } });
+  assert.ok(!JSON.stringify(stored.value).includes(OWN_TOKEN));
+  // Another service cannot take the same bot.
+  const other = await serviceOn({ telegram: true, own_bot: true });
+  assert.equal((await request('/bot/own', { token: other.token, method: 'PUT', body: { token: OWN_TOKEN } })).status, 409);
+
+  const own = (chat, message, secret = hook.body.secret_token) => fetch(base + '/telegram/own/' + pro.orgId, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': secret }, body: JSON.stringify({ update_id: updateId++, message: { chat: { id: chat, type: 'private' }, from: { id: chat, first_name: 'Dilshod' }, ...message } }) });
+  const ownTo = chat => calls.filter(c => c.method === 'sendMessage' && c.token === OWN_TOKEN && String(c.body.chat_id) === String(chat)).at(-1)?.body;
+  assert.equal((await own(1, { text: '/start' }, 'wrong')).status, 403);
+  const phone = '+99894' + String(Math.floor(Math.random() * 1e7)).padStart(7, '0');
+  const { customer, order } = await orderFor(pro.token, phone);
+  // The order link opens the service's bot, not the platform one.
+  const links = await ok(await request('/orders/' + order.id + '/links', { token: pro.token, method: 'POST' }), 201);
+  assert.match(links.telegram, /^https:\/\/t\.me\/shop_test_bot\?start=/);
+  const chat = 600000000 + Math.floor(Math.random() * 1e6);
+  assert.equal((await own(chat, { text: '/start' })).status, 200);
+  assert.ok(ownTo(chat).text.includes('Usta '), ownTo(chat).text);
+  await own(chat, { contact: { phone_number: phone.slice(1), user_id: chat } });
+  assert.ok(ownTo(chat).text.includes('Raqamingiz tasdiqlandi'));
+  const linked = await db.customer.findUnique({ where: { id: customer.id } });
+  assert.equal(linked.telegramChatId, String(chat)); assert.equal(linked.telegramBot, 'own');
+  await own(chat, { text: '📦 Buyurtmalarim' });
+  assert.ok(ownTo(chat).text.includes(order.number));
+  // "Ready" goes through the service's bot.
+  const sentBefore = calls.length;
+  const n = await deliverReady(order.id, pro.orgId);
+  assert.equal(n.status, 'SENT'); assert.equal(n.channel, 'TELEGRAM');
+  assert.ok(calls.slice(sentBefore).some(c => c.method === 'sendMessage' && c.token === OWN_TOKEN && String(c.body.chat_id) === String(chat)));
+  // The platform bot's sharing of the same phone does not steal the customer from the own bot.
+  await tg(chat, { contact: { phone_number: phone.slice(1), user_id: chat } });
+  assert.equal((await db.customer.findUnique({ where: { id: customer.id } })).telegramBot, 'own');
+  // Disconnect: the webhook is removed and its customers are unlinked.
+  assert.equal((await request('/bot/own', { token: pro.token, method: 'DELETE' })).status, 200);
+  assert.equal((await db.customer.findUnique({ where: { id: customer.id } })).telegramChatId, null);
+  assert.equal((await own(chat, { text: '/start' })).status, 403);
+});
+
+test('SMS: platform allowance then extra; own Eskiz account; test SMS only to your own phone', async () => {
+  const svc = await serviceOn({ telegram: true, sms: true }, { smsPerMonth: 1 });
+  assert.equal((await request('/notifications/test-sms', { token: svc.token, method: 'POST', body: { phone: '+998900000001' } })).status, 404, 'arbitrary-number test SMS is gone');
+  let info = await ok(await request('/notifications/sms', { token: svc.token }));
+  assert.equal(info.mode, 'platform'); assert.equal(info.platform.available, true); assert.equal(info.platform.limit, 1); assert.equal(info.platform.sent, 0);
+  // Two "ready" SMS on a 1-SMS plan: the second is counted as extra.
+  for (const p of ['+99891' + String(Math.floor(Math.random() * 1e7)).padStart(7, '0'), '+99891' + String(Math.floor(Math.random() * 1e7)).padStart(7, '0')]) {
+    const { order } = await orderFor(svc.token, p);
+    const n = await deliverReady(order.id, svc.orgId);
+    assert.equal(n.status, 'SENT', n.errorCode); assert.equal(n.channel, 'SMS');
+    assert.ok(calls.some(c => c.url.startsWith('/eskiz/') && c.method === 'send' && c.body.mobile_phone === p.slice(1)));
+  }
+  info = await ok(await request('/notifications/sms', { token: svc.token }));
+  assert.equal(info.platform.sent, 2); assert.equal(info.platform.extra, 1);
+  const acc = await ok(await request('/account', { token: svc.token }));
+  assert.equal(acc.usage.sms, 2); assert.equal(acc.usage.smsExtra, 1); assert.equal(acc.usage.smsExtraCost, '150.00');
+  // Test SMS goes to the signed-in owner's phone.
+  const t = await ok(await request('/notifications/sms/test', { token: svc.token, method: 'POST' }));
+  assert.equal(t.phone, '+998901119900');
+  assert.ok(calls.some(c => c.url.startsWith('/eskiz/') && c.method === 'send' && c.body.mobile_phone === '998901119900'));
+  // Own Eskiz: a wrong password is refused, the right one is stored encrypted and used without limit.
+  assert.equal((await request('/notifications/sms', { token: svc.token, method: 'PUT', body: { mode: 'own', email: 'shop@mail.uz', password: 'bad' } })).status, 400);
+  assert.equal((await ok(await request('/notifications/sms', { token: svc.token, method: 'PUT', body: { mode: 'own', email: 'shop@mail.uz', password: 'shop-secret', from: 'UstaFix' } }))).mode, 'own');
+  const stored = await db.organizationSetting.findUnique({ where: { organizationId_key: { organizationId: svc.orgId, key: 'sms' } } });
+  assert.ok(!JSON.stringify(stored.value).includes('shop-secret'));
+  info = await ok(await request('/notifications/sms', { token: svc.token }));
+  assert.equal(info.mode, 'own'); assert.equal(info.balance, 54321); assert.equal(info.from, 'UstaFix');
+  const p3 = '+99891' + String(Math.floor(Math.random() * 1e7)).padStart(7, '0');
+  const { order } = await orderFor(svc.token, p3);
+  const before = calls.length;
+  assert.equal((await deliverReady(order.id, svc.orgId)).status, 'SENT');
+  const sent = calls.slice(before).filter(c => c.url.startsWith('/eskiz/'));
+  assert.ok(sent.some(c => c.method === 'login' && c.body.email === 'shop@mail.uz'));
+  assert.ok(sent.some(c => c.method === 'send' && c.body.from === 'UstaFix' && c.body.mobile_phone === p3.slice(1)));
+  assert.equal((await ok(await request('/notifications/sms', { token: svc.token }))).platform.sent, 3, 'own-account SMS do not count against the plan');
+  // Back to the platform.
+  assert.equal((await ok(await request('/notifications/sms', { token: svc.token, method: 'PUT', body: { mode: 'platform' } }))).mode, 'platform');
 });
