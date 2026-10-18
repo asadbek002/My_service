@@ -178,29 +178,31 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
       {menuOpen && (
         <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Menyu">
           <button className="absolute inset-0 bg-black/50" onClick={() => setMenuOpen(false)} aria-label="Yopish" />
-          <div className="safe-bottom absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-3xl bg-white">
-            <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-black/15" aria-hidden="true" />
-            <div className="flex items-center gap-3 px-4 pb-3 pt-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-mat text-base font-semibold text-white">{me?.firstName?.[0] ?? '·'}</span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold">{me?.firstName}</p>
-                <p className="text-xs text-mute">{me?.login} · {me?.role === 'OWNER' ? 'Boshliq' : 'Xodim'}</p>
+          <div className="safe-bottom absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-3xl bg-paper">
+            <div className="mat on-ink rounded-t-3xl px-4 pb-4 pt-2.5 text-white">
+              <div className="mx-auto h-1 w-10 rounded-full bg-white/25" aria-hidden="true" />
+              <div className="mt-3 flex items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/10 text-base font-semibold">{me?.firstName?.[0] ?? '·'}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold">{me?.firstName}</p>
+                  <p className="truncate text-xs text-white/60">{brand?.name ? brand.name + ' · ' : ''}{me?.role === 'OWNER' ? 'Boshliq' : 'Xodim'}</p>
+                </div>
+                <button onClick={() => setMenuOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10" aria-label="Yopish"><X className="h-5 w-5" /></button>
               </div>
-              <button onClick={() => setMenuOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-full bg-black/[0.05]" aria-label="Yopish"><X className="h-5 w-5" /></button>
             </div>
-            <div className="grid grid-cols-3 gap-2 px-3 pb-3">
+            <div className="grid grid-cols-3 gap-2 p-3">
               {nav.map(item => {
                 const active = isActive(pathname, item.href);
                 return (
                   <Link key={item.href} href={item.href} aria-current={active ? 'page' : undefined}
-                    className={cn('flex min-h-[5rem] flex-col items-center justify-center gap-2 rounded-xl px-1 text-center text-xs transition-colors', active ? 'bg-ink font-semibold text-white' : 'bg-paper text-ink active:bg-black/[0.06]')}>
-                    <item.icon className={cn('h-5 w-5', active && 'text-brand')} />{item.label}
+                    className={cn('flex min-h-[5.25rem] flex-col items-center justify-center gap-2 rounded-2xl border px-1 text-center text-xs font-medium transition-colors', active ? 'border-ink bg-ink text-white' : 'bg-white text-ink active:bg-black/[0.04]')}>
+                    <span className={cn('flex h-9 w-9 items-center justify-center rounded-xl', active ? 'bg-white/10' : 'bg-paper')}><item.icon className={cn('h-[18px] w-[18px]', active && 'text-brand')} /></span>{item.label}
                   </Link>
                 );
               })}
             </div>
             <div className="px-3 pb-4">
-              <button onClick={onLogout} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-red-50 text-sm font-semibold text-red-700">
+              <button onClick={onLogout} className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border bg-white text-sm font-semibold text-red-700">
                 <LogOut className="h-4 w-4" /> Chiqish
               </button>
             </div>

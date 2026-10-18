@@ -9,7 +9,7 @@ import { api, setAccessToken } from '../../lib/api';
 import { errorText } from '../../lib/errors';
 import { deviceName, money, dateTime, today } from '../../lib/format';
 import { can, useDashboard, useMe, useOrders } from '../../lib/queries';
-import { OrderCard } from '../../components/order-card';
+import { OrderList } from '../../components/order-card';
 import { AppShell } from '../../components/layout/app-shell';
 import { AuthFrame } from '../../components/layout/auth-frame';
 import { Button } from '../../components/ui/button';
@@ -73,7 +73,7 @@ function WorkHome({ firstName, canCreate, canView }: { firstName: string; canCre
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-2">
             {([['RECEIVED', 'Navbatda'], ['IN_REPAIR', "Ta'mirda"], ['READY', 'Tayyor']] as const).map(([status, label]) => (
-              <Link key={status} href={`/orders?status=${status}`} className="rounded-lg border bg-white p-3">
+              <Link key={status} href={`/orders?status=${status}`} className="rounded-2xl border bg-white p-3">
                 <p className="num font-mono text-2xl font-semibold">{count(status)}</p><p className="text-xs font-medium">{label}</p>
               </Link>
             ))}
@@ -81,7 +81,7 @@ function WorkHome({ firstName, canCreate, canView }: { firstName: string; canCre
           {canCreate && <Button asChild size="lg" className="w-full"><Link href="/orders/new">Yangi qabul</Link></Button>}
           <h2 className="font-semibold">Ishdagi buyurtmalar</h2>
           {orders.length === 0 ? <Empty title="Hozir ishda buyurtma yo'q" /> : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{orders.slice(0, 20).map(o => <OrderCard key={o.id} order={o} />)}</div>
+            <OrderList orders={orders.slice(0, 20)} />
           )}
         </div>
       )}
@@ -133,7 +133,7 @@ function MoneyHome() {
                   <h2 className="text-base font-bold">Egasini kutayotganlar</h2>
                   <p className="text-[13px] text-mute">{count('READY')} ta qurilma tayyor, olib ketilmagan</p>
                 </div>
-                <div className="grid gap-2.5">{waiting.map(o => <OrderCard key={o.id} order={o} />)}</div>
+                <OrderList orders={waiting} />
               </section>
             )}
           </div>

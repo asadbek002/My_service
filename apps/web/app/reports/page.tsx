@@ -119,39 +119,45 @@ export default function Reports() {
         <ErrorBox>{state}</ErrorBox>
         {!finance ? <p className="text-sm text-mute">Moliyaviy hisobotni ko&apos;rish uchun ruxsat yo&apos;q.</p> : error ? <ErrorBox>{errorText(error)}</ErrorBox> : isLoading || !data ? <Loading rows={4} /> : (
           <>
-            <section className="talon">
-              <div className="p-4">
-                <p className="eyebrow">Tushum · {periodLabel(range)}</p>
-                <p className="num mt-1 font-mono text-3xl font-semibold">{money(data.revenue)}</p>
-                <p className="text-sm text-mute">{data.delivered} ta qurilma berildi · {data.received} ta qabul · o&apos;rtacha chek {money(data.averageCheck)}</p>
+            {/* Revenue split the way the money is earned: labour is the shop's, parts go back to the shops. */}
+            <section className="talon-dark on-ink overflow-hidden">
+              <div className="p-5 sm:p-6">
+                <div className="flex justify-between gap-3 font-mono text-[11px] uppercase tracking-[0.08em] text-white/60"><span>Tushum</span><span className="truncate">{periodLabel(range)}</span></div>
+                <p className="num mt-2 font-mono text-[2.5rem] font-semibold leading-none tracking-tight sm:text-5xl">{money(data.revenue)}</p>
+                <p className="mt-2 text-[13px] text-white/70">{data.delivered} ta berildi · {data.received} ta qabul · o&apos;rtacha chek <span className="num font-mono">{money(data.averageCheck)}</span></p>
+                <Split labor={Number(data.labor)} parts={Number(data.parts)} />
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-white/80">
+                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-brand" />Usta haqi <b className="num font-mono font-semibold text-white">{money(data.labor)}</b></span>
+                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#6E93FF]" />Zapchast <b className="num font-mono font-semibold text-white">{money(data.parts)}</b></span>
+                </div>
               </div>
               <div className="talon-cut" />
-              <div className="p-4">
-                <Row label="Usta haqi">{money(data.labor)}</Row>
-                <Row label="Zapchast">{money(data.parts)}</Row>
-                <Row label="Xarajatlar">{Number(data.operatingExpenses) > 0 ? "−" : ""}{money(data.operatingExpenses)}</Row>
-                <div className="mt-1 border-t pt-1"><Row label="Foyda" strong>{money(data.profit)}</Row></div>
-                <p className="mt-2 text-xs text-mute">Tushum — shu davrda mijozga berilgan qurilmalar summasi. Foyda = usta haqi − xarajatlar (zapchast xaridi mijoz to&apos;lagan zapchast pulidan qoplanadi).</p>
+              <div className="grid grid-cols-2 gap-3 px-5 pb-5 pt-4 sm:px-6">
+                <div className="min-w-0"><p className="text-xs text-white/60">Xarajatlar</p><p className="num mt-1 font-mono text-lg font-semibold sm:text-xl">{Number(data.operatingExpenses) > 0 ? '−' : ''}{money(data.operatingExpenses)}</p></div>
+                <div className="min-w-0"><p className="text-xs text-white/60">Foyda</p><p className={`num mt-1 font-mono text-lg font-semibold sm:text-xl ${Number(data.profit) < 0 ? 'text-[#FF8A80]' : 'text-[#5BE39A]'}`}>{money(data.profit)}</p></div>
               </div>
             </section>
+            <p className="-mt-2 px-1 text-xs text-mute">Tushum — shu davrda mijozga berilgan qurilmalar summasi. Foyda = usta haqi − xarajatlar (zapchast xaridi mijoz to&apos;lagan zapchast pulidan qoplanadi).</p>
 
-            <section className="rounded-lg border bg-white p-4">
-              <h2 className="font-semibold">Kassa</h2>
-              <p className="mb-2 text-xs text-mute">Shu davrda qo&apos;lga tushgan pul (oldindan to&apos;lovlar ham).</p>
-              <Row label="Tushgan pul">{money(data.cashIn)}</Row>
-              <Row label="Qaytarilgan">{Number(data.refunds) > 0 ? "−" : ""}{money(data.refunds)}</Row>
-              <Row label="Sof" strong>{money(data.netCash)}</Row>
+            <section className="rounded-2xl border bg-white p-4 sm:p-5">
+              <div className="flex items-baseline justify-between gap-3"><h2 className="font-bold">Kassa</h2><span className="text-xs text-mute">qo&apos;lga tushgan pul</span></div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="min-w-0"><p className="text-xs text-mute">Tushgan</p><p className="num mt-0.5 whitespace-nowrap font-mono text-[15px] font-semibold sm:text-base">{money(data.cashIn)}</p></div>
+                <div className="min-w-0"><p className="text-xs text-mute">Qaytarilgan</p><p className="num mt-0.5 whitespace-nowrap font-mono text-[15px] font-semibold sm:text-base">{Number(data.refunds) > 0 ? '−' : ''}{money(data.refunds)}</p></div>
+                <div className="min-w-0"><p className="text-xs text-mute">Sof</p><p className="num mt-0.5 whitespace-nowrap font-mono text-[15px] font-semibold sm:text-base">{money(data.netCash)}</p></div>
+              </div>
+              <p className="mt-2 text-xs text-mute">Oldindan olingan to&apos;lovlar ham shu yerda.</p>
             </section>
 
             {Number(data.shopDebt) > 0 && (
-              <Link href="/parts" className="flex items-center justify-between rounded-lg border bg-white p-4 text-sm hover:border-ink/40">
+              <Link href="/parts" className="flex items-center justify-between rounded-2xl border bg-white p-4 text-sm hover:border-ink/40">
                 <span><span className="font-semibold">Do&apos;konlarga zapchast qarzi</span><span className="block text-xs text-mute">Olingan, lekin hali to&apos;lanmagan zapchastlar</span></span>
-                <span className="num font-mono font-semibold text-amber-700">{money(data.shopDebt)}</span>
+                <span className="num shrink-0 whitespace-nowrap pl-3 font-mono font-semibold text-amber-700">{money(data.shopDebt)}</span>
               </Link>
             )}
 
-            <section className="space-y-3 rounded-lg border bg-white p-4">
-              <div className="flex items-baseline justify-between"><h2 className="font-semibold">Xarajatlar</h2><Link href="/expenses" className="text-sm text-mute hover:text-ink">Yozish</Link></div>
+            <section className="space-y-3 rounded-2xl border bg-white p-4 sm:p-5">
+              <div className="flex items-baseline justify-between"><h2 className="font-bold">Xarajatlar</h2><Link href="/expenses" className="text-sm text-mute hover:text-ink">Yozish</Link></div>
               <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
                 <button className="chip" aria-pressed={!category} onClick={() => setCategory('')}>Hammasi</button>
                 {categories.map(c => <button key={c} className="chip" aria-pressed={category === c} onClick={() => setCategory(c)}>{catLabel(c)}</button>)}
@@ -171,9 +177,9 @@ export default function Reports() {
               {categories.includes('PURCHASE') && <p className="text-xs text-mute">«Zapchast xaridi» foydadan ayrilmaydi: bu pulni mijoz zapchast narxida to&apos;laydi.</p>}
             </section>
 
-            <section id="debtors" className="space-y-3 rounded-lg border bg-white p-4">
+            <section id="debtors" className="scroll-mt-20 space-y-3 rounded-2xl border bg-white p-4 sm:p-5">
               <div className="flex items-baseline justify-between gap-2">
-                <h2 className="font-semibold">Qarzdorlar</h2>
+                <h2 className="font-bold">Qarzdorlar</h2>
                 <span className="text-right text-xs text-mute">Qarzga berilgan jami<br /><b className="num font-mono text-sm text-amber-700">{money(deliveredDebt)}</b></span>
               </div>
               <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
@@ -204,5 +210,18 @@ export default function Reports() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+/** One bar, labour (orange) then parts (blue), in proportion. */
+function Split({ labor, parts }: { labor: number; parts: number }) {
+  const sum = labor + parts;
+  return (
+    <div className="mt-4 flex h-2.5 gap-[3px]" role="img" aria-label={sum ? `Usta haqi ${Math.round(labor / sum * 100)}%, zapchast ${Math.round(parts / sum * 100)}%` : 'Tushum yo‘q'}>
+      {sum === 0 ? <span className="flex-1 rounded-full bg-white/15" /> : <>
+        {labor > 0 && <span className="rounded-full bg-brand" style={{ flexGrow: labor }} />}
+        {parts > 0 && <span className="rounded-full bg-[#6E93FF]" style={{ flexGrow: parts }} />}
+      </>}
+    </div>
   );
 }

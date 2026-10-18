@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Check, Plus, X } from 'lucide-react';
+import { Check, Laptop, Monitor, Package, Plus, Smartphone, Tablet, Tv, Watch, X, type LucideIcon } from 'lucide-react';
 import { api } from '../../../lib/api';
 import { errorText } from '../../../lib/errors';
 import { fullName, normalizePhone, phone as fmtPhone, som } from '../../../lib/format';
@@ -15,7 +15,7 @@ import { Textarea } from '../../../components/ui/textarea';
 import { MoneyInput } from '../../../components/ui/money-input';
 import { ErrorBox } from '../../../components/ui/feedback';
 
-const CATEGORIES = ['Telefon', 'Planshet', 'Noutbuk', 'Kompyuter', 'Televizor', 'Soat', 'Boshqa'];
+const CATEGORIES: [string, LucideIcon][] = [['Telefon', Smartphone], ['Planshet', Tablet], ['Noutbuk', Laptop], ['Kompyuter', Monitor], ['Televizor', Tv], ['Soat', Watch], ['Boshqa', Package]];
 const BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Redmi', 'Honor', 'Huawei', 'Vivo', 'Oppo', 'Realme', 'Tecno', 'Infinix', 'Google', 'Nokia', 'Lenovo', 'HP', 'Asus', 'Acer', 'Dell', 'LG'];
 const ACCESSORIES = ['Quvvatlagich', 'Kabel', 'Chexol', 'SIM karta', 'Xotira kartasi', 'Quti', 'Sumka'];
 
@@ -171,7 +171,7 @@ function NewOrder() {
           {newDevice && (
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
-                {CATEGORIES.map(c => <Chip key={c} active={category === c} onClick={() => setCategory(c)}>{c}</Chip>)}
+                {CATEGORIES.map(([c, Icon]) => <Chip key={c} active={category === c} onClick={() => setCategory(c)}><Icon className="h-4 w-4" />{c}</Chip>)}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <label className="grid gap-1.5">
@@ -209,15 +209,19 @@ function NewOrder() {
             <label className="grid gap-1.5"><span className="text-sm font-medium">Usta haqi</span><MoneyInput value={labor} onChange={setLabor} /></label>
             <label className="grid gap-1.5"><span className="text-sm font-medium">Zapchast</span><MoneyInput value={parts} onChange={setParts} /></label>
           </div>
-          <div className="talon-cut mt-4" />
+          <div className="talon-cut -mx-4 mt-4 sm:-mx-5" />
           <div className="flex items-baseline justify-between pt-3">
             <span className="text-sm font-semibold">Jami</span>
-            <span className="num font-mono text-xl font-semibold">{som(total)}</span>
+            <span className="num font-mono text-2xl font-semibold tracking-tight">{som(total)}</span>
           </div>
         </Section>
 
         <ErrorBox>{error}</ErrorBox>
         <ActionBar>
+          <div className="flex !flex-none flex-col justify-center pr-1 lg:hidden">
+            <span className="text-[11px] text-mute">Jami</span>
+            <span className="num font-mono text-[15px] font-semibold leading-tight">{total > 0 ? som(total) : '—'}</span>
+          </div>
           <Button type="submit" variant="brand" size="lg" disabled={create.isPending}>{create.isPending ? 'Saqlanmoqda…' : 'Qabul qilish'}</Button>
         </ActionBar>
       </form>
@@ -227,10 +231,10 @@ function NewOrder() {
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border bg-white p-4 [counter-increment:step] sm:p-5">
+    <section className="relative rounded-2xl border bg-white p-4 [counter-increment:step] sm:p-5">
       <div className="mb-3.5 flex items-center justify-between gap-3">
         {/* Numbered steps: the intake reads top to bottom like the paper form it replaces. */}
-        <h2 className="flex items-center gap-2.5 font-bold before:flex before:h-6 before:w-6 before:shrink-0 before:items-center before:justify-center before:rounded-full before:bg-ink before:font-mono before:text-xs before:font-semibold before:text-white before:[content:counter(step)]">{title}</h2>
+        <h2 className="flex items-center gap-2.5 font-bold before:flex before:h-7 before:w-7 before:shrink-0 before:items-center before:justify-center before:rounded-lg before:bg-paper before:font-mono before:text-[11px] before:font-semibold before:text-mute before:[content:counter(step,decimal-leading-zero)]">{title}</h2>
         {hint && <span className="text-right text-xs text-mute">{hint}</span>}
       </div>
       {children}

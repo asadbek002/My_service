@@ -8,7 +8,7 @@ import { LATE_AFTER, Ruler, rulerKind } from './ui/ruler';
 const STATE_INK: Record<string, string> = { qabul: 'text-st-qabul-ink', tamir: 'text-st-tamir-ink', tayyor: 'text-st-tayyor-ink' };
 
 /** One order: device and money on top, who and which ticket below, the ruler of days in the shop at the bottom. */
-export function OrderCard({ order }: { order: Order }) {
+export function OrderCard({ order, flat }: { order: Order; flat?: boolean }) {
   const paid = paidOf(order.payments);
   const balance = Number(order.total) - paid;
   const debt = balance > 0 && order.status === 'DELIVERED';
@@ -17,7 +17,7 @@ export function OrderCard({ order }: { order: Order }) {
   const days = daysSince(order.createdAt);
   const late = kind === 'tayyor' && days > LATE_AFTER;
   return (
-    <Link href={`/orders/${order.id}`} className="block rounded-xl border bg-white px-4 py-3.5 transition-colors hover:border-ink/30 active:bg-paper">
+    <Link href={`/orders/${order.id}`} className={cn('block bg-white px-4 py-3.5 transition-colors active:bg-paper', flat ? 'hover:bg-[#F3F7F6]' : 'rounded-xl border hover:border-ink/30')}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-semibold">{deviceName(order.device)}</p>
@@ -42,4 +42,9 @@ export function OrderCard({ order }: { order: Order }) {
       </div>
     </Link>
   );
+}
+
+/** Orders as one sheet with hairlines between them (the phone list). */
+export function OrderList({ orders }: { orders: Order[] }) {
+  return <div className="divide-y overflow-hidden rounded-2xl border bg-white">{orders.map(o => <OrderCard key={o.id} order={o} flat />)}</div>;
 }

@@ -43,3 +43,6 @@ export const idempotencyKey = () => (crypto.randomUUID?.() ?? Math.random().toSt
 export function daysSince(value: string | Date) {
   return Math.max(1, Math.floor((Date.now() - new Date(value).getTime()) / 86_400_000) + 1);
 }
+
+/** Two letters for an avatar: first name and surname initials. */
+export const initials = (p: { firstName: string; lastName?: string | null }) => ((p.firstName[0] ?? '') + (p.lastName?.[0] ?? '')).toUpperCase() || '·';

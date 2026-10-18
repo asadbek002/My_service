@@ -7,7 +7,7 @@ import { Printer, Phone, Pencil, Share2, Undo2, Ban, ShieldCheck } from 'lucide-
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 import { errorText } from '../../../lib/errors';
-import { date, dateTime, daysSince, deviceName, fullName, idempotencyKey, money, phone, PAYMENT_METHODS, som } from '../../../lib/format';
+import { date, dateTime, daysSince, deviceName, fullName, idempotencyKey, money, phone, PAYMENT_METHODS, som, initials } from '../../../lib/format';
 import { LATE_AFTER, Ruler, rulerKind, type RulerKind } from '../../../components/ui/ruler';
 import { can, post, useMe, useOrder, useOrderMutation, usePaymentMethods, type Me, type OrderDetail, type Payment } from '../../../lib/queries';
 import { cn } from '../../../lib/utils';
@@ -129,7 +129,6 @@ function OrderPage() {
 }
 
 /** The repair talon: who, what, what's wrong — then the money, below the tear line. */
-const initials = (p: { firstName: string; lastName?: string | null }) => ((p.firstName[0] ?? '') + (p.lastName?.[0] ?? '')).toUpperCase() || '·';
 
 /** Qabul → Ta'mir → Tayyor → Berildi with the date each step was reached, and the ruler of days in the shop. */
 function Stages({ order, days, kind }: { order: OrderDetail; days: number; kind: RulerKind | null }) {
