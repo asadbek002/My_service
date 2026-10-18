@@ -703,3 +703,114 @@ test('CSV export has BOM, price split and protects spreadsheet cells', async () 
   const csv = new TextDecoder().decode(bytes);
   assert.ok(csv.includes('usta_haqi') && csv.includes('zapchast'));
 });
+
+// RFC 6238 code, the same way an authenticator app computes it.
+function totp(secret, at = Date.now()) {
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = ''; for (const c of secret) bits += A.indexOf(c).toString(2).padStart(5, '0');
+  const key = Buffer.from(bits.match(/.{8}/g).map(b => parseInt(b, 2)));
+  const counter = Buffer.alloc(8); counter.writeBigUInt64BE(BigInt(Math.floor(at / 30000)));
+  const h = require('node:crypto').createHmac('sha1', key).update(counter).digest();
+  const o = h[h.length - 1] & 15;
+  return String((((h[o] & 127) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3]) % 1e6).padStart(6, '0');
+}
+
+test('Hisobim: plan, days left, this month usage, choosing the next plan', async () => {
+  const t = await tenant(); const auth = await owner(t);
+  await newOrder(t);
+  const token = await platformToken();
+  const plan = await json(await request('/platform/plans', { token, method: 'POST', body: { name: 'ACC-' + randomUUID().slice(0, 8), monthlyPrice: '199000', smsPerMonth: 200, maxStaff: 5, features: { telegram: true } } }));
+  const hidden = await json(await request('/platform/plans', { token, method: 'POST', body: { name: 'HID-' + randomUUID().slice(0, 8), monthlyPrice: '1', active: false, features: {} } }));
+  const acc = await json(await request('/account', auth));
+  assert.equal(acc.subscription.status, 'ACTIVE'); assert.ok(acc.subscription.daysLeft >= 1); assert.equal(acc.subscription.readOnly, false);
+  assert.equal(acc.usage.orders, 1); assert.equal(acc.usage.staff, 1); assert.equal(acc.usage.staffLimit, 5);
+  const listed = acc.plans.find(p => p.id === plan.id);
+  assert.ok(listed); assert.equal(listed.smsPerMonth, 200); assert.ok(Number(listed.yearlyTotal) > 0);
+  assert.ok(!acc.plans.some(p => p.id === hidden.id), 'hidden plans are not offered');
+  assert.equal((await request('/account/plan', { ...auth, method: 'PUT', body: { planId: hidden.id, period: 'MONTH' } })).status, 400);
+  const chosen = await json(await request('/account/plan', { ...auth, method: 'PUT', body: { planId: plan.id, period: 'YEAR' } }));
+  assert.equal(chosen.nextPlanId, plan.id); assert.equal(chosen.billingPeriod, 'YEAR');
+  const after = await json(await request('/account', auth));
+  assert.equal(after.subscription.nextPlanId, plan.id); assert.equal(after.subscription.plan.id, t.plan.id, 'the change waits for payment');
+  // The platform sees the choice on the service page.
+  const detail = await json(await request('/platform/organizations/' + t.org.id, { token }));
+  assert.equal(detail.nextPlan.id, plan.id); assert.equal(detail.stats.orders, 1); assert.equal(detail.setup.total, 6);
+});
+
+test('support tickets: a service writes, the platform answers, other services see nothing', async () => {
+  const t = await tenant(); const auth = await owner(t); const other = await owner(b);
+  const token = await platformToken();
+  assert.equal((await request('/support/tickets', { ...auth, method: 'POST', body: { subject: 'x', body: 'y' } })).status, 400);
+  const ticket = await json(await request('/support/tickets', { ...auth, method: 'POST', body: { subject: 'Chek chiqmayapti', body: 'Printer 58 mm, bo‘sh qog‘oz chiqadi' } }));
+  assert.equal(ticket.status, 'OPEN');
+  assert.equal((await request('/support/tickets/' + ticket.id, other)).status, 404);
+  assert.ok(!(await json(await request('/support/tickets', other))).some(x => x.id === ticket.id));
+  const inbox = await json(await request('/platform/tickets?status=OPEN', { token }));
+  assert.ok(inbox.some(x => x.id === ticket.id && x.organization.id === t.org.id));
+  assert.equal((await request('/platform/tickets/' + ticket.id + '/messages', { token, method: 'POST', body: { body: 'Sozlamalarda 58 mm ni tanlang.' } })).status, 201);
+  let thread = await json(await request('/support/tickets/' + ticket.id, auth));
+  assert.equal(thread.status, 'ANSWERED'); assert.deepEqual(thread.messages.map(m => m.author), ['SERVICE', 'PLATFORM']);
+  assert.equal((await request('/support/tickets/' + ticket.id + '/messages', { ...auth, method: 'POST', body: { body: 'Rahmat, ishladi' } })).status, 201);
+  assert.equal((await json(await request('/support/tickets/' + ticket.id, auth))).status, 'OPEN');
+  assert.equal((await request('/support/tickets/' + ticket.id + '/close', { ...auth, method: 'POST' })).status, 200);
+  thread = await json(await request('/platform/tickets/' + ticket.id, { token }));
+  assert.equal(thread.status, 'CLOSED'); assert.equal(thread.messages.length, 3); assert.equal(thread.author.firstName, 'Egasi');
+  assert.equal((await request('/platform/tickets', auth)).status, 401, 'tenants cannot read the inbox');
+});
+
+test('announcements reach every service while active', async () => {
+  const token = await platformToken(); const auth = await owner(a);
+  const ann = await json(await request('/platform/announcements', { token, method: 'POST', body: { title: 'Yangilanish', body: 'Bugun 23:00 da 10 daqiqa ishlamaydi', level: 'WARNING' } }));
+  assert.ok((await json(await request('/announcements', auth))).some(x => x.id === ann.id));
+  assert.equal((await request('/platform/announcements/' + ann.id, { token, method: 'PATCH', body: { active: false } })).status, 200);
+  assert.ok(!(await json(await request('/announcements', auth))).some(x => x.id === ann.id));
+  assert.equal((await request('/platform/announcements', { ...auth, method: 'POST', body: { title: 'x', body: 'y', level: 'INFO' } })).status, 401);
+});
+
+test('platform finds a service, extends its time, keeps a note, blocks and unblocks it', async () => {
+  const t = await tenant(); const auth = await owner(t); const token = await platformToken();
+  const found = await json(await request('/platform/organizations?q=' + encodeURIComponent(t.org.name), { token }));
+  assert.ok(found.some(o => o.id === t.org.id && o.state === 'active'));
+  assert.ok(!(await json(await request('/platform/organizations?state=blocked', { token }))).some(o => o.id === t.org.id));
+  const before = await db.subscription.findUnique({ where: { organizationId: t.org.id } });
+  const extended = await json(await request('/platform/organizations/' + t.org.id + '/extend', { token, method: 'POST', body: { days: 10 } }));
+  assert.equal(Math.round((new Date(extended.expiresAt) - before.expiresAt) / 86400000), 10);
+  assert.equal(extended.status, 'ACTIVE');
+  assert.equal((await request('/platform/organizations/' + t.org.id + '/extend', { token, method: 'POST', body: { days: 0 } })).status, 400);
+  assert.equal((await request('/platform/organizations/' + t.org.id + '/note', { token, method: 'PUT', body: { note: 'Chilonzor, 2 usta' } })).status, 200);
+  assert.equal((await json(await request('/platform/organizations/' + t.org.id, { token }))).platformNote, 'Chilonzor, 2 usta');
+  // Blocked: sign-in still works, only account, support, me and announcements answer.
+  assert.equal((await request('/platform/organizations/' + t.org.id + '/block', { token, method: 'POST', body: { reason: "To'lov qilinmagan" } })).status, 201);
+  const me = await json(await request('/auth/me', auth));
+  assert.equal(me.blocked.reason, "To'lov qilinmagan");
+  const denied = await request('/orders', auth);
+  assert.equal(denied.status, 403); assert.equal((await denied.json()).message, 'ORG_BLOCKED');
+  assert.equal((await request('/customers', { ...auth, method: 'POST', body: { firstName: 'X', phone: '+998901112233' } })).status, 403);
+  assert.equal((await request('/account', auth)).status, 200);
+  assert.equal((await request('/support/tickets', { ...auth, method: 'POST', body: { subject: 'Blokdan chiqaring', body: "To'ladim" } })).status, 201);
+  const fresh = await json(await request('/auth/login', { method: 'POST', body: { login: t.user.login, password } }));
+  assert.ok(fresh.accessToken, 'a blocked owner can still sign in to read why');
+  assert.ok((await json(await request('/platform/organizations?state=blocked', { token }))).some(o => o.id === t.org.id));
+  assert.equal((await request('/platform/organizations/' + t.org.id + '/unblock', { token, method: 'POST' })).status, 201);
+  assert.equal((await request('/orders', auth)).status, 200);
+});
+
+test('platform admin two-factor sign-in with an authenticator code', async () => {
+  const adminLogin = 'tfa-' + randomUUID().slice(0, 8);
+  await db.platformAdmin.create({ data: { login: adminLogin, passwordHash: await argon2.hash(password) } });
+  const signIn = body => request('/platform/auth/login', { method: 'POST', body: { login: adminLogin, password, ...body } });
+  const token = (await json(await signIn({}))).accessToken;
+  assert.deepEqual(await json(await request('/platform/auth/two-factor', { token })), { enabled: false });
+  const setup = await json(await request('/platform/auth/two-factor/setup', { token, method: 'POST' }));
+  assert.match(setup.secret, /^[A-Z2-7]{32}$/); assert.ok(setup.qr.startsWith('data:image/png;base64,')); assert.ok(setup.url.startsWith('otpauth://totp/'));
+  // Not required until confirmed.
+  assert.equal((await signIn({})).status, 201);
+  assert.equal((await request('/platform/auth/two-factor/enable', { token, method: 'POST', body: { code: totp(setup.secret) === '000000' ? '111111' : '000000' } })).status, 400);
+  assert.equal((await request('/platform/auth/two-factor/enable', { token, method: 'POST', body: { code: totp(setup.secret) } })).status, 201);
+  const missing = await signIn({});
+  assert.equal(missing.status, 401); assert.equal((await missing.json()).message, 'TOTP_REQUIRED');
+  assert.equal((await signIn({ code: totp(setup.secret, Date.now() - 10 * 60000) })).status, 401, 'an old code is refused');
+  assert.equal((await signIn({ code: totp(setup.secret) })).status, 201);
+  assert.equal((await request('/platform/auth/two-factor/disable', { token, method: 'POST', body: { code: totp(setup.secret) } })).status, 201);
+  assert.equal((await signIn({})).status, 201);
+});

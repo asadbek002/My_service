@@ -56,6 +56,9 @@ const TEXT: Record<string, string> = {
   PHONE_TAKEN: 'Bu telefon raqami bilan ustaxona allaqachon ochilgan. Tizimga kiring yoki parolni tiklang.',
   SIGNUP_CLOSED: "Ro'yxatdan o'tish vaqtincha yopiq. Yordam bo'limiga yozing.",
   NO_ACCOUNT: 'Bu raqamga bog‘langan akkaunt topilmadi.',
+  ORG_BLOCKED: "Ustaxona vaqtincha to'xtatilgan. Yordam bo'limiga yozing.",
+  TOO_MANY_TICKETS: "Bugun juda ko'p murojaat yozildi. Ochiq murojaatga javob yozing.",
+  'Plan not available': 'Bu tarif hozir mavjud emas. Sahifani yangilang.',
 };
 
 export function errorText(e: unknown): string {

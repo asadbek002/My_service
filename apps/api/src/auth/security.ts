@@ -9,6 +9,8 @@ export const allowedOrigins = () => (process.env.CORS_ORIGINS ?? process.env.WEB
 export const Public = () => SetMetadata('public', true);
 export const Permissions = (...permissions: string[]) => SetMetadata('permissions', permissions);
 export const AllowPasswordChange = () => SetMetadata('allowPasswordChange', true);
+/** Still reachable by a service the platform blocked: who am I, sign out, the account page, support. */
+export const AllowBlocked = () => SetMetadata('allowBlocked', true);
 export interface Actor {
   userId: string;
   organizationId: string;
@@ -47,7 +49,7 @@ export class SecurityGuard implements CanActivate {
     if (typeof payload.sub !== 'string' || typeof payload.sid !== 'string') throw new UnauthorizedException();
     const session = await this.db.session.findUnique({
       where: { id: payload.sid },
-      include: { user: { include: { branches: true, roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } } } } },
+      include: { user: { include: { organization: { select: { blockedAt: true } }, branches: true, roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } } } } },
     });
     if (!session || session.userId !== payload.sub || session.status !== 'ACTIVE' ||
         session.expiresAt <= new Date() || session.user.status !== 'ACTIVE') throw new UnauthorizedException();
@@ -56,6 +58,9 @@ export class SecurityGuard implements CanActivate {
     // Support sessions are not blocked by the owner's pending password change.
     if (user.mustChangePassword && !support && !this.reflector.getAllAndOverride<boolean>('allowPasswordChange', targets)) {
       throw new ForbiddenException('PASSWORD_CHANGE_REQUIRED');
+    }
+    if (user.organization.blockedAt && !support && !this.reflector.getAllAndOverride<boolean>('allowBlocked', targets)) {
+      throw new ForbiddenException('ORG_BLOCKED');
     }
     const permissions = [...new Set(user.roles.flatMap(r => r.role.permissions.map(p => p.permission.key)))];
     req.actor = {

@@ -19,7 +19,7 @@ export type OrderDetail = Omit<Order, 'payments'> & {
   actorNames: Record<string, string>;
   totalPaid: string; balance: string;
 };
-export type Me = { id: string; firstName: string; lastName?: string | null; login: string; organizationId: string; mustChangePassword: boolean; permissions: string[]; role: 'OWNER' | 'STAFF' | null; roles: string[]; support?: boolean };
+export type Me = { id: string; firstName: string; lastName?: string | null; login: string; organizationId: string; mustChangePassword: boolean; permissions: string[]; role: 'OWNER' | 'STAFF' | null; roles: string[]; support?: boolean; blocked?: { at: string; reason: string | null } | null };
 export type Staff = { id: string; login: string; firstName: string; lastName?: string | null; phone: string; email?: string | null; status: string; mustChangePassword: boolean; createdAt: string; roles: { role: { name: string; systemKey?: string | null } }[] };
 export type Dashboard = {
   statuses: { status: string; count: number }[]; todayReceived: number;

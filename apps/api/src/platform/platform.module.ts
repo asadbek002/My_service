@@ -1,4 +1,4 @@
-import { Body, CanActivate, Controller, ExecutionContext, Get, Injectable, Module, Param, Patch, Post, Put, Req, UseGuards, UnauthorizedException, ForbiddenException, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Body, CanActivate, Controller, ExecutionContext, Get, Injectable, Module, Param, Patch, Post, Put, Query, Req, UseGuards, UnauthorizedException, ForbiddenException, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { IsString, Length, Matches, IsInt, Min, Max, IsOptional, IsObject, IsIn, IsISO8601, IsBoolean, MaxLength } from 'class-validator';
 import { createHash, randomBytes } from 'node:crypto';
 import * as argon2 from 'argon2';
@@ -15,6 +15,9 @@ import { BotService } from '../bot/bot.service';
 import { esc } from '../bot/telegram.client';
 import { billingSettings, saveBillingSettings, yearlyPriceOf } from './billing';
 import { createOrganization } from './organizations';
+import { newTotpSecret, otpauthUrl, verifyTotp } from './totp';
+import { setupProgress } from '../management/settings.module';
+import QRCode from 'qrcode';
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 type AdminRequest = Request & { adminId: string; platformSessionId: string };
 @Injectable()
@@ -78,6 +81,32 @@ class OrganizationDto {
   @IsString() @Length(1,100) ownerName!: string;
   @IsString() @Matches(/^\+[1-9][0-9]{7,14}$/) phone!: string;
 }
+class PlatformLoginDto extends LoginDto {
+  /** Authenticator code, once two-factor sign-in is on. */
+  @IsOptional() @IsString() @Matches(/^\d{6}$/) code?: string;
+}
+class ExtendDto {
+  @IsInt() @Min(1) @Max(365) days!: number;
+  @IsOptional() @IsIn(['TRIAL','ACTIVE']) status?: 'TRIAL' | 'ACTIVE';
+}
+class BlockDto { @IsString() @Length(1,300) reason!: string; }
+class NoteDto { @IsString() @MaxLength(2000) note!: string; }
+class ReplyDto { @IsString() @Length(1,4000) body!: string; }
+class AnnouncementDto {
+  @IsString() @Length(1,120) title!: string;
+  @IsString() @Length(1,2000) body!: string;
+  @IsIn(['INFO','WARNING']) level!: 'INFO' | 'WARNING';
+}
+class AnnouncementUpdateDto { @IsBoolean() active!: boolean; }
+/** Where a service stands, for filters: blocked beats everything, then trial / active / expired. */
+type OrgState = 'blocked' | 'trial' | 'active' | 'expired';
+function orgState(o: { blockedAt: Date | null; subscription: { status: string; expiresAt: Date; graceUntil: Date | null } | null }): OrgState {
+  if (o.blockedAt) return 'blocked';
+  const s = o.subscription;
+  if (!s || (s.graceUntil ?? s.expiresAt) <= new Date() || !['TRIAL','ACTIVE'].includes(s.status)) return 'expired';
+  return s.status === 'TRIAL' ? 'trial' : 'active';
+}
+class TotpDto { @IsString() @Matches(/^\d{6}$/) code!: string; }
 class ResetPasswordDto {
   @IsString() @Length(12,128) temporaryPassword!: string;
 }
@@ -90,7 +119,7 @@ class SubscriptionDto {
 class PlatformAuthController {
   constructor(private readonly db: Database) {}
   @Post('login') @UseGuards(LoginRateGuard)
-  async login(@Req() req: Request, @Body() d: LoginDto) {
+  async login(@Req() req: Request, @Body() d: PlatformLoginDto) {
     if (!req.headers.origin || !allowedOrigins().includes(req.headers.origin)) throw new ForbiddenException();
     const admin = await this.db.platformAdmin.findUnique({ where: { login: d.login.toLowerCase() } });
     // Always do Argon2 work for unknown users.
@@ -98,19 +127,180 @@ class PlatformAuthController {
     let valid = false;
     try { valid = await argon2.verify(admin?.passwordHash ?? dummy, d.password); } catch {}
     if (!admin || !admin.active || !valid) throw new UnauthorizedException('Invalid credentials');
+    if (admin.totpEnabled && admin.totpSecret) {
+      if (!d.code) throw new UnauthorizedException('TOTP_REQUIRED');
+      if (!verifyTotp(admin.totpSecret, d.code)) throw new UnauthorizedException('TOTP_INVALID');
+    }
     const token = randomBytes(32).toString('base64url');
     await this.db.platformSession.create({ data: { adminId: admin.id, tokenHash: hash(token), expiresAt: new Date(Date.now()+8*3600000) } });
     return { accessToken: token, expiresIn: 28800 };
   }
   @Post('logout') @UseGuards(PlatformGuard)
   async logout(@Req() req: AdminRequest) { await this.db.platformSession.delete({ where: { id: req.platformSessionId } }); return { ok: true }; }
+
+  // ---- Two-factor sign-in (authenticator app) ----
+  @Get('two-factor') @UseGuards(PlatformGuard)
+  async twoFactor(@Req() req: AdminRequest) {
+    const admin = await this.db.platformAdmin.findUniqueOrThrow({ where: { id: req.adminId } });
+    return { enabled: admin.totpEnabled };
+  }
+  /** A new secret to scan; it is not required at login until confirmed with a code. */
+  @Post('two-factor/setup') @UseGuards(PlatformGuard)
+  async setupTwoFactor(@Req() req: AdminRequest) {
+    const admin = await this.db.platformAdmin.findUniqueOrThrow({ where: { id: req.adminId } });
+    if (admin.totpEnabled) throw new ConflictException('Two-factor already enabled');
+    const secret = newTotpSecret();
+    await this.db.platformAdmin.update({ where: { id: admin.id }, data: { totpSecret: secret } });
+    const url = otpauthUrl(admin.login, secret);
+    return { secret, url, qr: await QRCode.toDataURL(url, { margin: 1, width: 220 }) };
+  }
+  @Post('two-factor/enable') @UseGuards(PlatformGuard)
+  async enableTwoFactor(@Req() req: AdminRequest, @Body() d: TotpDto) {
+    const admin = await this.db.platformAdmin.findUniqueOrThrow({ where: { id: req.adminId } });
+    if (!admin.totpSecret || !verifyTotp(admin.totpSecret, d.code)) throw new BadRequestException('TOTP_INVALID');
+    await this.db.platformAdmin.update({ where: { id: admin.id }, data: { totpEnabled: true } });
+    await this.db.auditLog.create({ data: { organizationId: 'PLATFORM', actorId: admin.id, action: 'PLATFORM_2FA_ENABLED', entityId: admin.id } });
+    return { enabled: true };
+  }
+  @Post('two-factor/disable') @UseGuards(PlatformGuard)
+  async disableTwoFactor(@Req() req: AdminRequest, @Body() d: TotpDto) {
+    const admin = await this.db.platformAdmin.findUniqueOrThrow({ where: { id: req.adminId } });
+    if (!admin.totpEnabled || !admin.totpSecret || !verifyTotp(admin.totpSecret, d.code)) throw new BadRequestException('TOTP_INVALID');
+    await this.db.platformAdmin.update({ where: { id: admin.id }, data: { totpEnabled: false, totpSecret: null } });
+    await this.db.auditLog.create({ data: { organizationId: 'PLATFORM', actorId: admin.id, action: 'PLATFORM_2FA_DISABLED', entityId: admin.id } });
+    return { enabled: false };
+  }
 }
 @Controller('platform') @Public() @UseGuards(PlatformGuard)
 class PlatformController {
   constructor(private readonly db: Database, private readonly subCache: SubscriptionCache, private readonly jwt: JwtService, private readonly bot: BotService) {}
+  /** Services, newest first; `q` matches name, slug, owner login or phone; `state` filters. */
   @Get('organizations')
-  organizations() {
-    return this.db.organization.findMany({ select: { id:true,name:true,slug:true,createdAt:true,subscription:{include:{plan:true}},_count:{select:{users:true,branches:true,orders:true}} }, take:100, orderBy:{createdAt:'desc'} });
+  async organizations(@Query('q') q?: string, @Query('state') state?: string) {
+    const text = typeof q === 'string' ? q.trim().slice(0, 100) : '';
+    const digits = text.replace(/\D/g, '');
+    const rows = await this.db.organization.findMany({
+      where: text ? { OR: [
+        { name: { contains: text, mode: 'insensitive' } }, { slug: { contains: text.toLowerCase() } },
+        { users: { some: { login: { contains: text.toLowerCase() } } } },
+        ...(digits.length >= 4 ? [{ users: { some: { phone: { contains: digits } } } }] : []),
+      ] } : {},
+      select: { id:true,name:true,slug:true,createdAt:true,blockedAt:true,blockReason:true,subscription:{include:{plan:true}},_count:{select:{users:true,branches:true,orders:true}},
+        users:{where:{roles:{some:{role:{systemKey:'OWNER'}}}},select:{firstName:true,phone:true,login:true},take:1} },
+      take: 300, orderBy: { createdAt: 'desc' },
+    });
+    const withState = rows.map(({ users, ...o }) => ({ ...o, owner: users[0] ?? null, state: orgState(o) }));
+    return state && ['blocked','trial','active','expired'].includes(state) ? withState.filter(o => o.state === state) : withState;
+  }
+  /** Everything about one service the platform needs to help it. */
+  @Get('organizations/:id')
+  async organization(@Param('id') id: string) {
+    const org = await this.db.organization.findUnique({ where: { id }, include: { subscription: { include: { plan: true } } } });
+    if (!org) throw new NotFoundException();
+    const monthStart = new Date(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date()).slice(0, 7) + '-01T00:00:00+05:00');
+    const [users, orders, ordersMonth, customers, failed, lastLogin, audit, tickets, nextPlan] = await Promise.all([
+      this.db.user.findMany({ where: { organizationId: id }, select: { id: true, login: true, firstName: true, lastName: true, phone: true, status: true, mustChangePassword: true, telegramChatId: true, roles: { select: { role: { select: { systemKey: true } } } } }, orderBy: { createdAt: 'asc' } }),
+      this.db.order.count({ where: { organizationId: id } }),
+      this.db.order.count({ where: { organizationId: id, createdAt: { gte: monthStart } } }),
+      this.db.customer.count({ where: { organizationId: id } }),
+      this.db.notification.count({ where: { organizationId: id, status: 'FAILED', createdAt: { gte: new Date(Date.now() - 30 * 86400000) } } }),
+      this.db.auditLog.findFirst({ where: { organizationId: id, action: 'AUTH_LOGIN' }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+      this.db.auditLog.findMany({ where: { organizationId: id }, orderBy: { createdAt: 'desc' }, take: 20, select: { action: true, actorId: true, createdAt: true } }),
+      this.db.supportTicket.findMany({ where: { organizationId: id }, orderBy: { updatedAt: 'desc' }, take: 10, select: { id: true, subject: true, status: true, updatedAt: true } }),
+      org.subscription?.nextPlanId ? this.db.plan.findUnique({ where: { id: org.subscription.nextPlanId }, select: { id: true, name: true } }) : null,
+    ]);
+    const owner = users.find(u => u.roles.some(r => r.role.systemKey === 'OWNER'));
+    return {
+      ...org, state: orgState(org), nextPlan, users: users.map(({ telegramChatId, ...u }) => ({ ...u, telegram: !!telegramChatId })),
+      stats: { orders, ordersMonth, customers, failedNotifications30d: failed, lastLoginAt: lastLogin?.createdAt ?? null },
+      setup: owner ? await setupProgress(this.db, id, owner.id) : null, audit, tickets,
+    };
+  }
+  /** Give more days (a longer trial, a goodwill extension): from today or from the current end, whichever is later. */
+  @Post('organizations/:id/extend')
+  async extend(@Param('id') id: string, @Body() d: ExtendDto, @Req() req: AdminRequest) {
+    const sub = await this.db.subscription.findUnique({ where: { organizationId: id } });
+    if (!sub) throw new NotFoundException();
+    const billing = await billingSettings(this.db);
+    const from = Math.max(Date.now(), sub.expiresAt.getTime());
+    const expiresAt = new Date(from + d.days * 86400000);
+    const status = d.status ?? (['TRIAL','ACTIVE'].includes(sub.status) ? sub.status : 'TRIAL');
+    const updated = await this.db.subscription.update({ where: { organizationId: id }, data: { expiresAt, graceUntil: new Date(expiresAt.getTime() + billing.graceDays * 86400000), status } });
+    await this.db.auditLog.create({ data: { organizationId: id, actorId: 'platform:' + req.adminId, action: 'SUBSCRIPTION_EXTENDED', entityId: sub.id, newValue: { days: d.days, status } } });
+    await this.subCache.invalidate(id);
+    return updated;
+  }
+  @Post('organizations/:id/block')
+  async block(@Param('id') id: string, @Body() d: BlockDto, @Req() req: AdminRequest) {
+    const org = await this.db.organization.updateMany({ where: { id }, data: { blockedAt: new Date(), blockReason: d.reason.trim() } });
+    if (!org.count) throw new NotFoundException();
+    await this.db.auditLog.create({ data: { organizationId: id, actorId: 'platform:' + req.adminId, action: 'ORGANIZATION_BLOCKED', entityId: id, newValue: { reason: d.reason.trim() } } });
+    return { ok: true };
+  }
+  @Post('organizations/:id/unblock')
+  async unblock(@Param('id') id: string, @Req() req: AdminRequest) {
+    const org = await this.db.organization.updateMany({ where: { id }, data: { blockedAt: null, blockReason: null } });
+    if (!org.count) throw new NotFoundException();
+    await this.db.auditLog.create({ data: { organizationId: id, actorId: 'platform:' + req.adminId, action: 'ORGANIZATION_UNBLOCKED', entityId: id } });
+    return { ok: true };
+  }
+  @Put('organizations/:id/note')
+  async note(@Param('id') id: string, @Body() d: NoteDto) {
+    const org = await this.db.organization.updateMany({ where: { id }, data: { platformNote: d.note.trim() || null } });
+    if (!org.count) throw new NotFoundException();
+    return { ok: true };
+  }
+
+  // ---- Support inbox ----
+  @Get('tickets')
+  async tickets(@Query('status') status?: string) {
+    const where = status && ['OPEN','ANSWERED','CLOSED'].includes(status) ? { status } : {};
+    const rows = await this.db.supportTicket.findMany({ where, orderBy: { updatedAt: 'desc' }, take: 100,
+      include: { organization: { select: { id: true, name: true } }, messages: { orderBy: { createdAt: 'desc' }, take: 1 }, _count: { select: { messages: true } } } });
+    return rows.map(({ messages, _count, ...t }) => ({ ...t, last: messages[0] ?? null, messages: _count.messages }));
+  }
+  @Get('tickets/:id')
+  async ticket(@Param('id') id: string) {
+    const t = await this.db.supportTicket.findUnique({ where: { id }, include: { organization: { select: { id: true, name: true } }, messages: { orderBy: { createdAt: 'asc' } } } });
+    if (!t) throw new NotFoundException();
+    const author = await this.db.user.findUnique({ where: { id: t.userId }, select: { firstName: true, phone: true, login: true } });
+    return { ...t, author };
+  }
+  /** Answer a ticket; the person who opened it gets the answer in Telegram too when linked. */
+  @Post('tickets/:id/messages')
+  async replyTicket(@Param('id') id: string, @Body() d: ReplyDto, @Req() req: AdminRequest) {
+    const t = await this.db.supportTicket.findUnique({ where: { id } });
+    if (!t) throw new NotFoundException();
+    const [message] = await this.db.$transaction([
+      this.db.supportMessage.create({ data: { ticketId: id, author: 'PLATFORM', authorName: 'MyService yordam', body: d.body.trim() } }),
+      this.db.supportTicket.update({ where: { id }, data: { status: 'ANSWERED' } }),
+    ]);
+    await this.db.auditLog.create({ data: { organizationId: t.organizationId, actorId: 'platform:' + req.adminId, action: 'SUPPORT_ANSWERED', entityId: id } });
+    const user = await this.db.user.findUnique({ where: { id: t.userId }, select: { telegramChatId: true } });
+    if (user?.telegramChatId) void this.bot.telegram.send(user.telegramChatId, `💬 <b>Yordam bo‘limi javob berdi</b> — «${esc(t.subject)}»\n\n${esc(d.body.trim().slice(0, 1500))}\n\nIlovada: Menyu → Yordam`).catch(() => undefined);
+    return message;
+  }
+  @Post('tickets/:id/close')
+  async closeTicket(@Param('id') id: string) {
+    const done = await this.db.supportTicket.updateMany({ where: { id }, data: { status: 'CLOSED' } });
+    if (!done.count) throw new NotFoundException();
+    return { ok: true };
+  }
+
+  // ---- Announcements ----
+  @Get('announcements')
+  announcements() { return this.db.announcement.findMany({ orderBy: { createdAt: 'desc' }, take: 50 }); }
+  @Post('announcements')
+  async announce(@Body() d: AnnouncementDto, @Req() req: AdminRequest) {
+    const a = await this.db.announcement.create({ data: { title: d.title.trim(), body: d.body.trim(), level: d.level } });
+    await this.db.auditLog.create({ data: { organizationId: 'PLATFORM', actorId: req.adminId, action: 'ANNOUNCEMENT_CREATED', entityId: a.id } });
+    return a;
+  }
+  @Patch('announcements/:id')
+  async updateAnnouncement(@Param('id') id: string, @Body() d: AnnouncementUpdateDto) {
+    const done = await this.db.announcement.updateMany({ where: { id }, data: { active: d.active } });
+    if (!done.count) throw new NotFoundException();
+    return { ok: true };
   }
   @Get('plans')
   async plans() {

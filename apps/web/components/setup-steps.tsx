@@ -5,7 +5,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronRight, ClipboardPlus, ImageIcon, LifeBuoy, MapPin, Send, ShieldCheck, UserPlus, type LucideIcon } from 'lucide-react';
 import { api } from '../lib/api';
 import { can, useMe } from '../lib/queries';
-import { supportUrl } from '../lib/support';
 import { cn } from '../lib/utils';
 
 export type Setup = { steps: { key: string; done: boolean }[]; done: number; total: number; dismissed: boolean };
@@ -60,11 +59,11 @@ export function SetupCard() {
 
 export function SupportLink({ className }: { className?: string }) {
   return (
-    <a href={supportUrl('Salom! MyService bo‘yicha yordam kerak.')} target="_blank" rel="noopener noreferrer" className={cn('flex items-center gap-3 rounded-2xl border bg-white p-4 text-sm hover:border-ink/30', className)}>
+    <Link href="/help" className={cn('flex items-center gap-3 rounded-2xl border bg-white p-4 text-sm hover:border-ink/30', className)}>
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-paper"><LifeBuoy className="h-5 w-5" /></span>
-      <span className="min-w-0 flex-1"><b className="block">Qiyinchilik bo&apos;ldimi?</b><span className="text-mute">Yordam bo&apos;limiga Telegramda yozing — sozlab beramiz.</span></span>
+      <span className="min-w-0 flex-1"><b className="block">Qiyinchilik bo&apos;ldimi?</b><span className="text-mute">Yordam bo&apos;limiga yozing — sozlab beramiz.</span></span>
       <ChevronRight className="h-4 w-4 shrink-0 text-mute" />
-    </a>
+    </Link>
   );
 }
 

@@ -26,6 +26,12 @@ model Organization {
   slug      String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  /// Set by the platform: the service can sign in, read its account and write to support, nothing else.
+  blockedAt     DateTime?
+  blockReason   String?
+  /// Platform's own note about this service (never shown to it).
+  platformNote  String?
+  supportTickets SupportTicket[]
 
   customers Customer[]
   orders Order[]
@@ -210,6 +216,9 @@ model Subscription {
   status         String   @default("TRIAL")
   expiresAt      DateTime
   graceUntil     DateTime?
+  /// The plan and period the service chose for its next payment (the change happens when it pays).
+  nextPlanId     String?
+  billingPeriod  String   @default("MONTH")
   plan           Plan     @relation(fields: [planId], references: [id], onDelete: Restrict)
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 }
@@ -521,6 +530,9 @@ model PlatformAdmin {
   passwordHash String
   active Boolean @default(true)
   telegramChatId String?
+  /// TOTP (Google Authenticator) secret, base32. Login asks for a code once enabled.
+  totpSecret String?
+  totpEnabled Boolean @default(false)
   sessions PlatformSession[]
 }
 model PlatformSession {
@@ -688,4 +700,41 @@ model AlertChat {
   createdAt DateTime @default(now())
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   @@unique([organizationId, chatId])
+}
+
+/// A service's question to the platform; the conversation is its messages.
+model SupportTicket {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  subject        String
+  /// OPEN: waiting for the platform; ANSWERED: waiting for the service; CLOSED.
+  status         String   @default("OPEN")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  messages       SupportMessage[]
+  @@index([organizationId, updatedAt])
+  @@index([status, updatedAt])
+}
+model SupportMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  /// SERVICE or PLATFORM
+  author    String
+  authorName String
+  body      String
+  createdAt DateTime @default(now())
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  @@index([ticketId, createdAt])
+}
+/// A notice from the platform shown at the top of every service's app while active.
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  /// INFO or WARNING
+  level     String   @default("INFO")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
 }

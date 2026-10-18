@@ -2,7 +2,7 @@ import { Body, Controller, ForbiddenException, Get, Header, HttpCode, Post, Req,
 import { ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
-import { AllowPasswordChange, CurrentActor, Public, allowedOrigins } from './security';
+import { AllowBlocked, AllowPasswordChange, CurrentActor, Public, allowedOrigins } from './security';
 import type { Actor } from './security';
 import { ChangePasswordDto, LoginDto, ResetDto, SignupDto, TelegramStatusDto, VerifyCodeDto, VerifySmsDto, VerifyTelegramDto } from './auth.dto';
 import { PhoneVerification } from './verification';
@@ -35,13 +35,13 @@ export class AuthController {
     this.origin(req);
     return this.send(res, await this.auth.refresh(req.cookies?.myservice_refresh));
   }
-  @Post('logout') @AllowPasswordChange() @HttpCode(204)
+  @Post('logout') @AllowPasswordChange() @AllowBlocked() @HttpCode(204)
   async logout(@CurrentActor() actor: Actor, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     this.origin(req);
     await this.auth.logout(actor);
     res.clearCookie('myservice_refresh', this.cookieOptions());
   }
-  @Get('me') @AllowPasswordChange() @Header('Cache-Control', 'no-store')
+  @Get('me') @AllowPasswordChange() @AllowBlocked() @Header('Cache-Control', 'no-store')
   me(@CurrentActor() actor: Actor) { return this.auth.me(actor); }
 
   @Post('change-password') @AllowPasswordChange() @HttpCode(200)

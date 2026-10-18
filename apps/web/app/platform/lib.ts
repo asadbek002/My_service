@@ -1,10 +1,17 @@
 'use client';
 import { API_BASE } from '../../lib/api';
 
-export async function platformLogin(login: string, password: string) {
-  const r = await fetch(API_BASE + '/platform/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password }), cache: 'no-store' });
+/** Thrown when the password is right and the authenticator code is still needed (or wrong). */
+export class CodeRequired extends Error {}
+export async function platformLogin(login: string, password: string, code?: string) {
+  const r = await fetch(API_BASE + '/platform/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: window.location.origin }, body: JSON.stringify({ login, password, ...(code ? { code } : {}) }), cache: 'no-store' });
   if (r.status === 429) throw new Error("Juda ko'p urinish. Keyinroq qayta urinib ko'ring.");
-  if (!r.ok) throw new Error("Login yoki parol noto'g'ri");
+  if (!r.ok) {
+    const message = (await r.json().catch(() => ({})) as { message?: string }).message;
+    if (message === 'TOTP_REQUIRED') throw new CodeRequired('Ilovadagi 6 xonali kodni yozing');
+    if (message === 'TOTP_INVALID') throw new CodeRequired("Kod noto'g'ri yoki eskirgan");
+    throw new Error("Login yoki parol noto'g'ri");
+  }
   const data = await r.json();
   sessionStorage.setItem('platform_token', data.accessToken);
 }

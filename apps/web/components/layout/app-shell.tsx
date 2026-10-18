@@ -5,12 +5,12 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, ClipboardList, Users, CreditCard, BarChart3, Receipt, ShieldCheck, Bell, UserCog, Settings,
-  Plus, Menu, X, LogOut, Search, ChevronLeft, LifeBuoy, Wrench,
+  Plus, Menu, X, LogOut, Search, ChevronLeft, LifeBuoy, Wrench, Wallet, Megaphone, Ban,
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useMe, can, useBranding } from '../../lib/queries';
-import { API_BASE, logout } from '../../lib/api';
+import { API_BASE, api, logout } from '../../lib/api';
 import { cn } from '../../lib/utils';
-import { supportUrl } from '../../lib/support';
 import { Mark } from './mark';
 
 interface AppShellProps {
@@ -35,7 +35,11 @@ const NAV = [
   { href: '/notifications', label: 'Xabarlar', icon: Bell, permission: 'orders.view' },
   { href: '/staff', label: 'Xodimlar', icon: UserCog, permission: 'staff.view' },
   { href: '/settings', label: 'Sozlamalar', icon: Settings, permission: 'settings.manage' },
+  { href: '/account', label: 'Hisobim', icon: Wallet, permission: 'settings.manage' },
+  { href: '/help', label: 'Yordam', icon: LifeBuoy, permission: null },
 ] as const;
+// A blocked service can still reach these; everything else shows the blocked notice.
+const OPEN_WHEN_BLOCKED = ['/account', '/help'];
 
 const isActive = (pathname: string, href: string) =>
   href === '/dashboard' ? pathname === href : pathname === href || (pathname.startsWith(href + '/') && !(href === '/orders' && pathname === '/orders/new'));
@@ -118,9 +122,6 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
             );
           })}
         </nav>
-        <a href={supportUrl('Salom! MyService bo‘yicha yordam kerak.')} target="_blank" rel="noopener noreferrer" className="mx-3 flex items-center gap-3 rounded-md px-3 py-2.5 text-sm text-white/60 transition-colors hover:bg-white/[0.05] hover:text-white">
-          <LifeBuoy className="h-4 w-4 shrink-0" /> Yordam
-        </a>
         <div className="m-3 flex items-center gap-3 rounded-lg bg-white/[0.06] p-2.5">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-semibold">{me?.firstName?.[0] ?? '·'}</span>
           <div className="min-w-0 flex-1">
@@ -154,7 +155,8 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
           </div>
         </header>
         <main className={cn('mx-auto w-full flex-1 px-4 pt-4 lg:px-8 lg:pb-12 lg:pt-8', tabs ? 'pb-[calc(6rem+env(safe-area-inset-bottom))]' : 'pb-[calc(2rem+env(safe-area-inset-bottom))]', narrow ? 'max-w-3xl' : 'max-w-6xl')}>
-          {children}
+          <Announcements />
+          {me?.blocked && !me.support && !OPEN_WHEN_BLOCKED.some(p => pathname.startsWith(p)) ? <Blocked reason={me.blocked.reason} /> : children}
         </main>
       </div>
 
@@ -205,11 +207,6 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
                 );
               })}
             </div>
-            <div className="px-3 pb-2">
-              <a href={supportUrl('Salom! MyService bo‘yicha yordam kerak.')} target="_blank" rel="noopener noreferrer" className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border bg-white text-sm font-semibold">
-                <LifeBuoy className="h-4 w-4" /> Yordam bo&apos;limiga yozish
-              </a>
-            </div>
             <div className="px-3 pb-4">
               <button onClick={onLogout} className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border bg-white text-sm font-semibold text-red-700">
                 <LogOut className="h-4 w-4" /> Chiqish
@@ -218,6 +215,45 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Platform notices (maintenance, new features); each can be hidden on this device. */
+function Announcements() {
+  const { data } = useQuery({ queryKey: ['announcements'], queryFn: () => api<{ id: string; title: string; body: string; level: 'INFO' | 'WARNING' }[]>('/announcements'), staleTime: 600_000 });
+  const [hidden, setHidden] = useState<string[]>([]);
+  useEffect(() => { try { setHidden(JSON.parse(localStorage.getItem('ms_hidden_announcements') ?? '[]')); } catch { /* private mode */ } }, []);
+  const shown = (data ?? []).filter(a => !hidden.includes(a.id));
+  if (!shown.length) return null;
+  const hide = (id: string) => {
+    const next = [...hidden, id]; setHidden(next);
+    try { localStorage.setItem('ms_hidden_announcements', JSON.stringify(next.slice(-50))); } catch { /* private mode */ }
+  };
+  return (
+    <div className="mb-4 space-y-2">
+      {shown.map(a => (
+        <div key={a.id} role="status" className={cn('flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm', a.level === 'WARNING' ? 'border-amber-300 bg-amber-50 text-amber-950' : 'border-st-tamir/30 bg-[#EEF3FF]')}>
+          <Megaphone className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="min-w-0 flex-1"><p className="font-semibold">{a.title}</p><p className="whitespace-pre-line">{a.body}</p></div>
+          <button onClick={() => hide(a.id)} className="-mr-1 rounded-full p-1 hover:bg-black/[0.06]" aria-label="Yopish"><X className="h-4 w-4" /></button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Blocked({ reason }: { reason: string | null }) {
+  return (
+    <div className="mx-auto max-w-md rounded-2xl border bg-white p-6 text-center">
+      <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-700"><Ban className="h-6 w-6" /></span>
+      <h2 className="mt-3 text-lg font-bold">Ustaxona vaqtincha to&apos;xtatilgan</h2>
+      {reason && <p className="mt-1 text-sm text-mute">Sabab: {reason}</p>}
+      <p className="mt-2 text-sm text-mute">Ma&apos;lumotlaringiz saqlangan. Qayta ochish uchun yordam bo&apos;limiga yozing.</p>
+      <div className="mt-5 grid gap-2">
+        <Link href="/help" className="flex h-12 items-center justify-center rounded-xl bg-brand text-sm font-semibold text-ink">Yordam bo&apos;limiga yozish</Link>
+        <Link href="/account" className="flex h-12 items-center justify-center rounded-xl border text-sm font-semibold">Hisobim</Link>
+      </div>
     </div>
   );
 }

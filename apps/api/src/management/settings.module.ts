@@ -11,6 +11,26 @@ class SettingsDto{@IsObject()value!:Record<string,unknown>}
 class LogoDto{@IsString()@MaxLength(400000)image!:string;@IsOptional()@IsString()@MaxLength(700000)icon?:string}
 class TemplateDto{@IsString()@Length(1,4000)body!:string;@IsBoolean()active!:boolean}
 class PaymentMethodDto{@IsString()@Length(1,64)@Matches(/^[A-Z0-9_]+$/)key!:string;@IsString()@Length(1,100)label!:string}
+/** Getting-started steps of a service, worked out from what is already set up (Telegram: of `userId`). */
+export async function setupProgress(db:Database,org:string,userId:string){
+ const [rows,me,staff,orders]=await Promise.all([
+  db.organizationSetting.findMany({where:{organizationId:org,key:{in:['general','logo','warranty_terms','setup']}}}),
+  db.user.findUnique({where:{id:userId},select:{telegramChatId:true}}),
+  db.user.count({where:{organizationId:org}}),
+  db.order.count({where:{organizationId:org}}),
+ ]);
+ const v=(k:string)=>(rows.find(r=>r.key===k)?.value??{}) as Record<string,unknown>;
+ const text=(x:unknown)=>typeof x==='string'&&x.trim().length>0;
+ const steps=[
+  {key:'profile',done:text(v('general').address)&&text(v('general').phone)},
+  {key:'logo',done:text(v('logo').image)},
+  {key:'warranty',done:text(v('warranty_terms').text)},
+  {key:'telegram',done:!!me?.telegramChatId},
+  {key:'staff',done:staff>1},
+  {key:'order',done:orders>0},
+ ];
+ return{steps,done:steps.filter(x=>x.done).length,total:steps.length,dismissed:v('setup').dismissed===true};
+}
 @Controller('settings')
 class SettingsController{
  constructor(private readonly db:Database){}
@@ -62,26 +82,7 @@ class SettingsController{
   * The owner can hide it; it also disappears by itself once every step is done.
   */
  @Get('setup')@Permissions('settings.manage')
- async setup(@CurrentActor()a:Actor){
-  const org=a.organizationId;
-  const [rows,me,staff,orders]=await Promise.all([
-   this.db.organizationSetting.findMany({where:{organizationId:org,key:{in:['general','logo','warranty_terms','setup']}}}),
-   this.db.user.findUniqueOrThrow({where:{id:a.userId},select:{telegramChatId:true}}),
-   this.db.user.count({where:{organizationId:org}}),
-   this.db.order.count({where:{organizationId:org}}),
-  ]);
-  const v=(k:string)=>(rows.find(r=>r.key===k)?.value??{}) as Record<string,unknown>;
-  const text=(x:unknown)=>typeof x==='string'&&x.trim().length>0;
-  const steps=[
-   {key:'profile',done:text(v('general').address)&&text(v('general').phone)},
-   {key:'logo',done:text(v('logo').image)},
-   {key:'warranty',done:text(v('warranty_terms').text)},
-   {key:'telegram',done:!!me.telegramChatId},
-   {key:'staff',done:staff>1},
-   {key:'order',done:orders>0},
-  ];
-  return{steps,done:steps.filter(x=>x.done).length,total:steps.length,dismissed:v('setup').dismissed===true};
- }
+ setup(@CurrentActor()a:Actor){return setupProgress(this.db,a.organizationId,a.userId)}
  @Put('setup/dismiss')@Permissions('settings.manage')
  async dismissSetup(@CurrentActor()a:Actor){
   const value={dismissed:true} as Prisma.InputJsonObject;

@@ -4,16 +4,18 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { platformApi } from './lib';
 import { PlansTab, type Plan } from './plans-editor';
+import { AnnouncementsTab, OrgDetail, OrgList, TicketsTab, TwoFactorCard } from './parts';
 
 type Org = { id: string; name: string; slug: string; createdAt: string; _count: { users: number; branches: number; orders: number }; subscription: { status: string; expiresAt: string; plan: Plan } | null };
 type Analytics = { totalOrganizations: number; activeOrganizations: number; activeSubscriptions: number; trials: number; newOrganizations: number; churned: number; churnRate: number; mrr: string };
 type System = { database: string; organizations: number; activeSubscriptions: number; pendingOutbox: number; failedNotifications: number };
 type Invoice = { id: string; organizationId: string; amount: string; status: string; issuedAt: string };
 type Usage = { id: string; organizationId: string; metric: string; quantity: number; period: string };
-export type PlatformTab = 'overview' | 'organizations' | 'plans' | 'subscriptions' | 'system';
+export type PlatformTab = 'overview' | 'organizations' | 'tickets' | 'announcements' | 'plans' | 'subscriptions' | 'system';
 
 const TABS: [PlatformTab, string, string][] = [
-  ['overview', 'Umumiy', '/platform'], ['organizations', 'Servislar', '/platform/organizations'], ['plans', 'Tariflar', '/platform/plans'],
+  ['overview', 'Umumiy', '/platform'], ['organizations', 'Servislar', '/platform/organizations'], ['tickets', 'Murojaatlar', '/platform/tickets'],
+  ['announcements', "E'lonlar", '/platform/announcements'], ['plans', 'Tariflar', '/platform/plans'],
   ['subscriptions', 'Obunalar', '/platform/subscriptions'], ['system', 'Tizim', '/platform/system'],
 ];
 const money = (v: string | number) => Number(v).toLocaleString('ru-RU') + " so'm";
@@ -25,7 +27,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   return <div className={card}><p className="eyebrow">{label}</p><p className="num mt-1 font-mono text-xl font-semibold sm:text-2xl">{value}</p></div>;
 }
 
-export default function PlatformConsole({ tab }: { tab: PlatformTab }) {
+export default function PlatformConsole({ tab, orgId, ticketId }: { tab: PlatformTab; orgId?: string; ticketId?: string | null }) {
   const router = useRouter();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [orgs, setOrgs] = useState<Org[]>([]);
@@ -94,15 +96,12 @@ export default function PlatformConsole({ tab }: { tab: PlatformTab }) {
           </div>
         )}
 
-        {(tab === 'organizations' || tab === 'overview') && (
+        {orgId && <OrgDetail id={orgId} onSessionExpired={() => router.replace('/platform/login')} />}
+        {tab === 'tickets' && <TicketsTab onError={fail} initial={ticketId ?? null} />}
+        {tab === 'announcements' && <AnnouncementsTab onError={fail} />}
+        {!orgId && (tab === 'organizations' || tab === 'overview') && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <section className={card + ' lg:col-span-2'}>
-              <h2 className="font-semibold mb-3">Servislar</h2>
-              <ul className="divide-y">
-                {orgs.map(o => <OrgRow key={o.id} org={o} onError={fail} />)}
-              </ul>
-              {orgs.length === 0 && <p className="text-sm text-mute">Hali servis yo&apos;q</p>}
-            </section>
+            <div className="lg:col-span-2"><OrgList onError={fail} {...(tab === 'overview' ? { limit: 8 } : {})} /></div>
             {tab === 'organizations' && (
               <section className={card}>
                 <h2 className="font-semibold mb-3">Yangi servis</h2>
@@ -143,6 +142,7 @@ export default function PlatformConsole({ tab }: { tab: PlatformTab }) {
 
         {tab === 'system' && system && (
           <>
+            <TwoFactorCard onError={fail} />
             <BotCard onError={fail} />
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <Stat label="Database" value={system.database} />
@@ -164,60 +164,6 @@ export default function PlatformConsole({ tab }: { tab: PlatformTab }) {
         )}
       </main>
     </div>
-  );
-}
-
-type Member = { id: string; login: string; firstName: string; lastName?: string | null; phone: string; status: string; mustChangePassword: boolean; roles: { role: { systemKey: string | null } }[] };
-
-/** A service with its people: reset a forgotten password or enter it as its owner to fix a problem. */
-function OrgRow({ org, onError }: { org: Org; onError: (e: unknown) => void }) {
-  const [open, setOpen] = useState(false);
-  const [users, setUsers] = useState<Member[] | null>(null);
-  const [notice, setNotice] = useState('');
-  async function toggle() {
-    setOpen(!open);
-    if (!users) try { setUsers(await platformApi<Member[]>('/organizations/' + org.id + '/users')); } catch (e) { onError(e); }
-  }
-  async function support() {
-    // Open the tab inside the click, so the browser does not block it as a pop-up.
-    const tab = window.open('about:blank', '_blank');
-    try {
-      const { accessToken, expiresIn } = await platformApi<{ accessToken: string; expiresIn: number }>('/organizations/' + org.id + '/support', { method: 'POST' });
-      const url = '/support#token=' + encodeURIComponent(accessToken) + '&expiresIn=' + expiresIn;
-      if (tab) tab.location.href = url; else window.location.href = url;
-    } catch (e) { tab?.close(); onError(e); }
-  }
-  async function reset(user: Member) {
-    const temporaryPassword = window.prompt(`${user.login} uchun yangi vaqtinchalik parol (kamida 12 belgi):`);
-    if (!temporaryPassword) return;
-    if (temporaryPassword.length < 12) { setNotice('Parol kamida 12 belgi bo‘lishi kerak'); return; }
-    try {
-      await platformApi('/users/' + user.id + '/reset-password', { method: 'POST', body: JSON.stringify({ temporaryPassword }) });
-      setNotice(`${user.login}: parol yangilandi. Birinchi kirishda o‘zi almashtiradi.`);
-    } catch (e) { onError(e); }
-  }
-  return (
-    <li className="py-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <button onClick={toggle} className="min-w-0 flex-1 text-left">
-          <p className="truncate font-semibold">{org.name}</p>
-          <p className="truncate text-xs text-mute">{org.slug} · {org.subscription ? `${org.subscription.plan.name}, ${org.subscription.status} ${new Date(org.subscription.expiresAt).toLocaleDateString('ru-RU')} gacha` : 'obunasiz'} · {org._count.users} xodim · {org._count.orders} buyurtma</p>
-        </button>
-        <button onClick={support} className="h-9 rounded-md border px-3 text-sm font-medium hover:border-ink/40">Servisga kirish</button>
-      </div>
-      {notice && <p className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
-      {open && (
-        <ul className="mt-2 divide-y rounded-md border">
-          {!users && <li className="px-3 py-2 text-sm text-mute">Yuklanmoqda…</li>}
-          {users?.map(u => (
-            <li key={u.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-              <span className="min-w-0 flex-1 truncate">{u.firstName} <span className="font-mono text-xs text-mute">{u.login}</span>{u.roles.some(r => r.role.systemKey === 'OWNER') ? <span className="text-xs text-mute"> · boshliq</span> : null}{u.status !== 'ACTIVE' ? <span className="text-xs text-red-600"> · {u.status}</span> : null}</span>
-              <button onClick={() => reset(u)} className="shrink-0 text-xs font-medium underline">Parolni tiklash</button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </li>
   );
 }
 
