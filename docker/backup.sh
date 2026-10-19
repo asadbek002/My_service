@@ -11,9 +11,21 @@
 #   BACKUP_RCLONE_REMOTE    e.g. "b2:myservice-backups" if rclone is installed and configured
 set -eu
 cd "$(dirname "$0")/.."
-[ -f .env ] && { set -a; . ./.env; set +a; }
-BACKUP_DIR="${BACKUP_DIR:-./backups}"
-KEEP_DAYS="${KEEP_DAYS:-14}"
+
+# Read one value from .env without executing the file: it may have Windows line endings, spaces or
+# quotes that a shell would choke on. A variable already set in the environment wins.
+envget() {
+  eval "current=\${$1:-}"
+  if [ -n "$current" ]; then printf '%s' "$current"; return; fi
+  [ -f .env ] || return 0
+  grep -E "^[[:space:]]*$1[[:space:]]*=" .env | tail -n 1 | cut -d= -f2- | tr -d '\r' \
+    | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
+}
+TELEGRAM_BOT_TOKEN="$(envget TELEGRAM_BOT_TOKEN)"
+BACKUP_TELEGRAM_CHAT_ID="$(envget BACKUP_TELEGRAM_CHAT_ID)"
+BACKUP_RCLONE_REMOTE="$(envget BACKUP_RCLONE_REMOTE)"
+BACKUP_DIR="$(envget BACKUP_DIR)"; BACKUP_DIR="${BACKUP_DIR:-./backups}"
+KEEP_DAYS="$(envget KEEP_DAYS)"; KEEP_DAYS="${KEEP_DAYS:-14}"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 dir="$BACKUP_DIR/$stamp"
 umask 077
