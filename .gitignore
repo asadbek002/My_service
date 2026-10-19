@@ -13,3 +13,6 @@ coverage
 *.tsbuildinfo
 .turbo
 dump.rdb
+
+# Database dumps from docker/backup.sh (customer data): never commit
+backups/
