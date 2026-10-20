@@ -841,3 +841,33 @@ test('monitor checks the platform on demand', async () => {
   assert.ok(m.at); assert.ok(m.checks.find(c => c.key === 'database').ok); assert.ok(m.checks.find(c => c.key === 'redis').ok);
   assert.equal((await request('/platform/monitor', await owner(a))).status, 401);
 });
+
+test('a customer typed wrong at intake is fixed; another service cannot touch them', async () => {
+  const t = await tenant(); const auth = await owner(t);
+  const { customer } = await newOrder(t);
+  await db.customer.update({ where: { id: customer.id }, data: { telegramChatId: '777' } });
+  assert.equal((await request('/customers/' + customer.id, { ...auth, method: 'PATCH', body: { firstName: '' } })).status, 400);
+  assert.equal((await request('/customers/' + customer.id, { ...(await owner(b)), method: 'PATCH', body: { firstName: 'Hack' } })).status, 404);
+  const fixed = await json(await request('/customers/' + customer.id, { ...auth, method: 'PATCH', body: { firstName: 'Jasurbek', lastName: 'Karimov' } }));
+  assert.equal(fixed.firstName, 'Jasurbek'); assert.equal(fixed.lastName, 'Karimov'); assert.equal(fixed.telegramChatId, '777', 'same phone keeps Telegram');
+  const other = await json(await request('/customers', { ...auth, method: 'POST', body: { firstName: 'Boshqa', phone: '+998935550011' } }));
+  assert.equal((await request('/customers/' + customer.id, { ...auth, method: 'PATCH', body: { phone: other.phone } })).status, 409, 'phone of another customer');
+  const moved = await json(await request('/customers/' + customer.id, { ...auth, method: 'PATCH', body: { phone: '+998935550022' } }));
+  assert.equal(moved.phone, '+998935550022'); assert.equal(moved.telegramChatId, null, 'a new phone unlinks the old chat');
+  const log = await db.auditLog.findFirst({ where: { organizationId: t.org.id, action: 'CUSTOMER_UPDATED', entityId: customer.id }, orderBy: { createdAt: 'desc' } });
+  assert.equal(log.oldValue.phone, customer.phone);
+});
+
+test('orders filter "qarzga berilgan": delivered and not fully paid', async () => {
+  const t = await tenant(); const auth = await owner(t);
+  const { order: debtOrder } = await newOrder(t, { labor: '100000', parts: '0' });
+  const { order: paidOrder } = await newOrder(t, { labor: '100000', parts: '0' });
+  const { order: openOrder } = await newOrder(t, { labor: '100000', parts: '0' });
+  for (const o of [debtOrder, paidOrder]) assert.equal((await request('/orders/' + o.id + '/status', { ...auth, method: 'PATCH', body: { status: 'READY' } })).status, 200);
+  assert.equal((await request('/orders/' + debtOrder.id + '/deliver', { ...auth, method: 'POST', body: { warrantyDays: 0, allowDebt: true } })).status, 201);
+  assert.equal((await request('/orders/' + paidOrder.id + '/payments', { ...auth, method: 'POST', body: { amount: '100000', method: 'CASH', idempotencyKey: randomUUID() } })).status, 201);
+  assert.equal((await request('/orders/' + paidOrder.id + '/deliver', { ...auth, method: 'POST', body: { warrantyDays: 0 } })).status, 201);
+  const debts = await json(await request('/orders?status=DEBT', auth));
+  assert.deepEqual(debts.map(o => o.id), [debtOrder.id]);
+  assert.ok(!debts.some(o => o.id === openOrder.id));
+});

@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
-import { CustomerDto, DeviceDto, OrderDto, PriceDto, ComplaintDto, StatusDto, PaymentDto, RefundDto, DeliverDto, FixDeliveryDto } from './orders.dto';
+import { CustomerDto, DeviceDto, OrderDto, PriceDto, ComplaintDto, StatusDto, PaymentDto, RefundDto, DeliverDto, FixDeliveryDto, CustomerUpdateDto } from './orders.dto';
 
 // Simplified flow: RECEIVED → IN_REPAIR → READY → DELIVERED, CANCELLED from any open state.
 export const OPEN_STATUSES = ['RECEIVED', 'IN_REPAIR', 'READY'];
@@ -100,6 +100,29 @@ class CustomersController {
     const notifications = await this.db.notification.findMany({ where: { organizationId: actor.organizationId, orderId: { in: c.orders.map(o => o.id) } }, orderBy: { createdAt: 'desc' }, take: 50 });
     return { ...c, stats: { orders: c.orders.length, devices: c.devices.length, totalSpent: totalSpent.toString(), debt: debt.toString() }, notifications };
   }
+  @Patch(':id') @Permissions('customers.edit')
+  async update(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: CustomerUpdateDto) {
+    const before = await this.db.customer.findFirst({ where: { id, organizationId: actor.organizationId, ...customerScope(actor) } });
+    if (!before) throw new NotFoundException();
+    const data = {
+      ...(dto.firstName !== undefined ? { firstName: dto.firstName.trim() } : {}),
+      ...(dto.lastName !== undefined ? { lastName: dto.lastName.trim() || null } : {}),
+      // A new phone means a new Telegram link: the old chat belonged to the old number.
+      ...(dto.phone !== undefined && dto.phone !== before.phone ? { phone: dto.phone, telegramChatId: null, telegramBot: null } : {}),
+    };
+    if (data.firstName === '') throw new BadRequestException('Name required');
+    try {
+      return await this.db.$transaction(async tx => {
+        const c = await tx.customer.update({ where: { organizationId_id: { organizationId: actor.organizationId, id } }, data });
+        await tx.auditLog.create({ data: { organizationId: actor.organizationId, actorId: actor.userId, action: 'CUSTOMER_UPDATED', entityId: id,
+          oldValue: { firstName: before.firstName, lastName: before.lastName, phone: before.phone }, newValue: { firstName: c.firstName, lastName: c.lastName, phone: c.phone } } });
+        return c;
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('Customer phone already exists');
+      throw e;
+    }
+  }
 }
 
 @ApiTags('devices') @ApiBearerAuth()
@@ -127,9 +150,15 @@ class DevicesController {
 class OrdersController {
   constructor(private readonly db: Database) {}
   @Get() @Permissions('orders.view')
-  list(@CurrentActor() actor: Actor, @Query('status') status?: string) {
+  async list(@CurrentActor() actor: Actor, @Query('status') status?: string) {
+    const include = { customer: true, device: true, payments: { select: { kind: true, amount: true } } } as const;
+    if (status === 'DEBT') {
+      // Handed over without full payment: delivered orders whose payments are below the total.
+      const delivered = await this.db.order.findMany({ where: { ...orderScope(actor), status: 'DELIVERED' }, include, orderBy: { createdAt: 'desc' }, take: 2000 });
+      return delivered.filter(o => o.total.greaterThan(o.payments.reduce((s, p) => p.kind === 'REFUND' ? s.minus(p.amount) : s.plus(p.amount), new Prisma.Decimal(0)))).slice(0, 200);
+    }
     const filter = status === 'open' ? { status: { in: OPEN_STATUSES } } : status && /^[A-Z_]{3,30}$/.test(status) ? { status } : {};
-    return this.db.order.findMany({ where: { ...orderScope(actor), ...filter }, include: { customer: true, device: true, payments: { select: { kind: true, amount: true } } }, orderBy: { createdAt: 'desc' }, take: 200 });
+    return this.db.order.findMany({ where: { ...orderScope(actor), ...filter }, include, orderBy: { createdAt: 'desc' }, take: 200 });
   }
   @Get(':id') @Permissions('orders.view')
   async get(@CurrentActor() actor: Actor, @Param('id') id: string) {

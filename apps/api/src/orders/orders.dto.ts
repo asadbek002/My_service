@@ -3,6 +3,12 @@ import { IsString, IsOptional, Length, Matches, IsArray, ArrayMaxSize, IsIn, IsI
 
 const MONEY = /^\d{1,12}(\.\d{1,2})?$/;
 
+/** Fix a customer's name or phone (a typo at intake). Only the fields sent change. */
+export class CustomerUpdateDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 100) firstName?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(0, 100) lastName?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Matches(/^\+[1-9][0-9]{7,14}$/) phone?: string;
+}
 export class CustomerDto {
   @ApiProperty() @IsString() @Length(1, 100) firstName!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 100) lastName?: string;
