@@ -13,6 +13,8 @@ export function setAccessToken(token: string, expiresIn: number) {
   _accessToken = token;
   _expiresAt = Date.now() + expiresIn * 1000 - 30000; // 30s buffer
   try { sessionStorage.setItem('ms_at', JSON.stringify({ token, exp: _expiresAt })); } catch {}
+  // Not a credential: only tells the home page to open the app instead of the landing.
+  try { localStorage.setItem('ms_signed_in', '1'); } catch {}
 }
 
 function getAccessToken(): string | null {
@@ -26,7 +28,7 @@ function getAccessToken(): string | null {
 
 export function clearAccess() {
   _accessToken = null; _expiresAt = 0;
-  try { sessionStorage.removeItem('ms_at'); } catch {}
+  try { sessionStorage.removeItem('ms_at'); localStorage.removeItem('ms_signed_in'); } catch {}
 }
 
 // Single-flight: parallel requests must share one refresh, otherwise the server

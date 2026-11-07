@@ -58,14 +58,28 @@ function PrintReceipt() {
       } else setSendState({ error: errorText(e) });
     }
   }
+  /** What goes under the picture in the chat: the tracking page and the bot, instead of a bare "Chek". */
+  async function caption() {
+    if (!data) return '';
+    const links = await api<{ tracking: string; telegram: string | null }>(`/orders/${id}/links`, { method: 'POST' }).catch(() => null);
+    const device = [data.device.brand, data.device.model].filter(Boolean).join(' ');
+    return [
+      `🧾 ${data.service.name} · ${data.type === 'delivery' ? 'Berish' : 'Qabul'} cheki ${data.order.number}`,
+      device && `📱 ${device}`,
+      links && `\n🔎 Qurilmangiz holatini shu sahifada kuzatib boring:\n${links.tracking}`,
+      links?.telegram && `\n🤖 Xabarlarni Telegramda olish uchun botimizga kiring va «Start» ni bosing:\n${links.telegram}`,
+    ].filter(Boolean).join('\n');
+  }
   async function shareImage() {
     setSendState({ busy: true });
     try {
-      const url = await image();
+      const [url, text] = await Promise.all([image(), caption()]);
       const file = new File([await (await fetch(url)).blob()], `${data?.order.number ?? 'chek'}.png`, { type: 'image/png' });
-      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: 'Chek' }).catch(() => undefined);
-      else Object.assign(document.createElement('a'), { href: url, download: file.name }).click();
-      setSendState({});
+      if (navigator.canShare?.({ files: [file], text })) { await navigator.share({ files: [file], text }).catch(() => undefined); setSendState({}); return; }
+      // No share sheet (a computer): save the picture and put the text on the clipboard to paste under it.
+      Object.assign(document.createElement('a'), { href: url, download: file.name }).click();
+      const copied = await navigator.clipboard?.writeText(text).then(() => true, () => false);
+      setSendState(copied ? { ok: 'Rasm saqlandi, matn nusxalandi: chatga rasmni qo‘shib, matnni qo‘ying.' } : {});
     } catch (e) { setSendState({ error: errorText(e) }); }
   }
 

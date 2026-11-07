@@ -10,6 +10,7 @@ import { orderScope } from '../orders/orders.module';
 import { BotService, type Update } from './bot.service';
 import { OwnBots } from './own-bot';
 import { esc, som, tashkentDay, TelegramClient } from './telegram.client';
+import { createLink } from '../notifications/link-tokens';
 
 class ReceiptPhotoDto {
   // data:image/png;base64,... — about 1.4 MB of base64 at most.
@@ -139,7 +140,10 @@ class ReceiptPhotoController {
     if (!png || png.length < 60 || png.length > 1_500_000 || png.readUInt32BE(0) !== 0x89504e47) throw new BadRequestException('PNG image required');
     // The web app then offers the order's bot link (POST /orders/:id/links) so the customer can connect.
     if (!order.customer.telegramChatId) throw new ConflictException('CUSTOMER_NOT_ON_TELEGRAM');
-    const result = await telegram.sendPhoto(order.customer.telegramChatId, png, `🧾 <b>${esc(order.organization.name)}</b> · ${esc(order.number)}\nJami: ${som(order.total)}`);
+    // The receipt's own tracking page, so the customer can check the repair without calling.
+    const track = process.env.WEB_URL + '/track/' + await createLink(this.db, order.organizationId, id, 'TRACK');
+    const result = await telegram.sendPhoto(order.customer.telegramChatId, png,
+      `🧾 <b>${esc(order.organization.name)}</b> · ${esc(order.number)}\nJami: ${som(order.total)}\n\n🔎 <a href="${esc(track)}">Qurilmangiz holatini shu yerda kuzating</a>`);
     if (!result.ok) throw new ServiceUnavailableException(result.status === 403 ? 'CUSTOMER_BLOCKED_BOT' : 'TELEGRAM_FAILED');
     await this.db.auditLog.create({ data: { organizationId: a.organizationId, actorId: a.userId, action: 'RECEIPT_SENT_TELEGRAM', entityId: id } });
     return { ok: true };

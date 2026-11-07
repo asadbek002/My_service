@@ -30,7 +30,7 @@ export default function Signup() {
 
   const trial = info ? (info.trialDays % 30 === 0 ? `${info.trialDays / 30} oy` : `${info.trialDays} kun`) : '';
   return (
-    <AuthFrame eyebrow={proof ? '2-qadam · Ustaxona' : "1-qadam · Telefon"} title={proof ? "Ustaxonangizni oching" : "Ro'yxatdan o'tish"}>
+    <AuthFrame eyebrow={proof ? '2-qadam · Ustaxona' : "1-qadam · Telefon"} title={proof ? "Ustaxonangizni oching" : "Yangi ustaxona"} tabs={proof ? undefined : 'signup'}>
       {infoError ? <ErrorBox>{infoError}</ErrorBox> : !info ? <Loading rows={2} /> : !info.open ? (
         <div className="grid gap-3 text-sm">
           <p>Ro&apos;yxatdan o&apos;tish hozircha yopiq.</p>
@@ -44,7 +44,6 @@ export default function Signup() {
           <PhoneVerify purpose="signup" sms={info.sms} telegram={info.telegram} onVerified={onVerified} />
         </div>
       )}
-      <p className="mt-5 text-center text-sm text-mute">Akkauntingiz bormi? <Link href="/login" className="font-semibold text-ink underline">Kirish</Link></p>
     </AuthFrame>
   );
 }

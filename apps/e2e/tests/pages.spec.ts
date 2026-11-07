@@ -32,7 +32,7 @@ for (const path of [...PAGES, 'ORDER', 'ORDER/print', 'CUSTOMER']) {
   });
 }
 
-for (const path of ['/login', '/signup', '/reset', '/terms', '/privacy', '/platform/login']) {
+for (const path of ['/', '/login', '/signup', '/reset', '/terms', '/privacy', '/platform/login']) {
   test(`public page ${path}`, async ({ page }) => {
     await page.goto(path);
     await expect(page.locator('h1').first()).toBeVisible();

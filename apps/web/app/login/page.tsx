@@ -37,7 +37,7 @@ export default function Login() {
   }
 
   return (
-    <AuthFrame eyebrow="Servisga kirish" title="Xush kelibsiz">
+    <AuthFrame eyebrow="Servisga kirish" title="Xush kelibsiz" tabs="login">
       <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4" noValidate>
         <FormField label="Login" error={errors.login?.message}>
           <Input {...register('login')} autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoFocus />
@@ -47,10 +47,7 @@ export default function Login() {
         </FormField>
         <ErrorBox>{errors.root?.message}</ErrorBox>
         <Button type="submit" variant="brand" size="lg" disabled={isSubmitting} className="w-full">{isSubmitting ? 'Kirilmoqda…' : 'Kirish'}</Button>
-        <div className="flex items-center justify-between text-sm">
-          <Link href="/reset" className="font-medium text-mute underline hover:text-ink">Parolni unutdingizmi?</Link>
-          <Link href="/signup" className="font-semibold text-ink underline">Ro&apos;yxatdan o&apos;tish</Link>
-        </div>
+        <Link href="/reset" className="justify-self-center text-sm font-medium text-mute underline hover:text-ink">Parolni unutdingizmi?</Link>
       </form>
     </AuthFrame>
   );

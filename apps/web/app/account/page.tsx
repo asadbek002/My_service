@@ -12,6 +12,7 @@ import { AppShell } from '../../components/layout/app-shell';
 import { Button } from '../../components/ui/button';
 import { ErrorBox, Loading, Notice } from '../../components/ui/feedback';
 import { SupportLink } from '../../components/setup-steps';
+import { planLines } from '../../lib/plans';
 
 type Plan = { id: string; name: string; description: string | null; monthlyPrice: string; yearlyTotal: string; maxStaff: number | null; maxBranches: number | null; monthlyOrders: number | null; smsPerMonth: number | null; features: Record<string, boolean>; available: boolean };
 type Account = {
@@ -23,8 +24,6 @@ type Account = {
   invoices: { id: string; amount: string; status: string; issuedAt: string; dueAt: string }[];
 };
 
-const FEATURE_TEXT: [string, string][] = [['telegram', 'Telegram xabarlar'], ['sms', 'SMS xabarlar'], ['exports', 'Eksport (CSV, PDF)'], ['own_bot', "O'z Telegram boti"]];
-const limitText = (n: number | null, unit: string) => n === null ? `Cheksiz ${unit}` : `${n} ta ${unit}`;
 const INVOICE: Record<string, string> = { PAID: "To'langan", PENDING: 'Kutilmoqda', OVERDUE: "Muddati o'tgan", CANCELLED: 'Bekor' };
 
 function statusOf(a: Account) {
@@ -127,8 +126,7 @@ export default function AccountPage() {
                   <p className="num mt-3 font-mono text-2xl font-semibold tracking-tight">{money(price)}<span className="font-sans text-xs font-normal text-mute"> so&apos;m / {shownPeriod === 'YEAR' ? 'yil' : 'oy'}</span></p>
                   {shownPeriod === 'YEAR' && <p className="text-xs text-mute">oyiga {money(Math.round(Number(p.yearlyTotal) / 12))} so&apos;m</p>}
                   <ul className="mt-3 flex-1 space-y-1.5 text-sm">
-                    {[limitText(p.maxStaff, 'xodim'), limitText(p.maxBranches, 'filial'), p.monthlyOrders === null ? 'Cheksiz buyurtma' : `Oyiga ${p.monthlyOrders} ta buyurtma`, p.smsPerMonth === null ? 'Cheksiz SMS' : `Oyiga ${p.smsPerMonth} ta SMS`,
-                      ...FEATURE_TEXT.filter(([k]) => p.features?.[k]).map(([, t]) => t)].map(t => (
+                    {planLines(p).map(t => (
                       <li key={t} className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-st-tayyor" />{t}</li>
                     ))}
                   </ul>

@@ -27,6 +27,9 @@ const config: Config = {
         sans: ['var(--font-sans)', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
         mono: ['var(--font-mono)', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
+      // The status stamp lands on the ticket (home page hero).
+      keyframes: { stamp: { '0%': { transform: 'scale(1.35)', opacity: '0' }, '100%': { transform: 'scale(1)', opacity: '1' } } },
+      animation: { stamp: 'stamp 0.35s ease-out' },
       borderRadius: { xl: '1.125rem', lg: '0.875rem', md: '0.625rem', sm: '0.5rem' },
     },
   },

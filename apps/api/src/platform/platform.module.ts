@@ -1,4 +1,4 @@
-import { Body, CanActivate, Controller, ExecutionContext, Get, Injectable, Module, Param, Patch, Post, Put, Query, Req, UseGuards, UnauthorizedException, ForbiddenException, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Body, CanActivate, Controller, ExecutionContext, Get, Header, Injectable, Module, Param, Patch, Post, Put, Query, Req, UseGuards, UnauthorizedException, ForbiddenException, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { IsString, Length, Matches, IsInt, Min, Max, IsOptional, IsObject, IsIn, IsISO8601, IsBoolean, MaxLength } from 'class-validator';
 import { createHash, randomBytes } from 'node:crypto';
 import * as argon2 from 'argon2';
@@ -13,7 +13,7 @@ import { JwtModule, JwtService } from '@nestjs/jwt';
 import { BotModule } from '../bot/bot.module';
 import { BotService } from '../bot/bot.service';
 import { esc } from '../bot/telegram.client';
-import { billingSettings, saveBillingSettings, yearlyPriceOf } from './billing';
+import { billingSettings, saveBillingSettings, signupPlan, yearlyPriceOf } from './billing';
 import { createOrganization } from './organizations';
 import { newTotpSecret, otpauthUrl, verifyTotp } from './totp';
 import { setupProgress } from '../management/settings.module';
@@ -135,6 +135,25 @@ class LegalController {
   async legal() {
     const v = ((await this.db.platformSetting.findUnique({ where: { key: 'legal' } }))?.value ?? {}) as Record<string, unknown>;
     return Object.fromEntries(LEGAL_FIELDS.map(k => [k, typeof v[k] === 'string' ? v[k] : '']));
+  }
+}
+/** The plans and trial the home page shows: only what a visitor may see, prices as the platform set them. */
+@Controller('public/plans') @Public()
+class PublicPlansController {
+  constructor(private readonly db: Database) {}
+  @Get() @Header('Cache-Control', 'public, max-age=300')
+  async plans() {
+    const [plans, s] = await Promise.all([
+      this.db.plan.findMany({ where: { active: true }, orderBy: [{ sortOrder: 'asc' }, { monthlyPrice: 'asc' }] }),
+      billingSettings(this.db),
+    ]);
+    return {
+      trialDays: s.trialDays, yearlyFreeMonths: s.yearlyFreeMonths, signupOpen: s.signupOpen,
+      // The plan a new service tries during its trial (Tariflar → Umumiy sozlamalar).
+      trialPlanId: (await signupPlan(this.db, s))?.id ?? null,
+      plans: plans.map(p => ({ id: p.id, name: p.name, description: p.description, monthlyPrice: p.monthlyPrice, yearlyTotal: yearlyPriceOf(p, s),
+        maxStaff: p.maxStaff, maxBranches: p.maxBranches, monthlyOrders: p.monthlyOrders, smsPerMonth: p.smsPerMonth, features: p.features })),
+    };
   }
 }
 @Controller('platform/auth') @Public()
@@ -517,5 +536,5 @@ class PlatformController {
   @Get('system')
   async system() { await this.db.$queryRaw`SELECT 1`; return {database:'ok',organizations:await this.db.organization.count(),activeSubscriptions:await this.db.subscription.count({where:{status:'ACTIVE',expiresAt:{gt:new Date()}}}),pendingOutbox:await this.db.outboxEvent.count({where:{publishedAt:null}}),failedNotifications:await this.db.notification.count({where:{status:'FAILED'}})}; }
 }
-@Module({imports:[BotModule,MonitorModule,JwtModule.registerAsync({useFactory:()=>({secret:process.env.JWT_ACCESS_SECRET!})})],controllers:[PlatformAuthController,PlatformController,LegalController],providers:[PlatformGuard,LoginRateGuard,SubscriptionCache]})
+@Module({imports:[BotModule,MonitorModule,JwtModule.registerAsync({useFactory:()=>({secret:process.env.JWT_ACCESS_SECRET!})})],controllers:[PlatformAuthController,PlatformController,LegalController,PublicPlansController],providers:[PlatformGuard,LoginRateGuard,SubscriptionCache]})
 export class PlatformModule {}

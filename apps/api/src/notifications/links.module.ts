@@ -1,18 +1,13 @@
 import { Controller, Get, Header, Module, Param, Post, NotFoundException, UseGuards } from '@nestjs/common';
-import { createHash, randomBytes } from 'node:crypto';
 import { Database } from '../database';
+import { createLink, hashLink } from './link-tokens';
 import { CurrentActor, Permissions, Public } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { orderScope } from '../orders/orders.module';
 import { LoginRateGuard } from '../auth/rate-limit';
 import { BotModule } from '../bot/bot.module';
 import { OwnBots } from '../bot/own-bot';
-export const hashLink = (raw: string) => createHash('sha256').update(raw).digest('hex');
-export async function createLink(db: Database, organizationId: string, orderId: string, purpose: 'TRACK' | 'TELEGRAM') {
-  const raw = randomBytes(32).toString('base64url');
-  await db.customerLink.create({ data: { organizationId, orderId, purpose, tokenHash: hashLink(raw), expiresAt: new Date(Date.now() + (purpose === 'TRACK' ? 90 : 2) * 86400000) } });
-  return raw;
-}
+export { createLink, hashLink } from './link-tokens';
 @Controller('orders')
 class LinkController {
   constructor(private readonly db: Database, private readonly own: OwnBots) {}
