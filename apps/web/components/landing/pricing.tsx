@@ -20,7 +20,7 @@ export function Pricing() {
   const [period, setPeriod] = useState<'MONTH' | 'YEAR'>('MONTH');
   useEffect(() => { publicGet<Offer>('/public/plans').then(setOffer).catch(() => setFailed(true)); }, []);
 
-  if (failed) return <p className="rounded-xl border bg-white p-5 text-sm text-mute">Narxlarni yuklab bo&apos;lmadi. Sahifani yangilang yoki <Link href="/signup" className="font-semibold text-ink underline">tekin boshlang</Link> — narxlar ilova ichida ham bor.</p>;
+  if (failed) return <p className="rounded-xl border bg-white p-5 text-sm text-mute">Narxlarni yuklab bo&apos;lmadi. Sahifani yangilang yoki <Link href="/signup" className="font-semibold text-ink underline">demo versiyani oching</Link> — narxlar ilova ichida ham bor.</p>;
   if (!offer) return <div className="grid gap-4 md:grid-cols-3" aria-busy="true" aria-label="Yuklanmoqda">{[0, 1, 2].map(i => <div key={i} className="h-80 animate-pulse rounded-2xl bg-black/[0.04]" />)}</div>;
 
   return (
@@ -52,7 +52,7 @@ export function Pricing() {
                 {planLines(p).map(t => <li key={t} className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-st-tayyor" />{t}</li>)}
               </ul>
               {offer.signupOpen && (
-                <Link href="/signup" className={cn('mt-5 flex h-11 items-center justify-center rounded-lg text-sm font-semibold transition-colors', trial ? 'bg-brand text-ink hover:bg-brand-strong' : 'border hover:border-ink/40')}>Tekin boshlash</Link>
+                <Link href="/signup" className={cn('mt-5 flex h-11 items-center justify-center rounded-lg text-sm font-semibold transition-colors', trial ? 'bg-brand text-ink hover:bg-brand-strong' : 'border hover:border-ink/40')}>Demo versiya</Link>
               )}
             </div>
           );

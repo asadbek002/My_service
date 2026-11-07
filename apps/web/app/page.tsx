@@ -8,7 +8,7 @@ import { supportUrl } from '../lib/support';
 
 export const metadata: Metadata = {
   title: "MyService — ta'mir ustaxonasi uchun dastur",
-  description: "Telefon, noutbuk va texnika ta'miri ustaxonalari uchun: qabul va chek, ta'mir holati, mijozga Telegram/SMS xabar, to'lov, qarz va hisobot. 2 oy tekin.",
+  description: "Telefon, noutbuk va texnika ta'miri ustaxonalari uchun: qabul va chek, ta'mir holati, mijozga Telegram/SMS xabar, to'lov, qarz va hisobot. Bepul demo versiya.",
 };
 
 // Someone already signed in on this device goes straight to work, before the page paints.
@@ -50,7 +50,7 @@ export default function Home() {
           <nav className="ml-auto flex items-center gap-1 text-sm sm:gap-2">
             <a href="#narxlar" className="hidden rounded-md px-3 py-2 text-white/70 hover:text-white sm:block">Narxlar</a>
             <Link href="/login" className="rounded-md px-3 py-2 font-semibold hover:bg-white/10">Kirish</Link>
-            <Link href="/signup" className="hidden h-10 items-center rounded-md bg-brand px-4 font-semibold text-ink hover:bg-brand-strong sm:flex">Tekin boshlash</Link>
+            <Link href="/signup" className="hidden h-10 items-center rounded-md bg-brand px-4 font-semibold text-ink hover:bg-brand-strong sm:flex">Demo versiya</Link>
           </nav>
         </header>
 
@@ -64,7 +64,7 @@ export default function Home() {
               Qurilmani bir daqiqada qabul qiling, chek bering, ta&apos;mir qayerdaligini bir qarashda ko&apos;ring. Tayyor bo&apos;lganda mijozga xabar o&apos;zi boradi.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Link href="/signup" className="flex h-12 items-center justify-center gap-2 rounded-lg bg-brand px-6 text-base font-semibold text-ink hover:bg-brand-strong">Tekin boshlash <ArrowRight className="h-4 w-4" /></Link>
+              <Link href="/signup" className="flex h-12 items-center justify-center gap-2 rounded-lg bg-brand px-6 text-base font-semibold text-ink hover:bg-brand-strong">Demo versiya <ArrowRight className="h-4 w-4" /></Link>
               <Link href="/login" className="flex h-12 items-center justify-center rounded-lg border border-white/25 px-6 text-base font-semibold hover:bg-white/10">Akkauntim bor — kirish</Link>
             </div>
             <p className="mt-4 text-[13px] text-white/55">Karta kerak emas. Telefon raqamingiz bilan bir daqiqada ochiladi.</p>
@@ -130,7 +130,7 @@ export default function Home() {
           <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-14 lg:flex-row lg:items-center lg:justify-between lg:px-8">
             <p className="max-w-xl text-2xl font-bold leading-tight tracking-tight lg:text-3xl">Birinchi qurilmani bugunoq qabul qiling.</p>
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Link href="/signup" className="flex h-12 items-center justify-center rounded-lg bg-brand px-6 font-semibold text-ink hover:bg-brand-strong">Tekin boshlash</Link>
+              <Link href="/signup" className="flex h-12 items-center justify-center rounded-lg bg-brand px-6 font-semibold text-ink hover:bg-brand-strong">Demo versiya</Link>
               <a href={supportUrl("Salom! MyService haqida savolim bor.")} target="_blank" rel="noopener noreferrer" className="flex h-12 items-center justify-center gap-2 rounded-lg border border-white/25 px-6 font-semibold hover:bg-white/10"><Send className="h-4 w-4" /> Savol berish</a>
             </div>
           </div>

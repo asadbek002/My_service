@@ -38,11 +38,11 @@ test('login form: wrong password is explained, the right one opens the dashboard
   await expect(page).toHaveURL(/\/login/);
 });
 
-test('self sign-up: phone by SMS code, the workshop opens on its 2-month trial, then the password is reset by phone', async ({ page }) => {
+test('self sign-up: phone by SMS code, the workshop opens on its 1-month trial, then the password is reset by phone', async ({ page }) => {
   await resetRateLimits();
   const phone = uniquePhone(), id = uid(), login = 'servis' + id;
   await page.goto('/signup');
-  await expect(page.getByText('2 oy tekin')).toBeVisible();
+  await expect(page.getByText('1 oy tekin')).toBeVisible();
   await verifyPhone(page, phone);
   await page.getByLabel('Ustaxona nomi').fill('Servis ' + id);
   await page.getByLabel('Ismingiz').fill('Sardor');

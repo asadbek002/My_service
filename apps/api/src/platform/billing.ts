@@ -16,7 +16,7 @@ export interface BillingSettings {
   /** Plan a self-registered service tries during its trial; null = the most expensive active plan. */
   signupPlanId: string | null;
 }
-export const DEFAULT_BILLING: BillingSettings = { trialDays: 60, graceDays: 5, extraSmsPrice: '150', yearlyFreeMonths: 2, signupOpen: true, signupPlanId: null };
+export const DEFAULT_BILLING: BillingSettings = { trialDays: 30, graceDays: 5, extraSmsPrice: '150', yearlyFreeMonths: 2, signupOpen: true, signupPlanId: null };
 
 export async function billingSettings(db: Database): Promise<BillingSettings> {
   const row = await db.platformSetting.findUnique({ where: { key: 'billing' } });

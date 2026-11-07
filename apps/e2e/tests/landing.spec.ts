@@ -10,7 +10,7 @@ test('the home page explains the product, shows the platform prices and leads to
   await expect(prices.getByText(/149\s000/).first()).toBeVisible();
   await prices.getByRole('radio', { name: /Yillik/ }).click();
   await expect(prices.getByText(/so'm \/ yil/).first()).toBeVisible();
-  await page.getByRole('link', { name: /Tekin boshlash/ }).first().click();
+  await page.getByRole('link', { name: /Demo versiya/ }).first().click();
   await expect(page).toHaveURL(/\/signup$/);
   // One door: the tabs switch between signing up and signing in.
   await page.getByRole('link', { name: 'Kirish', exact: true }).click();
