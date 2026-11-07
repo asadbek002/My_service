@@ -6,10 +6,10 @@ import { useQuery } from '@tanstack/react-query';
 import { Download, FileDown } from 'lucide-react';
 import { api, apiBlob } from '../../lib/api';
 import { errorText } from '../../lib/errors';
-import { dateTime, date, EXPENSE_CATEGORIES, money, phone } from '../../lib/format';
-import { can, useMe } from '../../lib/queries';
+import { dateTime, date, EXPENSE_CATEGORIES, money, PAYMENT_METHODS, phone } from '../../lib/format';
+import { can, useMe, usePaymentMethods } from '../../lib/queries';
 import { periodLabel, periodQuery, preset, type Period, type PeriodKey } from '../../lib/period';
-import { downloadPdf } from '../../lib/pdf';
+import { downloadPdf, type PdfSection } from '../../lib/pdf';
 import { statusLabel } from '../../components/ui/status-badge';
 import { AppShell } from '../../components/layout/app-shell';
 import { Button } from '../../components/ui/button';
@@ -25,9 +25,14 @@ type Finance = {
   received: number; delivered: number; revenue: string; labor: string; parts: string; averageCheck: string;
   cashIn: string; refunds: string; netCash: string; expenses: { category: string; amount: string }[]; operatingExpenses: string; profit: string;
   debt: string; shopDebt: string; debtors: Debtor[]; expenseItems: Expense[]; basis: string;
+  deliveredItems: { id: string; number: string; deliveredAt: string | null; customer: { firstName: string; phone: string }; device: { brand: string; model: string }; labor: string; parts: string; total: string; paid: string }[];
+  paymentItems: { id: string; kind: 'PAYMENT' | 'REFUND'; method: string; amount: string; createdAt: string; number: string; customer: string }[];
 };
 
 const catLabel = (c: string) => EXPENSE_CATEGORIES[c] ?? c;
+type PdfPart = 'revenue' | 'cash' | 'expenses' | 'debtors';
+// Report parts in the order of the page: key, PDF title, file name.
+const PDF_PARTS: [PdfPart, string, string][] = [['revenue', 'Tushum va foyda', 'tushum'], ['cash', 'Kassa', 'kassa'], ['expenses', 'Xarajatlar', 'xarajatlar'], ['debtors', 'Qarzdorlar', 'qarzdorlar']];
 const days = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
 // Debt proper: the device left the shop unpaid. Unpaid work still in the shop is not a debt yet.
 const DEBT_KINDS = [['delivered', 'Qarzga berilgan'], ['open', 'Ustaxonada, to‘lanmagan'], ['all', 'Hammasi']] as const;
@@ -63,6 +68,9 @@ export default function Reports() {
   const debtorTotal = debtors.reduce((s, d) => s + Number(d.balance), 0);
   const deliveredDebt = (data?.debtors ?? []).filter(d => d.status === 'DELIVERED').reduce((s, d) => s + Number(d.balance), 0);
 
+  const { data: customMethods } = usePaymentMethods();
+  const methodLabel = (m: string) => PAYMENT_METHODS[m] ?? customMethods?.find(x => x.key === m)?.label ?? m;
+
   const [state, setState] = useState('');
   async function exportCsv() {
     setState('');
@@ -73,45 +81,80 @@ export default function Reports() {
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
     } catch (e) { setState(errorText(e)); }
   }
-  async function exportPdf() {
+  // Each part of the report downloads on its own (its button on the section), or all of them as one file.
+  function sectionsOf(part: PdfPart, d: Finance): PdfSection[] {
+    if (part === 'revenue') return [{
+      title: 'Tushum va foyda', note: d.basis,
+      summary: [
+        ['Tushum (berilgan qurilmalar)', money(d.revenue) + " so'm"],
+        ['— usta haqi', money(d.labor)], ['— zapchast', money(d.parts)],
+        ['Xarajatlar (zapchast xaridisiz)', '−' + money(d.operatingExpenses)],
+        ['Foyda = usta haqi − xarajatlar', money(d.profit) + " so'm"],
+        ['Qabul qilindi / berildi', `${d.received} / ${d.delivered} ta`], ["O'rtacha chek", money(d.averageCheck)],
+      ],
+      table: {
+        head: ['Berildi', 'Buyurtma', 'Mijoz', 'Qurilma', 'Usta haqi', 'Zapchast', 'Jami'], right: [4, 5, 6],
+        rows: d.deliveredItems.map(o => [o.deliveredAt ? dateTime(o.deliveredAt) : '—', o.number, o.customer.firstName, `${o.device.brand} ${o.device.model}`, money(o.labor), money(o.parts), money(o.total)]),
+        foot: ['', '', '', 'Jami', money(d.labor), money(d.parts), money(d.revenue)],
+      },
+    }];
+    if (part === 'cash') {
+      const byMethod = new Map<string, number>();
+      for (const p of d.paymentItems) byMethod.set(p.method, (byMethod.get(p.method) ?? 0) + (p.kind === 'REFUND' ? -1 : 1) * Number(p.amount));
+      return [{
+        title: 'Kassa', note: "Shu davrda qo'lga tushgan va qaytarilgan pul (oldindan olingan to'lovlar ham).",
+        summary: [['Tushgan pul', money(d.cashIn)], ['Qaytarilgan', '−' + money(d.refunds)], ['Sof', money(d.netCash) + " so'm"],
+          ...[...byMethod].map(([m, v]): [string, string] => ['— ' + methodLabel(m), money(v)])],
+        table: {
+          head: ['Sana', 'Buyurtma', 'Mijoz', 'Usul', 'Summa'], right: [4],
+          rows: d.paymentItems.map(p => [dateTime(p.createdAt), p.number, p.customer, (p.kind === 'REFUND' ? 'Qaytarildi · ' : '') + methodLabel(p.method), (p.kind === 'REFUND' ? '−' : '') + money(p.amount)]),
+          foot: ['', '', '', 'Sof', money(d.netCash)],
+        },
+      }];
+    }
+    if (part === 'expenses') return [{
+      title: 'Xarajatlar' + (category ? ' · ' + catLabel(category) : '') + (expenseText.trim() ? ` · "${expenseText.trim()}"` : ''),
+      table: {
+        head: ['Sana', 'Turi', 'Izoh', 'Summa'], right: [3],
+        rows: expenses.map(e => [dateTime(e.createdAt), catLabel(e.category), e.note, money(e.amount)]),
+        foot: ['', '', 'Jami', money(expenseTotal)],
+      },
+    }];
+    const kindLabel = DEBT_KINDS.find(k => k[0] === kind)![1];
+    return [
+      { title: `Qarzdorlar · ${kindLabel}` + (who.trim() ? ` · "${who.trim()}"` : ''), note: "Qarzdorlar davrga bog'liq emas: yuklab olingan paytdagi holat.", table: {
+        head: ['Buyurtma', 'Mijoz', 'Telefon', 'Qurilma', 'Holat', 'Kun', 'Qoldiq'], right: [5, 6],
+        rows: debtors.map(x => [x.number, x.customer.firstName, phone(x.customer.phone), `${x.device.brand} ${x.device.model}`, statusLabel(x.status), String(days(x.createdAt)), money(x.balance)]),
+        foot: ['', '', '', '', '', 'Jami', money(debtorTotal)],
+      } },
+      ...(Number(d.shopDebt) > 0 ? [{ title: "Do'konlarga zapchast qarzi", summary: [['Jami', money(d.shopDebt) + " so'm"]] as [string, string][] }] : []),
+    ];
+  }
+  async function exportPdf(parts: PdfPart[]) {
     if (!data) return;
     setState('');
+    const one = parts.length === 1 ? PDF_PARTS.find(p => p[0] === parts[0])! : null;
     try {
-      const kindLabel = DEBT_KINDS.find(k => k[0] === kind)![1];
       await downloadPdf({
-        fileName: `hisobot-${range[0]}-${range[1]}.pdf`,
-        title: 'Moliyaviy hisobot',
+        fileName: `${one ? one[2] : 'hisobot'}-${range[0]}-${range[1]}.pdf`,
+        title: one ? one[1] : 'Moliyaviy hisobot',
         subtitle: periodLabel(range),
-        sections: [
-          { title: 'Tushum va foyda', summary: [
-            ['Tushum (berilgan qurilmalar)', money(data.revenue) + " so'm"],
-            ['— usta haqi', money(data.labor)], ['— zapchast', money(data.parts)],
-            ['Xarajatlar (zapchast xaridisiz)', '−' + money(data.operatingExpenses)],
-            ['Foyda = usta haqi − xarajatlar', money(data.profit) + " so'm"],
-            ['Qabul qilindi / berildi', `${data.received} / ${data.delivered} ta`], ["O'rtacha chek", money(data.averageCheck)],
-          ], note: data.basis },
-          { title: 'Kassa', summary: [['Tushgan pul', money(data.cashIn)], ['Qaytarilgan', '−' + money(data.refunds)], ['Sof', money(data.netCash) + " so'm"]] },
-          { title: 'Xarajatlar' + (category ? ' · ' + catLabel(category) : '') + (expenseText.trim() ? ` · "${expenseText.trim()}"` : ''), table: {
-            head: ['Sana', 'Turi', 'Izoh', 'Summa'], right: [3],
-            rows: expenses.map(e => [dateTime(e.createdAt), catLabel(e.category), e.note, money(e.amount)]),
-            foot: ['', '', 'Jami', money(expenseTotal)],
-          } },
-          { title: `Qarzdorlar · ${kindLabel}` + (who.trim() ? ` · "${who.trim()}"` : ''), table: {
-            head: ['Buyurtma', 'Mijoz', 'Telefon', 'Qurilma', 'Holat', 'Kun', 'Qoldiq'], right: [5, 6],
-            rows: debtors.map(d => [d.number, d.customer.firstName, phone(d.customer.phone), `${d.device.brand} ${d.device.model}`, statusLabel(d.status), String(days(d.createdAt)), money(d.balance)]),
-            foot: ['', '', '', '', '', 'Jami', money(debtorTotal)],
-          } },
-          ...(Number(data.shopDebt) > 0 ? [{ title: "Do'konlarga zapchast qarzi", summary: [['Jami', money(data.shopDebt) + " so'm"]] as [string, string][] }] : []),
-        ],
+        sections: parts.flatMap(p => sectionsOf(p, data)),
       });
     } catch (e) { setState(errorText(e)); }
   }
+  const pdfButton = (part: PdfPart, dark = false) => (
+    <button onClick={() => exportPdf([part])} aria-label={PDF_PARTS.find(p => p[0] === part)![1] + ' — PDF'}
+      className={dark ? 'inline-flex h-8 items-center gap-1 rounded-md bg-white/10 px-2.5 font-sans text-xs font-semibold normal-case tracking-normal text-white hover:bg-white/20' : 'inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-semibold hover:border-ink/40'}>
+      <FileDown className="h-3.5 w-3.5" /> PDF
+    </button>
+  );
 
   return (
     <AppShell title="Hisobot" narrow action={
       <div className="flex gap-2">
         <Button variant="secondary" size="sm" onClick={exportCsv} aria-label="Excel uchun CSV"><Download className="h-4 w-4" /><span className="hidden sm:inline">CSV</span></Button>
-        <Button size="sm" onClick={exportPdf} disabled={!data}><FileDown className="h-4 w-4" /> PDF</Button>
+        <Button size="sm" onClick={() => exportPdf(PDF_PARTS.map(p => p[0]))} disabled={!data} aria-label="To'liq hisobot — PDF"><FileDown className="h-4 w-4" /> PDF<span className="hidden sm:inline"> (hammasi)</span></Button>
       </div>
     }>
       <div className="space-y-4">
@@ -122,7 +165,7 @@ export default function Reports() {
             {/* Revenue split the way the money is earned: labour is the shop's, parts go back to the shops. */}
             <section className="talon-dark on-ink overflow-hidden">
               <div className="p-5 sm:p-6">
-                <div className="flex justify-between gap-3 font-mono text-[11px] uppercase tracking-[0.08em] text-white/60"><span>Tushum</span><span className="truncate">{periodLabel(range)}</span></div>
+                <div className="flex items-center justify-between gap-3 font-mono text-[11px] uppercase tracking-[0.08em] text-white/60"><span>Tushum</span><span className="flex min-w-0 items-center gap-2"><span className="truncate">{periodLabel(range)}</span>{pdfButton('revenue', true)}</span></div>
                 <p className="num mt-2 font-mono text-[2.5rem] font-semibold leading-none tracking-tight sm:text-5xl">{money(data.revenue)}</p>
                 <p className="mt-2 text-[13px] text-white/70">{data.delivered} ta berildi · {data.received} ta qabul · o&apos;rtacha chek <span className="num font-mono">{money(data.averageCheck)}</span></p>
                 <Split labor={Number(data.labor)} parts={Number(data.parts)} />
@@ -140,7 +183,7 @@ export default function Reports() {
             <p className="-mt-2 px-1 text-xs text-mute">Tushum — shu davrda mijozga berilgan qurilmalar summasi. Foyda = usta haqi − xarajatlar (zapchast xaridi mijoz to&apos;lagan zapchast pulidan qoplanadi).</p>
 
             <section className="rounded-2xl border bg-white p-4 sm:p-5">
-              <div className="flex items-baseline justify-between gap-3"><h2 className="font-bold">Kassa</h2><span className="text-xs text-mute">qo&apos;lga tushgan pul</span></div>
+              <div className="flex items-center justify-between gap-3"><h2 className="font-bold">Kassa <span className="text-xs font-normal text-mute">qo&apos;lga tushgan pul</span></h2>{pdfButton('cash')}</div>
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <div className="min-w-0"><p className="text-xs text-mute">Tushgan</p><p className="num mt-0.5 whitespace-nowrap font-mono text-[15px] font-semibold sm:text-base">{money(data.cashIn)}</p></div>
                 <div className="min-w-0"><p className="text-xs text-mute">Qaytarilgan</p><p className="num mt-0.5 whitespace-nowrap font-mono text-[15px] font-semibold sm:text-base">{Number(data.refunds) > 0 ? '−' : ''}{money(data.refunds)}</p></div>
@@ -157,7 +200,7 @@ export default function Reports() {
             )}
 
             <section className="space-y-3 rounded-2xl border bg-white p-4 sm:p-5">
-              <div className="flex items-baseline justify-between"><h2 className="font-bold">Xarajatlar</h2><Link href="/expenses" className="text-sm text-mute hover:text-ink">Yozish</Link></div>
+              <div className="flex items-center justify-between gap-3"><h2 className="font-bold">Xarajatlar</h2><span className="flex items-center gap-3"><Link href="/expenses" className="text-sm text-mute hover:text-ink">Yozish</Link>{pdfButton('expenses')}</span></div>
               <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
                 <button className="chip" aria-pressed={!category} onClick={() => setCategory('')}>Hammasi</button>
                 {categories.map(c => <button key={c} className="chip" aria-pressed={category === c} onClick={() => setCategory(c)}>{catLabel(c)}</button>)}
@@ -179,7 +222,7 @@ export default function Reports() {
 
             <section id="debtors" className="scroll-mt-20 space-y-3 rounded-2xl border bg-white p-4 sm:p-5">
               <div className="flex items-baseline justify-between gap-2">
-                <h2 className="font-bold">Qarzdorlar</h2>
+                <h2 className="flex items-center gap-2 font-bold">Qarzdorlar {pdfButton('debtors')}</h2>
                 <span className="text-right text-xs text-mute">Qarzga berilgan jami<br /><b className="num font-mono text-sm text-amber-700">{money(deliveredDebt)}</b></span>
               </div>
               <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">

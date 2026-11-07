@@ -5,6 +5,7 @@ import Redis from 'ioredis';
 import { Database } from '../database';
 import { PhoneVerification } from '../auth/verification';
 import { esc, fmtDate, som, STATUS_LABEL, tashkentDay, TelegramClient, type Keyboard } from './telegram.client';
+import { trackSignup } from '../auth/signup-funnel';
 
 type Message = {
   text?: string; chat?: { id?: number; type?: string }; from?: { id?: number; first_name?: string };
@@ -177,6 +178,7 @@ export class BotService {
     const phone = '+' + m.contact.phone_number.replace(/\D/g, '');
     // A pending web confirmation takes this contact; it is not a customer linking their orders.
     const purpose = await this.verification?.telegramContact(chatId, phone);
+    if (purpose === 'signup') await trackSignup(this.db, phone, { stage: 'VERIFIED', method: 'TELEGRAM' });
     if (purpose) return this.telegram.send(chatId, `✅ Raqam tasdiqlandi: ${esc(phone)}\n\nIlovaga qayting — ${purpose === 'signup' ? 'ro‘yxatdan o‘tishni davom ettiring' : 'yangi parol qo‘ying'}.`, await this.menu(chatId));
     // Customers already connected to a service's own bot stay there.
     const found = await this.db.customer.updateMany({ where: { phone, OR: [{ telegramBot: null }, { telegramChatId: null }] }, data: { telegramChatId: chatId, telegramBot: null } });

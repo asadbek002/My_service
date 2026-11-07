@@ -10,6 +10,7 @@ import { billingSettings, signupPlan } from '../platform/billing';
 import { createOrganization, slugFor } from '../platform/organizations';
 import { BotService } from '../bot/bot.service';
 import { esc } from '../bot/telegram.client';
+import { errorCode, trackSignup } from './signup-funnel';
 
 /** Bump when the offer or the privacy policy text changes in a way users must accept again. */
 export const TERMS_VERSION = '2026-10-19';
@@ -126,6 +127,14 @@ export class AuthService implements OnModuleInit {
     if (!plan) throw new ServiceUnavailableException('SIGNUP_CLOSED');
     const phone = await this.verification.peek(d.proof, 'signup');
     const login = d.login.toLowerCase();
+    const tried = { serviceName: d.serviceName.trim(), login };
+    try {
+      const done = await this.openService(d, phone, login, plan, billing);
+      await trackSignup(this.db, phone, { stage: 'COMPLETED', ...tried, organizationId: done.organizationId });
+      return done.response;
+    } catch (e) { await trackSignup(this.db, phone, { error: errorCode(e), ...tried }); throw e; }
+  }
+  private async openService(d: { proof: string; serviceName: string; ownerName: string; password: string }, phone: string, login: string, plan: NonNullable<Awaited<ReturnType<typeof signupPlan>>>, billing: Awaited<ReturnType<typeof billingSettings>>) {
     // Check before using the proof up, so a taken login can be corrected without a new code.
     if (await this.db.user.findUnique({ where: { login } })) throw new ConflictException('LOGIN_TAKEN');
     if (await this.ownsService(phone)) throw new ConflictException('PHONE_TAKEN');
@@ -144,7 +153,7 @@ export class AuthService implements OnModuleInit {
         return { org, user, session };
       }, { timeout: 15000 });
       void this.bot.notifyAdmins(`🆕 Yangi servis o‘zi ro‘yxatdan o‘tdi: <b>${esc(created.org.name)}</b> (egasi: ${esc(created.user.firstName)}, ${esc(phone)}, tarif: ${esc(plan.name)}, sinov ${billing.trialDays} kun)`).catch(() => undefined);
-      return this.response(created.user.id, created.session.token.id, created.session.token.refresh, created.session.expiresAt);
+      return { organizationId: created.org.id, response: await this.response(created.user.id, created.session.token.id, created.session.token.refresh, created.session.expiresAt) };
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('LOGIN_TAKEN');
       throw e;

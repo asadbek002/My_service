@@ -85,3 +85,18 @@ test('an unknown address shows a page, not a crash', async ({ page }) => {
   expect(res?.status()).toBe(404);
   await expect(page.locator('body')).not.toBeEmpty();
 });
+
+test('reports: each part downloads as its own PDF, and the header button gives the whole report', async ({ page }) => {
+  const o = await newOrder(svc.token, { labor: '70000', status: 'READY' });
+  await pay(svc.token, o.id, '70000');
+  await apiCall(svc.token, `/orders/${o.id}/deliver`, { warrantyDays: 0 });
+  const f = await apiCall<{ deliveredItems: { number: string }[]; paymentItems: { number: string; amount: string }[] }>(svc.token, '/reports/finance');
+  expect(f.deliveredItems.map(x => x.number)).toContain(o.number);
+  expect(f.paymentItems.find(x => x.number === o.number)?.amount).toMatch(/^70000/);
+  await page.goto('/reports');
+  for (const [label, file] of [['Tushum va foyda', 'tushum'], ['Kassa', 'kassa'], ['Xarajatlar', 'xarajatlar'], ['Qarzdorlar', 'qarzdorlar'], ["To'liq hisobot", 'hisobot']]) {
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: `${label} — PDF` }).click();
+    expect((await download).suggestedFilename()).toMatch(new RegExp(`^${file}-\\d{4}-\\d{2}-\\d{2}-\\d{4}-\\d{2}-\\d{2}\\.pdf$`));
+  }
+});

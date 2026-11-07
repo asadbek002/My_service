@@ -74,8 +74,11 @@ class ReportsController {
     const period = range(from, to);
     return this.db.$transaction(async tx => {
       const scope = orderScope(a);
-      const [delivered, payments, expenses, received, debtors, shopDebt, expenseItems] = await Promise.all([
-        tx.order.findMany({ where: { ...scope, status: 'DELIVERED', history: { some: { toStatus: 'DELIVERED', createdAt: period } } }, select: { labor: true, partsTotal: true, total: true } }),
+      const [delivered, payments, expenses, received, debtors, shopDebt, expenseItems, paymentItems] = await Promise.all([
+        // The orders behind the revenue, so a report can list them and not only their sum.
+        tx.order.findMany({ where: { ...scope, status: 'DELIVERED', history: { some: { toStatus: 'DELIVERED', createdAt: period } } }, orderBy: { updatedAt: 'desc' },
+          select: { id: true, number: true, labor: true, partsTotal: true, total: true, customer: { select: { firstName: true, phone: true } }, device: { select: { brand: true, model: true } },
+            history: { where: { toStatus: 'DELIVERED', createdAt: period }, select: { createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1 }, payments: { select: { kind: true, amount: true } } } }),
         tx.payment.groupBy({ by: ['kind'], where: { organizationId: a.organizationId, createdAt: period, order: scope }, _sum: { amount: true } }),
         tx.expense.groupBy({ by: ['category'], where: { organizationId: a.organizationId, createdAt: period }, _sum: { amount: true } }),
         tx.order.count({ where: { ...scope, createdAt: period } }),
@@ -83,6 +86,9 @@ class ReportsController {
         tx.sourcedPart.aggregate({ where: { organizationId: a.organizationId, status: 'TAKEN' }, _sum: { cost: true } }),
         // Every expense of the period, so the report can list and filter them, not only the totals.
         tx.expense.findMany({ where: { organizationId: a.organizationId, createdAt: period }, select: { id: true, category: true, amount: true, note: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1000 }),
+        // Every payment and refund of the period: the cash section lists them by method.
+        tx.payment.findMany({ where: { organizationId: a.organizationId, createdAt: period, order: scope }, orderBy: { createdAt: 'desc' }, take: 2000,
+          select: { id: true, kind: true, method: true, amount: true, createdAt: true, order: { select: { number: true, customer: { select: { firstName: true } } } } } }),
       ]);
       const sum = (xs: Prisma.Decimal[]) => xs.reduce((s, x) => s.plus(x), new Prisma.Decimal(0));
       const revenue = sum(delivered.map(o => o.total)), labor = sum(delivered.map(o => o.labor)), parts = sum(delivered.map(o => o.partsTotal));
@@ -103,6 +109,8 @@ class ReportsController {
         // What the shop still owes nearby stores for parts taken on credit (not yet paid or returned).
         shopDebt: shopDebt._sum.cost ?? new Prisma.Decimal(0),
         expenseItems,
+        deliveredItems: delivered.slice(0, 1000).map(o => ({ id: o.id, number: o.number, deliveredAt: o.history[0]?.createdAt ?? null, customer: o.customer, device: o.device, labor: o.labor, parts: o.partsTotal, total: o.total, paid: paidOf(o.payments) })),
+        paymentItems: paymentItems.map(p => ({ id: p.id, kind: p.kind, method: p.method, amount: p.amount, createdAt: p.createdAt, number: p.order.number, customer: p.order.customer.firstName })),
         basis: "Tushum — shu davrda topshirilgan buyurtmalar. Foyda = usta haqi − xarajatlar (zapchast xaridi hisobga olinmaydi).",
       };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });

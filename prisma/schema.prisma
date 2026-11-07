@@ -740,3 +740,26 @@ model Announcement {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 }
+
+/// Self sign-up as it happens, one row per phone: how far the person got and what stopped them.
+/// Platform-level (no organization until the service is opened); shown in the platform console.
+model SignupAttempt {
+  id             String    @id @default(cuid())
+  phone          String    @unique
+  /// CODE_SENT → VERIFIED → COMPLETED; never moves back.
+  stage          String    @default("CODE_SENT")
+  /// SMS or TELEGRAM: how the phone was confirmed.
+  method         String?
+  codesSent      Int       @default(0)
+  wrongCodes     Int       @default(0)
+  /// Last thing that stopped the person (an API error code), cleared on the next step that succeeds.
+  lastError      String?
+  lastErrorAt    DateTime?
+  serviceName    String?
+  login          String?
+  organizationId String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([updatedAt])
+}

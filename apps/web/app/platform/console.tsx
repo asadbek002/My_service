@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { platformApi } from './lib';
 import { PlansTab, type Plan } from './plans-editor';
+import { SignupsTab } from './signups';
 import { AnnouncementsTab, LegalCard, MonitorCard, OrgDetail, OrgList, TicketsTab, TwoFactorCard } from './parts';
 
 type Org = { id: string; name: string; slug: string; createdAt: string; _count: { users: number; branches: number; orders: number }; subscription: { status: string; expiresAt: string; plan: Plan } | null };
@@ -11,10 +12,10 @@ type Analytics = { totalOrganizations: number; activeOrganizations: number; acti
 type System = { database: string; organizations: number; activeSubscriptions: number; pendingOutbox: number; failedNotifications: number };
 type Invoice = { id: string; organizationId: string; amount: string; status: string; issuedAt: string };
 type Usage = { id: string; organizationId: string; metric: string; quantity: number; period: string };
-export type PlatformTab = 'overview' | 'organizations' | 'tickets' | 'announcements' | 'plans' | 'subscriptions' | 'system';
+export type PlatformTab = 'overview' | 'organizations' | 'signups' | 'tickets' | 'announcements' | 'plans' | 'subscriptions' | 'system';
 
 const TABS: [PlatformTab, string, string][] = [
-  ['overview', 'Umumiy', '/platform'], ['organizations', 'Servislar', '/platform/organizations'], ['tickets', 'Murojaatlar', '/platform/tickets'],
+  ['overview', 'Umumiy', '/platform'], ['organizations', 'Servislar', '/platform/organizations'], ['signups', "Ro'yxatdan o'tish", '/platform/signups'], ['tickets', 'Murojaatlar', '/platform/tickets'],
   ['announcements', "E'lonlar", '/platform/announcements'], ['plans', 'Tariflar', '/platform/plans'],
   ['subscriptions', 'Obunalar', '/platform/subscriptions'], ['system', 'Tizim', '/platform/system'],
 ];
@@ -97,6 +98,7 @@ export default function PlatformConsole({ tab, orgId, ticketId }: { tab: Platfor
         )}
 
         {orgId && <OrgDetail id={orgId} onSessionExpired={() => router.replace('/platform/login')} />}
+        {tab === 'signups' && <SignupsTab onError={fail} />}
         {tab === 'tickets' && <TicketsTab onError={fail} initial={ticketId ?? null} />}
         {tab === 'announcements' && <AnnouncementsTab onError={fail} />}
         {!orgId && (tab === 'organizations' || tab === 'overview') && (

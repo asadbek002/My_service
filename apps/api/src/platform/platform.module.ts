@@ -293,6 +293,31 @@ class PlatformController {
   }
 
   // ---- Support inbox ----
+  /**
+   * Self sign-ups: who started, how far they got, what stopped them. "open" = not finished,
+   * "error" = stopped by an error, "done" = service opened. Summary counts are for the last 30 days.
+   */
+  @Get('signups')
+  async signups(@Query('state') state?: string, @Query('q') q?: string) {
+    const text = typeof q === 'string' ? q.replace(/\D/g, '').slice(0, 15) : '';
+    const where = {
+      ...(state === 'open' ? { stage: { not: 'COMPLETED' } } : state === 'error' ? { stage: { not: 'COMPLETED' }, lastError: { not: null } } : state === 'done' ? { stage: 'COMPLETED' } : {}),
+      ...(text.length >= 3 ? { phone: { contains: text } } : {}),
+    };
+    const since = new Date(Date.now() - 30 * 86400000);
+    const [rows, stages] = await Promise.all([
+      this.db.signupAttempt.findMany({ where, orderBy: { updatedAt: 'desc' }, take: 300 }),
+      this.db.signupAttempt.groupBy({ by: ['stage'], where: { createdAt: { gte: since } }, _count: true }),
+    ]);
+    const orgs = await this.db.organization.findMany({ where: { id: { in: rows.map(r => r.organizationId).filter((x): x is string => !!x) } }, select: { id: true, name: true } });
+    const name = new Map(orgs.map(o => [o.id, o.name]));
+    const n = (s: string) => stages.find(x => x.stage === s)?._count ?? 0;
+    return {
+      // Everyone who reached a stage also passed the ones before it.
+      summary: { started: n('CODE_SENT') + n('VERIFIED') + n('COMPLETED'), verified: n('VERIFIED') + n('COMPLETED'), completed: n('COMPLETED') },
+      rows: rows.map(r => ({ ...r, organizationName: r.organizationId ? name.get(r.organizationId) ?? null : null })),
+    };
+  }
   @Get('tickets')
   async tickets(@Query('status') status?: string) {
     const where = status && ['OPEN','ANSWERED','CLOSED'].includes(status) ? { status } : {};

@@ -10,6 +10,7 @@ import { TelegramClient } from '../bot/telegram.client';
 import { billingSettings } from '../platform/billing';
 import { Database } from '../database';
 import { LoginRateGuard } from './rate-limit';
+import { errorCode, trackSignup } from './signup-funnel';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -62,12 +63,26 @@ export class AuthController {
   async sendCode(@Body() dto: VerifySmsDto, @Req() req: Request) {
     this.origin(req);
     const deliver = dto.purpose !== 'reset' || !!await this.db.user.findFirst({ where: { phone: dto.phone, status: 'ACTIVE' }, select: { id: true } });
-    return this.verification.sendSms(dto.purpose, dto.phone, req.ip ?? '', deliver);
+    if (dto.purpose !== 'signup') return this.verification.sendSms(dto.purpose, dto.phone, req.ip ?? '', deliver);
+    try {
+      const sent = await this.verification.sendSms(dto.purpose, dto.phone, req.ip ?? '', deliver);
+      await trackSignup(this.db, dto.phone, { stage: 'CODE_SENT', codeSent: true });
+      return sent;
+    } catch (e) { await trackSignup(this.db, dto.phone, { error: errorCode(e) }); throw e; }
   }
   @Post('verify/check') @Public() @UseGuards(LoginRateGuard) @HttpCode(200) @Header('Cache-Control', 'no-store')
   async checkCode(@Body() dto: VerifyCodeDto, @Req() req: Request) {
     this.origin(req);
-    return { proof: await this.verification.checkSms(dto.purpose, dto.phone, dto.code) };
+    if (dto.purpose !== 'signup') return { proof: await this.verification.checkSms(dto.purpose, dto.phone, dto.code) };
+    try {
+      const proof = await this.verification.checkSms(dto.purpose, dto.phone, dto.code);
+      await trackSignup(this.db, dto.phone, { stage: 'VERIFIED', method: 'SMS' });
+      return { proof };
+    } catch (e) {
+      const code = errorCode(e);
+      await trackSignup(this.db, dto.phone, { error: code, wrongCode: code === 'CODE_WRONG' });
+      throw e;
+    }
   }
   @Post('verify/telegram') @Public() @HttpCode(200) @Header('Cache-Control', 'no-store')
   async telegramLink(@Body() dto: VerifyTelegramDto, @Req() req: Request) {
