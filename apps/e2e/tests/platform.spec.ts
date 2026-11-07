@@ -1,0 +1,96 @@
+import { PLATFORM } from '../env';
+import { apiCall, expect, expectNoHorizontalScroll, newService, platformSignIn, signIn, test, uid } from './fixtures';
+
+test('every platform screen opens', async ({ page }) => {
+  await platformSignIn(page, PLATFORM.login, PLATFORM.password);
+  for (const path of ['/platform', '/platform/organizations', '/platform/subscriptions', '/platform/plans', '/platform/tickets', '/platform/announcements', '/platform/system']) {
+    await page.goto(path);
+    await expect(page).toHaveURL(new RegExp(path + '$'));
+    await expect(page.getByText('Yuklanmoqda…')).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.locator('p[role="alert"]')).toHaveCount(0);
+    await expectNoHorizontalScroll(page);
+  }
+});
+
+test('a question from a service reaches the platform, and the answer comes back', async ({ page, browser }) => {
+  const svc = await newService('Savol');
+  const subject = 'Printer ' + uid();
+  await signIn(page, svc.login, svc.password);
+  await page.goto('/help');
+  await page.getByLabel('Mavzu').fill(subject);
+  await page.getByLabel('Batafsil').fill('Chek chiqmayapti');
+  await page.getByRole('button', { name: 'Yuborish' }).click();
+  await expect(page.getByText(subject).first()).toBeVisible();
+
+  const admin = await browser.newContext({ ...test.info().project.use });
+  const ap = await admin.newPage();
+  await platformSignIn(ap, PLATFORM.login, PLATFORM.password);
+  await ap.goto('/platform/tickets');
+  await ap.getByRole('button', { name: new RegExp(subject) }).click();
+  await ap.getByPlaceholder(/Javob \(servisga/).fill('Printer drayverini qayta o‘rnating');
+  await ap.getByRole('button', { name: 'Javob yuborish' }).click();
+  await expect(ap.getByText('Printer drayverini qayta o‘rnating')).toBeVisible();
+  await admin.close();
+
+  await page.reload();
+  await page.getByText(subject).first().click();
+  await expect(page.getByText('Printer drayverini qayta o‘rnating')).toBeVisible();
+});
+
+test('a blocked service sees only Hisobim and Yordam until it is unblocked', async ({ page, browser }) => {
+  const svc = await newService('Blok');
+  const admin = await browser.newContext({ ...test.info().project.use });
+  const ap = await admin.newPage();
+  await platformSignIn(ap, PLATFORM.login, PLATFORM.password);
+  await ap.goto('/platform/organizations');
+  await ap.getByLabel('Servislardan qidirish').fill(svc.name);
+  await ap.getByText(svc.name).first().click();
+  await expect(ap).toHaveURL(/\/platform\/organizations\//);
+  ap.once('dialog', d => void d.accept());
+  await ap.getByPlaceholder("Sabab (servisga ko'rinadi)").fill("To'lov qilinmagan");
+  await ap.getByRole('button', { name: 'Bloklash' }).click();
+  await expect(ap.getByRole('button', { name: 'Blokdan chiqarish' })).toBeVisible();
+
+  await signIn(page, svc.login, svc.password);
+  await page.goto('/orders');
+  await expect(page.getByText("Ustaxona vaqtincha to'xtatilgan")).toBeVisible();
+  await expect(page.getByText("Sabab: To'lov qilinmagan")).toBeVisible();
+  await page.getByRole('link', { name: 'Hisobim' }).last().click();
+  await expect(page.getByText("Ustaxona vaqtincha to'xtatilgan")).toHaveCount(0);
+  // The API refuses work too, not only the screen.
+  await expect(apiCall(svc.token, '/customers', { firstName: 'X', phone: '+998931234567' })).rejects.toThrow(/403/);
+
+  await ap.getByRole('button', { name: 'Blokdan chiqarish' }).click();
+  await expect(ap.getByRole('button', { name: 'Bloklash' })).toBeVisible();
+  await admin.close();
+  await page.goto('/orders');
+  await expect(page.getByText("Ustaxona vaqtincha to'xtatilgan")).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Ochiq/ })).toBeVisible();
+});
+
+test('an announcement shows in every service and can be hidden', async ({ page, browser }) => {
+  const title = 'Yangilik ' + uid();
+  const admin = await browser.newContext({ ...test.info().project.use });
+  const ap = await admin.newPage();
+  await platformSignIn(ap, PLATFORM.login, PLATFORM.password);
+  await ap.goto('/platform/announcements');
+  await ap.getByPlaceholder('Sarlavha').fill(title);
+  await ap.getByPlaceholder('Matn').fill('Yangi funksiya qo‘shildi');
+  await ap.getByRole('button', { name: "E'lon qilish" }).click();
+  await expect(ap.getByText(title)).toBeVisible();
+
+  const svc = await newService('Elon');
+  await signIn(page, svc.login, svc.password);
+  await page.goto('/dashboard');
+  const banner = page.locator('div').filter({ hasText: title }).filter({ has: page.getByRole('button', { name: 'Yopish' }) }).last();
+  await expect(banner).toBeVisible();
+  await banner.getByRole('button', { name: 'Yopish' }).click();
+  await expect(page.getByText(title)).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+  await expect(page.getByText(title)).toHaveCount(0);
+
+  // Switched off so later tests do not see it.
+  await ap.locator('div').filter({ hasText: title }).getByRole('button', { name: 'O‘chirish' }).last().click();
+  await admin.close();
+});

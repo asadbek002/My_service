@@ -15,7 +15,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "pnpm --filter @myservice/api seed",
-    "seed:platform": "pnpm --filter @myservice/api seed:platform"
+    "seed:platform": "pnpm --filter @myservice/api seed:platform",
+    "e2e": "pnpm --filter @myservice/e2e e2e"
   },
   "devDependencies": {
     "prettier": "^3.0.0",

@@ -182,12 +182,12 @@ export class AuthService implements OnModuleInit {
   me(actor: Actor) {
     return this.db.user.findFirstOrThrow({
       where: { id: actor.userId, organizationId: actor.organizationId },
-      select: { id: true, login: true, firstName: true, lastName: true, organizationId: true, mustChangePassword: true, status: true, organization: { select: { blockedAt: true, blockReason: true } }, roles: { select: { role: { select: { systemKey: true } } } } },
+      select: { id: true, login: true, firstName: true, lastName: true, organizationId: true, mustChangePassword: true, status: true, organization: { select: { blockedAt: true, blockReason: true, subscription: { select: { status: true, expiresAt: true, graceUntil: true } } } }, roles: { select: { role: { select: { systemKey: true } } } } },
     }).then(({ roles, organization, ...user }) => {
       const keys = roles.map(r => r.role.systemKey).filter((k): k is string => !!k);
       // Highest role decides which dashboard the UI shows.
       const role = ['OWNER', 'STAFF'].find(k => keys.includes(k)) ?? null;
-      return { ...user, blocked: organization.blockedAt ? { at: organization.blockedAt, reason: organization.blockReason } : null, role, roles: keys, permissions: actor.permissions, branchIds: actor.branchIds, support: !!actor.support, ...(actor.support ? { mustChangePassword: false } : {}) };
+      return { ...user, blocked: organization.blockedAt ? { at: organization.blockedAt, reason: organization.blockReason } : null, subscription: organization.subscription, role, roles: keys, permissions: actor.permissions, branchIds: actor.branchIds, support: !!actor.support, ...(actor.support ? { mustChangePassword: false } : {}) };
     });
   }
 }

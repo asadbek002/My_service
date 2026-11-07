@@ -126,7 +126,7 @@ function ReceiptBody({ r, paper }: { r: Receipt; paper: 58 | 80 }) {
   const small = paper === 58;
   const line = <div className="my-1.5 border-t border-dashed border-black" />;
   const Pair = ({ k, v, b }: { k: string; v: string; b?: boolean }) => (
-    <div className={cn('flex justify-between gap-2', b && 'font-bold')}><span>{k}</span><span className="text-right">{v}</span></div>
+    <div className={cn('flex justify-between gap-2', b && 'font-bold')}><span className="shrink-0">{k}</span><span className="min-w-0 text-right [overflow-wrap:anywhere]">{v}</span></div>
   );
   return (
     <div className={cn('font-mono leading-snug text-black', small ? 'px-[2mm] py-[3mm] text-[10px]' : 'px-[4mm] py-[4mm] text-[12px]')}>
@@ -145,8 +145,8 @@ function ReceiptBody({ r, paper }: { r: Receipt; paper: 58 | 80 }) {
       <Pair k="Mijoz:" v={r.customer.name} />
       <Pair k="Tel:" v={phone(r.customer.phone)} />
       <Pair k="Qurilma:" v={`${r.device.brand} ${r.device.model}`} />
-      <p className="mt-1">Nosozlik: {r.order.complaint}</p>
-      {r.order.accessories.length > 0 && <p>Komplekt: {r.order.accessories.join(', ')}</p>}
+      <p className="mt-1 [overflow-wrap:anywhere]">Nosozlik: {r.order.complaint}</p>
+      {r.order.accessories.length > 0 && <p className="[overflow-wrap:anywhere]">Komplekt: {r.order.accessories.join(', ')}</p>}
       {line}
       {/* The customer sees one price: the labor/parts split stays inside the shop. */}
       <Pair k="JAMI" v={money(r.order.total) + " so'm"} b />

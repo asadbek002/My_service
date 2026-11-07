@@ -16,3 +16,7 @@ dump.rdb
 
 # Database dumps from docker/backup.sh (customer data): never commit
 backups/
+
+# Playwright output
+test-results/
+playwright-report/

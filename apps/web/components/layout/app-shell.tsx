@@ -8,7 +8,7 @@ import {
   Plus, Menu, X, LogOut, Search, ChevronLeft, LifeBuoy, Wrench, Wallet, Megaphone, Ban,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { useMe, can, useBranding } from '../../lib/queries';
+import { useMe, can, useBranding, type Me } from '../../lib/queries';
 import { API_BASE, api, logout } from '../../lib/api';
 import { cn } from '../../lib/utils';
 import { Mark } from './mark';
@@ -155,6 +155,7 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
           </div>
         </header>
         <main className={cn('mx-auto w-full flex-1 px-4 pt-4 lg:px-8 lg:pb-12 lg:pt-8', tabs ? 'pb-[calc(6rem+env(safe-area-inset-bottom))]' : 'pb-[calc(2rem+env(safe-area-inset-bottom))]', narrow ? 'max-w-3xl' : 'max-w-6xl')}>
+          {me && !me.support && !me.blocked && <SubscriptionNotice me={me} />}
           <Announcements />
           {me?.blocked && !me.support && !OPEN_WHEN_BLOCKED.some(p => pathname.startsWith(p)) ? <Blocked reason={me.blocked.reason} /> : children}
         </main>
@@ -215,6 +216,32 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const DAY = 86_400_000;
+/**
+ * The plan running out is said on every screen, not only on Hisobim: a week ahead, during the grace
+ * days, and once the service is read-only. Otherwise the first sign is a refused intake.
+ */
+function SubscriptionNotice({ me }: { me: Me }) {
+  const sub = me.subscription;
+  if (!sub) return null;
+  const now = Date.now(), ends = new Date(sub.expiresAt).getTime(), grace = new Date(sub.graceUntil ?? sub.expiresAt).getTime();
+  const readOnly = !['ACTIVE', 'TRIAL'].includes(sub.status) || grace <= now;
+  const days = (t: number) => Math.max(1, Math.ceil((t - now) / DAY));
+  const text = readOnly ? "Obuna muddati tugagan: ma'lumotlarni faqat ko'rish mumkin."
+    : ends <= now ? `Obuna tugadi. ${days(grace)} kundan keyin faqat ko'rish rejimi yoqiladi.`
+    : ends - now <= 7 * DAY ? `${sub.status === 'TRIAL' ? 'Sinov muddati' : 'Obuna'} ${days(ends)} kundan keyin tugaydi.`
+    : '';
+  if (!text) return null;
+  const owner = can(me, 'settings.manage');
+  return (
+    <div role="status" className={cn('mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border px-4 py-3 text-sm', readOnly ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-300 bg-amber-50 text-amber-950')}>
+      <Wallet className="h-4 w-4 shrink-0" />
+      <p className="min-w-0 flex-1 font-medium">{text}{!owner && ' Boshliqqa ayting.'}</p>
+      {owner && <Link href="/account" className="shrink-0 font-semibold underline">Tarifni tanlash</Link>}
     </div>
   );
 }
