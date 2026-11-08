@@ -12,6 +12,7 @@ import { errorText } from '../../lib/errors';
 import { fullName, normalizePhone, phone } from '../../lib/format';
 import { can, useMe, useStaff, type Staff } from '../../lib/queries';
 import { useQueryClient } from '@tanstack/react-query';
+import { useCurrentBranch } from '../../lib/branches';
 import { AppShell } from '../../components/layout/app-shell';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -65,9 +66,14 @@ function StaffRow({ s }: { s: Staff }) {
 function CreateStaff({ onDone, onClose }: { onDone: (login: string) => void; onClose: () => void }) {
   const qc = useQueryClient();
   const { register, handleSubmit, formState: { errors, isSubmitting }, setError } = useForm<StaffInput>({ resolver: zodResolver(staffSchema) });
+  // With several branches the owner says where the new colleague works (all open ones by default).
+  const { open, multi } = useCurrentBranch();
+  const [branchIds, setBranchIds] = useState<string[] | null>(null);
+  const chosenBranches = branchIds ?? open.map(b => b.id);
   async function submit(d: StaffInput) {
+    if (multi && !chosenBranches.length) { setError('root', { message: 'Kamida bitta filialni belgilang' }); return; }
     try {
-      const body = { firstName: d.firstName.trim(), ...(d.lastName?.trim() ? { lastName: d.lastName.trim() } : {}), phone: d.phone, login: d.login.trim().toLowerCase(), temporaryPassword: d.temporaryPassword };
+      const body = { firstName: d.firstName.trim(), ...(d.lastName?.trim() ? { lastName: d.lastName.trim() } : {}), phone: d.phone, login: d.login.trim().toLowerCase(), temporaryPassword: d.temporaryPassword, ...(multi ? { branchIds: chosenBranches } : {}) };
       await api('/staff', { method: 'POST', body: JSON.stringify(body) });
       await qc.invalidateQueries({ queryKey: ['staff'] });
       onDone(body.login);
@@ -88,6 +94,16 @@ function CreateStaff({ onDone, onClose }: { onDone: (login: string) => void; onC
           <FormField label="Login" error={errors.login?.message}><Input {...register('login')} autoCapitalize="none" autoCorrect="off" spellCheck={false} /></FormField>
           <FormField label="Vaqtinchalik parol" error={errors.temporaryPassword?.message} description="Kamida 12 belgi"><Input {...register('temporaryPassword')} autoCapitalize="none" autoComplete="new-password" /></FormField>
         </div>
+        {multi && (
+          <fieldset className="grid gap-2">
+            <legend className="mb-1 text-sm font-medium">Qaysi filialda ishlaydi?</legend>
+            {open.map(b => (
+              <label key={b.id} className="flex items-center gap-2.5 text-sm">
+                <input type="checkbox" className="h-5 w-5 accent-ink" checked={chosenBranches.includes(b.id)} onChange={e => setBranchIds(e.target.checked ? [...chosenBranches, b.id] : chosenBranches.filter(x => x !== b.id))} />{b.name}
+              </label>
+            ))}
+          </fieldset>
+        )}
         <ErrorBox>{errors.root?.message}</ErrorBox>
         <div className="flex gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>Bekor</Button>

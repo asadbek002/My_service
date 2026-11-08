@@ -17,13 +17,16 @@ class ReceiptController {
 
   @Get(':id/receipt') @Permissions('orders.view')
   async receipt(@CurrentActor() a: Actor, @Param('id') id: string, @Query('type') type?: string) {
-    const order = await this.db.order.findFirst({ where: { id, ...orderScope(a) }, include: { customer: true, device: true, payments: true, warranty: true, organization: true } });
+    const order = await this.db.order.findFirst({ where: { id, ...orderScope(a) }, include: { customer: true, device: true, payments: true, warranty: true, organization: true, branch: true } });
     if (!order) throw new NotFoundException();
     const paid = order.payments.reduce((n, p) => p.kind === 'REFUND' ? n.minus(p.amount) : n.plus(p.amount), new Prisma.Decimal(0));
     const settings = await this.db.organizationSetting.findMany({ where: { organizationId: a.organizationId, key: { in: ['general', 'receipt', 'logo'] } } });
     const value = (key: string) => (settings.find(s => s.key === key)?.value ?? {}) as Record<string, unknown>;
     const text = (v: unknown) => typeof v === 'string' ? v : '';
     const general = value('general'), receipt = value('receipt');
+    // With several branches the receipt names the branch and gives its own address and phone.
+    const branches = await this.db.branch.count({ where: { organizationId: a.organizationId } });
+    const branch = branches > 1 ? order.branch : null;
 
     // Only the hash of a tracking token is stored, so each print mints a new 90-day link for the QR.
     const trackingUrl = process.env.WEB_URL + '/track/' + await createLink(this.db, a.organizationId, id, 'TRACK');
@@ -33,7 +36,8 @@ class ReceiptController {
       width: receipt.width === 58 ? 58 : 80,
       // Social handles printed at the bottom; unset → MyService's own accounts, empty string → hidden.
       service: {
-        name: text(general.name) || order.organization.name, phone: text(general.phone), address: text(general.address), footer: text(receipt.footer),
+        name: text(general.name) || order.organization.name, branch: branch?.name ?? null,
+        phone: branch?.phone || text(general.phone), address: branch?.address || text(general.address), footer: text(receipt.footer),
         logo: typeof value('logo').image === 'string' ? String(value('logo').image) : null,
         telegram: typeof receipt.telegram === 'string' ? receipt.telegram.trim() : '@myserviceuzz',
         instagram: typeof receipt.instagram === 'string' ? receipt.instagram.trim() : 'myserviceuz',

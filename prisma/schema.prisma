@@ -53,6 +53,11 @@ model Branch {
   id             String   @id @default(cuid())
   organizationId String
   name           String
+  /// Printed on this branch's receipts and shown to its customers.
+  address        String?
+  phone          String?
+  /// A closed branch keeps its orders and history but takes no new work.
+  archivedAt     DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

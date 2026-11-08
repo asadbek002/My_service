@@ -1,7 +1,7 @@
-import { Module, Controller, Get, Post, Patch, Put, Param, Body, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Module, Controller, Get, Post, Patch, Put, Param, Body, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ApiProperty, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { IsString, IsIn, Length, Matches, IsOptional, IsEmail, IsArray } from 'class-validator';
+import { IsString, IsIn, Length, Matches, IsOptional, IsEmail, IsArray, ArrayMaxSize } from 'class-validator';
 import { ALL_PERMISSIONS } from '../auth/permissions';
 import * as argon2 from 'argon2';
 import { Database } from '../database';
@@ -15,6 +15,8 @@ class CreateStaffDto {
   @ApiProperty() @IsOptional() @IsString() @Length(0, 100) lastName?: string;
   @ApiProperty() @IsOptional() @IsEmail() email?: string;
   @ApiProperty() @IsString() @Matches(/^\+[1-9][0-9]{7,14}$/) phone!: string;
+  /** Branches the new colleague works in; all open branches when not given. */
+  @ApiProperty() @IsOptional() @IsArray() @ArrayMaxSize(100) @IsString({ each: true }) branchIds?: string[];
 }
 class UpdateStaffDto {
   @ApiProperty() @IsOptional() @IsString() @Length(1, 100) firstName?: string;
@@ -28,7 +30,7 @@ class ResetPasswordDto {
 class StatusDto {
   @ApiProperty() @IsIn(['ACTIVE', 'SUSPENDED', 'ARCHIVED']) status!: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
 }
-const safe = { id: true, login: true, firstName: true, lastName: true, phone: true, email: true, status: true, mustChangePassword: true, createdAt: true, roles: { select: { role: { select: { name: true, systemKey: true } } } } } as const;
+const safe = { id: true, login: true, firstName: true, lastName: true, phone: true, email: true, status: true, mustChangePassword: true, createdAt: true, roles: { select: { role: { select: { name: true, systemKey: true } } } }, branches: { select: { branchId: true } } } as const;
 const isOwnerUser = (user: { roles: { role: { systemKey: string | null } }[] }) => user.roles.some(r => r.role.systemKey === 'OWNER');
 
 @ApiTags('staff') @ApiBearerAuth()
@@ -63,7 +65,8 @@ class StaffController {
         if (sub.plan.maxStaff !== null && count >= sub.plan.maxStaff) throw new ForbiddenException('STAFF_LIMIT');
         const role = await tx.role.findFirst({ where: { organizationId: actor.organizationId, systemKey: 'STAFF' } });
         if (!role) throw new NotFoundException('Role not configured');
-        const branches = await tx.branch.findMany({ where: { organizationId: actor.organizationId }, select: { id: true } });
+        const branches = await tx.branch.findMany({ where: { organizationId: actor.organizationId, archivedAt: null, ...(dto.branchIds?.length ? { id: { in: dto.branchIds } } : {}) }, select: { id: true } });
+        if (dto.branchIds?.length && branches.length !== new Set(dto.branchIds).size) throw new BadRequestException('BRANCH_UNAVAILABLE');
         const user = await tx.user.create({ data: {
           organizationId: actor.organizationId, login: dto.login.toLowerCase(), firstName: dto.firstName,
           ...(dto.lastName ? { lastName: dto.lastName } : {}), ...(dto.email ? { email: dto.email } : {}),

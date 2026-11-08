@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
+import { useCurrentBranch, withBranch } from '../../lib/branches';
+import { BranchPicker } from '../../components/branch-picker';
 import { errorText } from '../../lib/errors';
 import { dateTime, EXPENSE_CATEGORIES, money } from '../../lib/format';
 import { can, invalidateBusiness, useDefaults, useMe } from '../../lib/queries';
@@ -18,7 +20,8 @@ const label = (c: string) => EXPENSE_CATEGORIES[c] ?? c;
 
 export default function Expenses() {
   const { data: me } = useMe();
-  const { data, isLoading, error } = useQuery({ queryKey: ['expenses'], queryFn: () => api<Expense[]>('/expenses') });
+  const { branch } = useCurrentBranch();
+  const { data, isLoading, error } = useQuery({ queryKey: ['expenses', branch], queryFn: () => api<Expense[]>(withBranch('/expenses', branch)) });
   return (
     <AppShell title="Xarajatlar" narrow>
       <div className="space-y-4">
@@ -43,12 +46,17 @@ function ExpenseForm() {
   const [state, setState] = useState<{ ok?: string; error?: string }>({});
   const [busy, setBusy] = useState(false);
   const chosen = category || categories[0] || 'OTHER';
+  // With several branches the expense is booked to one: the header's choice, else picked here.
+  const current = useCurrentBranch();
+  const [pickedBranch, setPickedBranch] = useState('');
+  const branchId = pickedBranch || current.branch;
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (busy || !Number(amount) || note.trim().length < 3) return;
+    if (current.multi && !branchId) { setState({ error: 'Qaysi filialning xarajati ekanini tanlang' }); return; }
     setBusy(true); setState({});
     try {
-      await api('/expenses', { method: 'POST', body: JSON.stringify({ category: chosen, amount, note: note.trim() }) });
+      await api('/expenses', { method: 'POST', body: JSON.stringify({ category: chosen, amount, note: note.trim(), ...(branchId ? { branchId } : {}) }) });
       // Ready for the next one straight away: clear the fields and put the cursor back on the amount.
       setAmount(''); setNote('');
       setState({ ok: `Yozildi: ${label(chosen)}` });
@@ -67,6 +75,7 @@ function ExpenseForm() {
             className="chip">{label(c)}</button>
         ))}
       </div>
+      {current.multi && <div className="mb-3"><BranchPicker value={branchId} onChange={setPickedBranch} /></div>}
       <div className="grid gap-3 sm:grid-cols-[12rem_1fr]">
         <MoneyInput id="expense-amount" value={amount} onChange={edit(setAmount)} aria-label="Summa" />
         <Input value={note} onChange={e => edit(setNote)(e.target.value)} placeholder="Izoh (masalan: oktyabr ijarasi)" enterKeyHint="done" />

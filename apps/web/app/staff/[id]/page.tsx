@@ -7,6 +7,7 @@ import { api } from '../../../lib/api';
 import { errorText } from '../../../lib/errors';
 import { dateTime, fullName, normalizePhone, phone } from '../../../lib/format';
 import { can, useMe, type Staff } from '../../../lib/queries';
+import { useCurrentBranch } from '../../../lib/branches';
 import { AppShell } from '../../../components/layout/app-shell';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -74,6 +75,8 @@ export default function StaffMember() {
           </section>
         )}
 
+        {me?.role === 'OWNER' && !owner && <StaffBranches staff={s} onSaved={() => run(async () => undefined, 'Filiallar saqlandi')} />}
+
         {editable && !self && (
           <section className="rounded-lg border bg-white p-4">
             <h2 className="font-semibold">Parolni unutdimi?</h2>
@@ -111,5 +114,43 @@ export default function StaffMember() {
         </section>
       </div>
     </AppShell>
+  );
+}
+
+/** Where a colleague works: they see and take in work only in the ticked branches. */
+function StaffBranches({ staff, onSaved }: { staff: Staff; onSaved: () => void }) {
+  const qc = useQueryClient();
+  const { open, all } = useCurrentBranch();
+  const initial = (staff.branches ?? []).map(b => b.branchId);
+  const [ids, setIds] = useState<string[] | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  if (all.length < 2) return null;
+  const chosen = ids ?? initial;
+  const shown = all.filter(b => !b.archived || initial.includes(b.id));
+  const changed = ids !== null && (ids.length !== initial.length || ids.some(x => !initial.includes(x)));
+  async function save() {
+    if (!chosen.length) { setError('Kamida bitta filialni belgilang'); return; }
+    setBusy(true); setError('');
+    try { await api(`/staff/${staff.id}/branches`, { method: 'PUT', body: JSON.stringify({ branchIds: chosen }) }); await qc.invalidateQueries({ queryKey: ['staff'] }); setIds(null); onSaved(); }
+    catch (e) { setError(errorText(e)); } finally { setBusy(false); }
+  }
+  return (
+    <section className="rounded-lg border bg-white p-4">
+      <h2 className="font-semibold">Qaysi filialda ishlaydi?</h2>
+      <p className="mt-0.5 text-sm text-mute">Xodim faqat belgilangan filiallarning buyurtmalarini ko&apos;radi va qabul qiladi.</p>
+      <div className="mt-3 grid gap-2">
+        {shown.map(b => (
+          <label key={b.id} className="flex items-center gap-2.5 text-sm">
+            <input type="checkbox" className="h-5 w-5 accent-ink" checked={chosen.includes(b.id)} disabled={b.archived && !chosen.includes(b.id)}
+              onChange={e => setIds(e.target.checked ? [...chosen, b.id] : chosen.filter(x => x !== b.id))} />
+            {b.name}{b.archived && <span className="text-xs text-mute">(yopilgan)</span>}
+          </label>
+        ))}
+      </div>
+      {open.length === 0 && <p className="mt-2 text-xs text-mute">Ochiq filial yo&apos;q.</p>}
+      <ErrorBox className="mt-3">{error}</ErrorBox>
+      {changed && <Button className="mt-3" disabled={busy} onClick={save}>{busy ? 'Saqlanmoqda…' : 'Saqlash'}</Button>}
+    </section>
   );
 }

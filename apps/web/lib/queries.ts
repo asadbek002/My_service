@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
+import { useCurrentBranch, withBranch } from './branches';
 
 export type Payment = { id: string; kind: 'PAYMENT' | 'REFUND'; amount: string; method: string; reason?: string | null; originalPaymentId?: string | null; actorId?: string | null; createdAt: string };
 export type Device = { id: string; category: string; brand: string; model: string };
@@ -11,6 +12,7 @@ export type Order = {
   customer: Customer; device: Device;
   payments: Pick<Payment, 'kind' | 'amount'>[];
   parentOrderId?: string | null;
+  branchId?: string; branch?: { id?: string; name: string };
 };
 export type OrderDetail = Omit<Order, 'payments'> & {
   payments: Payment[];
@@ -21,7 +23,7 @@ export type OrderDetail = Omit<Order, 'payments'> & {
 };
 export type Me = { id: string; firstName: string; lastName?: string | null; login: string; organizationId: string; mustChangePassword: boolean; permissions: string[]; role: 'OWNER' | 'STAFF' | null; roles: string[]; support?: boolean; blocked?: { at: string; reason: string | null } | null;
   subscription?: { status: string; expiresAt: string; graceUntil: string | null } | null };
-export type Staff = { id: string; login: string; firstName: string; lastName?: string | null; phone: string; email?: string | null; status: string; mustChangePassword: boolean; createdAt: string; roles: { role: { name: string; systemKey?: string | null } }[] };
+export type Staff = { id: string; login: string; firstName: string; lastName?: string | null; phone: string; email?: string | null; status: string; mustChangePassword: boolean; createdAt: string; roles: { role: { name: string; systemKey?: string | null } }[]; branches?: { branchId: string }[] };
 export type Dashboard = {
   statuses: { status: string; count: number }[]; todayReceived: number;
   recent: (Pick<Order, 'id' | 'number' | 'status' | 'total' | 'createdAt'> & { customer: { firstName: string; phone: string }; device: { brand: string; model: string } })[];
@@ -38,15 +40,21 @@ export const can = (me: Me | undefined, permission: string) => !!me?.permissions
 /** Service name and logo for the header (Settings → Logotip). */
 export const useBranding = (enabled = true) => useQuery({ queryKey: ['branding'], queryFn: () => api<{ name: string; logo: string | null }>('/settings/branding'), staleTime: 300_000, enabled });
 export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/auth/me') });
-export const useOrders = (status = '', enabled = true) => useQuery({ queryKey: ['orders', 'list', status], queryFn: () => api<Order[]>('/orders' + (status ? '?status=' + status : '')), enabled });
+export function useOrders(status = '', enabled = true) {
+  const { branch } = useCurrentBranch();
+  return useQuery({ queryKey: ['orders', 'list', status, branch], queryFn: () => api<Order[]>(withBranch('/orders' + (status ? '?status=' + status : ''), branch)), enabled });
+}
 export const useOrder = (id: string) => useQuery({ queryKey: ['orders', id], queryFn: () => api<OrderDetail>('/orders/' + id), enabled: !!id });
-export const useDashboard = (enabled = true) => useQuery({ queryKey: ['dashboard'], queryFn: () => api<Dashboard>('/reports/dashboard'), enabled });
+export function useDashboard(enabled = true) {
+  const { branch } = useCurrentBranch();
+  return useQuery({ queryKey: ['dashboard', branch], queryFn: () => api<Dashboard>(withBranch('/reports/dashboard', branch)), enabled });
+}
 export const useDefaults = () => useQuery({ queryKey: ['defaults'], queryFn: () => api<Defaults>('/settings/defaults'), staleTime: 300_000 });
 export const useStaff = () => useQuery({ queryKey: ['staff'], queryFn: () => api<Staff[]>('/staff') });
 export const usePaymentMethods = () => useQuery({ queryKey: ['payment-methods'], queryFn: () => api<{ key: string; label: string }[]>('/settings/payment-methods'), staleTime: 300_000 });
 
 /** Every screen that shows money or order state; refreshed after any change to them. */
-const BUSINESS_KEYS = ['orders', 'dashboard', 'customers', 'payments', 'finance', 'expenses', 'parts', 'warranties', 'notifications', 'search'];
+const BUSINESS_KEYS = ['branches', 'orders', 'dashboard', 'customers', 'payments', 'finance', 'expenses', 'parts', 'warranties', 'notifications', 'search'];
 export function invalidateBusiness(qc: ReturnType<typeof useQueryClient>) {
   return Promise.all(BUSINESS_KEYS.map(key => qc.invalidateQueries({ queryKey: [key] })));
 }

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Param, Query, Res, Module, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
-import { IsString, Length, Matches } from 'class-validator';
+import { IsOptional, IsString, Length, Matches } from 'class-validator';
 import type { Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { Database } from '../database';
@@ -11,6 +11,7 @@ class ExpenseDto {
   @IsString() @Length(1,100) category!: string;
   @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) amount!: string;
   @IsString() @Length(3,1000) note!: string;
+  @IsOptional() @IsString() @Length(1,100) branchId?: string;
 }
 class ClaimDto { @IsString() @Length(3,4000) reason!: string; }
 
@@ -28,13 +29,16 @@ const paidOf = (payments: { kind: string; amount: Prisma.Decimal }[]) => payment
 class ExpenseController {
   constructor(private readonly db: Database) {}
   @Get() @Permissions('reports.finance')
-  list(@CurrentActor() a: Actor) { return this.db.expense.findMany({ where: { organizationId: a.organizationId }, take: 200, orderBy: { createdAt: 'desc' } }); }
+  list(@CurrentActor() a: Actor, @Query('branch') branch?: string) {
+    return this.db.expense.findMany({ where: { organizationId: a.organizationId, ...(branch ? { branchId: branch } : {}) }, take: 200, orderBy: { createdAt: 'desc' } });
+  }
   @Post() @Permissions('expenses.manage')
   async create(@CurrentActor() a: Actor, @Body() d: ExpenseDto) {
     if (!new Prisma.Decimal(d.amount).greaterThan(0)) throw new BadRequestException('Positive amount required');
     return this.db.$transaction(async tx => {
-      const branch = await defaultBranch(tx, a);
-      const expense = await tx.expense.create({ data: { ...d, branchId: branch.id, organizationId: a.organizationId, actorId: a.userId } });
+      const { branchId, ...rest } = d;
+      const branch = await defaultBranch(tx, a, branchId);
+      const expense = await tx.expense.create({ data: { ...rest, branchId: branch.id, organizationId: a.organizationId, actorId: a.userId } });
       await record(tx, a, expense.id, 'EXPENSE_CREATED'); return expense;
     });
   }
@@ -44,8 +48,8 @@ class ExpenseController {
 class ReportsController {
   constructor(private readonly db: Database) {}
   @Get('dashboard') @Permissions('reports.view')
-  async dashboard(@CurrentActor() a: Actor) {
-    const scope = orderScope(a);
+  async dashboard(@CurrentActor() a: Actor, @Query('branch') branch?: string) {
+    const scope = orderScope(a, branch);
     const today = startOfDay(tashkentDay()), monthStart = startOfDay(tashkentDay().slice(0, 8) + '01'), week = new Date(today.getTime() - 6 * 86400000);
     const [groups, recent, open, payments] = await Promise.all([
       this.db.order.groupBy({ by: ['status'], where: { ...scope, status: { in: OPEN_STATUSES } }, _count: true }),
@@ -70,22 +74,24 @@ class ReportsController {
     };
   }
   @Get('finance') @Permissions('reports.finance')
-  async finance(@CurrentActor() a: Actor, @Query('from') from?: string, @Query('to') to?: string) {
+  async finance(@CurrentActor() a: Actor, @Query('from') from?: string, @Query('to') to?: string, @Query('branch') branch?: string) {
     const period = range(from, to);
+    // One branch: its orders, payments and expenses (shop debts for parts stay service-wide).
+    const expenseBranch = branch ? { branchId: branch } : {};
     return this.db.$transaction(async tx => {
-      const scope = orderScope(a);
+      const scope = orderScope(a, branch);
       const [delivered, payments, expenses, received, debtors, shopDebt, expenseItems, paymentItems] = await Promise.all([
         // The orders behind the revenue, so a report can list them and not only their sum.
         tx.order.findMany({ where: { ...scope, status: 'DELIVERED', history: { some: { toStatus: 'DELIVERED', createdAt: period } } }, orderBy: { updatedAt: 'desc' },
           select: { id: true, number: true, labor: true, partsTotal: true, total: true, customer: { select: { firstName: true, phone: true } }, device: { select: { brand: true, model: true } },
             history: { where: { toStatus: 'DELIVERED', createdAt: period }, select: { createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1 }, payments: { select: { kind: true, amount: true } } } }),
         tx.payment.groupBy({ by: ['kind'], where: { organizationId: a.organizationId, createdAt: period, order: scope }, _sum: { amount: true } }),
-        tx.expense.groupBy({ by: ['category'], where: { organizationId: a.organizationId, createdAt: period }, _sum: { amount: true } }),
+        tx.expense.groupBy({ by: ['category'], where: { organizationId: a.organizationId, createdAt: period, ...expenseBranch }, _sum: { amount: true } }),
         tx.order.count({ where: { ...scope, createdAt: period } }),
         tx.order.findMany({ where: { ...scope, status: { not: 'CANCELLED' } }, include: { customer: { select: { firstName: true, lastName: true, phone: true } }, device: { select: { brand: true, model: true } }, payments: { select: { kind: true, amount: true } } }, orderBy: { createdAt: 'desc' } }),
         tx.sourcedPart.aggregate({ where: { organizationId: a.organizationId, status: 'TAKEN' }, _sum: { cost: true } }),
         // Every expense of the period, so the report can list and filter them, not only the totals.
-        tx.expense.findMany({ where: { organizationId: a.organizationId, createdAt: period }, select: { id: true, category: true, amount: true, note: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1000 }),
+        tx.expense.findMany({ where: { organizationId: a.organizationId, createdAt: period, ...expenseBranch }, select: { id: true, category: true, amount: true, note: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1000 }),
         // Every payment and refund of the period: the cash section lists them by method.
         tx.payment.findMany({ where: { organizationId: a.organizationId, createdAt: period, order: scope }, orderBy: { createdAt: 'desc' }, take: 2000,
           select: { id: true, kind: true, method: true, amount: true, createdAt: true, order: { select: { number: true, customer: { select: { firstName: true } } } } } }),
@@ -116,13 +122,13 @@ class ReportsController {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   }
   @Get('export') @Permissions('reports.view')
-  async export(@CurrentActor() a: Actor, @Res() res: Response, @Query('from') from?: string, @Query('to') to?: string) {
+  async export(@CurrentActor() a: Actor, @Res() res: Response, @Query('from') from?: string, @Query('to') to?: string, @Query('branch') branch?: string) {
     const createdAt = range(from, to);
-    const orders = await this.db.order.findMany({ where: { ...orderScope(a), createdAt }, include: { customer: { select: { firstName: true, phone: true } }, device: { select: { brand: true, model: true } }, payments: { select: { kind: true, amount: true } } }, orderBy: { createdAt: 'asc' } });
+    const orders = await this.db.order.findMany({ where: { ...orderScope(a, branch), createdAt }, include: { customer: { select: { firstName: true, phone: true } }, device: { select: { brand: true, model: true } }, branch: { select: { name: true } }, payments: { select: { kind: true, amount: true } } }, orderBy: { createdAt: 'asc' } });
     const cell = (value: unknown) => { let text = String(value ?? ''); if (/^[=+\-@]/.test(text)) text = "'" + text; return '"' + text.replaceAll('"', '""') + '"'; };
-    const rows = [['buyurtma', 'sana', 'holat', 'mijoz', 'telefon', 'qurilma', 'usta_haqi', 'zapchast', 'jami', 'tolangan', 'qoldiq'], ...orders.map(o => {
+    const rows = [['buyurtma', 'sana', 'filial', 'holat', 'mijoz', 'telefon', 'qurilma', 'usta_haqi', 'zapchast', 'jami', 'tolangan', 'qoldiq'], ...orders.map(o => {
       const paid = paidOf(o.payments);
-      return [o.number, o.createdAt.toISOString(), o.status, o.customer.firstName, o.customer.phone, o.device.brand + ' ' + o.device.model, o.labor.toString(), o.partsTotal.toString(), o.total.toString(), paid.toString(), o.total.minus(paid).toString()];
+      return [o.number, o.createdAt.toISOString(), o.branch.name, o.status, o.customer.firstName, o.customer.phone, o.device.brand + ' ' + o.device.model, o.labor.toString(), o.partsTotal.toString(), o.total.toString(), paid.toString(), o.total.minus(paid).toString()];
     })];
     const csv = '﻿' + rows.map(row => row.map(cell).join(',')).join('\r\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', 'attachment; filename="buyurtmalar.csv"'); res.setHeader('Cache-Control', 'private, no-store'); res.send(csv);

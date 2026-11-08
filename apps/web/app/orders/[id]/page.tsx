@@ -11,6 +11,7 @@ import { date, dateTime, daysSince, deviceName, fullName, idempotencyKey, money,
 import { LATE_AFTER, Ruler, rulerKind, type RulerKind } from '../../../components/ui/ruler';
 import { can, post, useMe, useOrder, useOrderMutation, usePaymentMethods, type Me, type OrderDetail, type Payment } from '../../../lib/queries';
 import { cn } from '../../../lib/utils';
+import { useCurrentBranch } from '../../../lib/branches';
 import { AppShell, ActionBar } from '../../../components/layout/app-shell';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -162,6 +163,7 @@ function Ticket({ order, canEditPrice, onEditPrice, canEditComplaint, onEditComp
   const kind = rulerKind(order.status);
   const days = daysSince(order.createdAt);
   const late = kind === 'tayyor' && days > LATE_AFTER;
+  const branches = useCurrentBranch();
   return (
     <article className="talon">
       <div className="p-4">
@@ -171,7 +173,7 @@ function Ticket({ order, canEditPrice, onEditPrice, canEditComplaint, onEditComp
         </div>
         <div className="mt-3">
           <h2 className="truncate text-[1.75rem] font-bold leading-tight tracking-tight">{deviceName(order.device)}</h2>
-          <p className="text-[13px] text-mute">{order.device.category} · qabul {dateTime(order.createdAt)}</p>
+          <p className="text-[13px] text-mute">{order.device.category} · qabul {dateTime(order.createdAt)}{branches.all.length > 1 && order.branch ? ' · ' + order.branch.name : ''}</p>
         </div>
         <div className="mt-4 flex items-center gap-3 border-t border-dashed pt-4">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-mat text-sm font-semibold text-white">{initials(order.customer)}</span>

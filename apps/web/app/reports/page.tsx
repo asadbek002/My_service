@@ -10,6 +10,7 @@ import { dateTime, date, EXPENSE_CATEGORIES, money, PAYMENT_METHODS, phone } fro
 import { can, useMe, usePaymentMethods } from '../../lib/queries';
 import { periodLabel, periodQuery, preset, type Period, type PeriodKey } from '../../lib/period';
 import { downloadPdf, type PdfSection } from '../../lib/pdf';
+import { useCurrentBranch } from '../../lib/branches';
 import { statusLabel } from '../../components/ui/status-badge';
 import { AppShell } from '../../components/layout/app-shell';
 import { Button } from '../../components/ui/button';
@@ -43,7 +44,8 @@ export default function Reports() {
   const [mode, setMode] = useState<PeriodKey>('month');
   const [range, setRange] = useState<Period>(() => preset('month'));
   const finance = can(me, 'reports.finance');
-  const q = periodQuery(range);
+  const { branch, name: branchName } = useCurrentBranch();
+  const q = periodQuery(range) + (branch ? '&branch=' + encodeURIComponent(branch) : '');
   const { data, isLoading, error } = useQuery({ queryKey: ['finance', q], queryFn: () => api<Finance>('/reports/finance?' + q), enabled: finance });
 
   // Expense filters
@@ -138,7 +140,7 @@ export default function Reports() {
       await downloadPdf({
         fileName: `${one ? one[2] : 'hisobot'}-${range[0]}-${range[1]}.pdf`,
         title: one ? one[1] : 'Moliyaviy hisobot',
-        subtitle: periodLabel(range),
+        subtitle: periodLabel(range) + (branchName ? ' · ' + branchName : ''),
         sections: parts.flatMap(p => sectionsOf(p, data)),
       });
     } catch (e) { setState(errorText(e)); }

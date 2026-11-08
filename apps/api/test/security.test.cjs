@@ -223,7 +223,7 @@ test('intake with price, unique numbers, simple status flow, audited price chang
   assert.deepEqual(detail.history.map(h => h.toStatus), ['RECEIVED', 'IN_REPAIR', 'READY']);
   assert.equal(detail.actorNames[a.user.id], 'Egasi');
   // Staff-facing old endpoints are gone.
-  for (const path of ['/inventory', '/suppliers', '/branches', '/orders/technicians', '/settings/roles']) assert.equal((await request(path, auth)).status, 404, path);
+  for (const path of ['/inventory', '/suppliers', '/orders/technicians', '/settings/roles']) assert.equal((await request(path, auth)).status, 404, path);
 });
 test('split payment, idempotency, refund, price floor and delivery with warranty', async () => {
   const auth = await owner(a);
@@ -870,4 +870,53 @@ test('orders filter "qarzga berilgan": delivered and not fully paid', async () =
   const debts = await json(await request('/orders?status=DEBT', auth));
   assert.deepEqual(debts.map(o => o.id), [debtOrder.id]);
   assert.ok(!debts.some(o => o.id === openOrder.id));
+});
+
+test('branches: the owner opens them within the plan, decides who works where; staff see only their branch', async () => {
+  const t = await tenant(); const auth = await owner(t);
+  await db.plan.update({ where: { id: t.plan.id }, data: { maxBranches: 2 } });
+  let list = await json(await request('/branches', auth));
+  assert.equal(list.limit, 2); assert.equal(list.manage, true); assert.equal(list.branches.length, 1);
+  const chilonzor = await json(await request('/branches', { ...auth, method: 'POST', body: { name: 'Chilonzor', address: 'Chilonzor 9', phone: '+998901112233' } }));
+  assert.equal((await request('/branches', { ...auth, method: 'POST', body: { name: 'Yunusobod' } })).status, 403, 'plan allows two');
+  assert.equal((await request('/branches', { ...auth, method: 'POST', body: { name: 'Chilonzor' } })).status, 403);
+  assert.equal((await request('/branches/' + chilonzor.id, { ...auth, method: 'PATCH', body: { name: 'Main' } })).status, 409, 'names are unique');
+
+  // A colleague who works only in Chilonzor.
+  const staff = await staffOf(t);
+  const staffUser = await db.user.findFirst({ where: { organizationId: t.org.id, roles: { some: { role: { systemKey: 'STAFF' } } } }, orderBy: { createdAt: 'desc' } });
+  assert.equal((await request(`/staff/${staffUser.id}/branches`, { token: staff.token, method: 'PUT', body: { branchIds: [chilonzor.id] } })).status, 403, 'only the owner assigns');
+  assert.equal((await request(`/staff/${t.user.id}/branches`, { ...auth, method: 'PUT', body: { branchIds: [chilonzor.id] } })).status, 400, 'the owner sees every branch');
+  const assigned = await request(`/staff/${staffUser.id}/branches`, { ...auth, method: 'PUT', body: { branchIds: [chilonzor.id] } }); assert.equal(assigned.status, 200, await assigned.text());
+  const seen = await json(await request('/branches', { token: staff.token }));
+  assert.deepEqual(seen.branches.map(b => b.name), ['Chilonzor']); assert.equal(seen.manage, false);
+
+  // Work goes to the chosen branch; staff cannot take work into a branch they do not work in.
+  const { order: main } = await newOrder(t);
+  assert.equal(main.branchId, t.branch.id);
+  const customer = await json(await request('/customers', { ...auth, method: 'POST', body: { firstName: 'Filial', phone: '+99890' + String(Math.floor(Math.random() * 1e7)).padStart(7, '0') } }));
+  const device = await json(await request('/devices', { ...auth, method: 'POST', body: { customerId: customer.id, category: 'Telefon', brand: 'Vivo', model: 'Y20' } }));
+  const body = { customerId: customer.id, deviceId: device.id, complaint: 'Zaryad', accessories: [], labor: '50000', partsTotal: '0' };
+  assert.equal((await request('/orders', { token: staff.token, method: 'POST', body: { ...body, branchId: t.branch.id } })).status, 400);
+  const there = await json(await request('/orders', { token: staff.token, method: 'POST', body }));
+  assert.equal(there.branchId, chilonzor.id, 'staff work defaults to their branch');
+  // Lists filter by branch; staff never see the other branch.
+  assert.deepEqual((await json(await request('/orders?status=open&branch=' + chilonzor.id, auth))).map(o => o.id), [there.id]);
+  assert.ok((await json(await request('/orders?status=open', auth))).some(o => o.id === main.id));
+  assert.deepEqual((await json(await request('/orders?status=open', { token: staff.token }))).map(o => o.id), [there.id]);
+  assert.deepEqual(await json(await request('/orders?status=open&branch=' + t.branch.id, { token: staff.token })), []);
+  // Receipts with several branches name the branch and use its address.
+  const receipt = await json(await request(`/orders/${there.id}/receipt`, auth));
+  assert.equal(receipt.service.branch, 'Chilonzor'); assert.equal(receipt.service.address, 'Chilonzor 9');
+
+  // Closing: not with devices still inside, never the last open branch; reopening respects the limit.
+  assert.equal((await request('/branches/' + chilonzor.id, { ...auth, method: 'PATCH', body: { archived: true } })).status, 409);
+  await db.order.update({ where: { id: there.id }, data: { status: 'CANCELLED' } });
+  assert.equal((await json(await request('/branches/' + chilonzor.id, { ...auth, method: 'PATCH', body: { archived: true } }))).archivedAt !== null, true);
+  assert.equal((await request('/branches/' + t.branch.id, { ...auth, method: 'PATCH', body: { archived: true } })).status, 409, 'last open branch');
+  assert.equal((await request('/orders', { ...auth, method: 'POST', body: { ...body, branchId: chilonzor.id } })).status, 400, 'a closed branch takes no work');
+  const yunusobod = await json(await request('/branches', { ...auth, method: 'POST', body: { name: 'Yunusobod' } }));
+  assert.ok(yunusobod.id, 'a closed branch frees its place in the limit');
+  assert.equal((await request('/branches/' + chilonzor.id, { ...auth, method: 'PATCH', body: { archived: false } })).status, 403, 'reopening counts against the limit');
+  assert.equal(await db.auditLog.count({ where: { organizationId: t.org.id, action: { in: ['BRANCH_CREATED', 'BRANCH_CLOSED', 'STAFF_BRANCHES_CHANGED'] } } }), 4);
 });

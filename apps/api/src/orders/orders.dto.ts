@@ -30,6 +30,8 @@ export class OrderDto {
   @ApiProperty({ type: [String] }) @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) accessories!: string[];
   @ApiProperty({ example: '150000' }) @IsString() @Matches(MONEY) labor!: string;
   @ApiProperty({ example: '350000' }) @IsString() @Matches(MONEY) partsTotal!: string;
+  /** The branch the device is taken in at; defaults to the actor's first open branch. */
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 100) branchId?: string;
 }
 export class PriceDto {
   @ApiProperty({ example: '150000' }) @IsString() @Matches(MONEY) labor!: string;

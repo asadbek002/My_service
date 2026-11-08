@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Check, Laptop, Monitor, Package, Plus, Smartphone, Tablet, Tv, Watch, X, type LucideIcon } from 'lucide-react';
 import { api } from '../../../lib/api';
+import { useCurrentBranch } from '../../../lib/branches';
+import { BranchPicker } from '../../../components/branch-picker';
 import { errorText } from '../../../lib/errors';
 import { fullName, normalizePhone, phone as fmtPhone, som } from '../../../lib/format';
 import { useOrderMutation, type Customer, type Device } from '../../../lib/queries';
@@ -42,6 +44,10 @@ function NewOrder() {
   const [labor, setLabor] = useState('');
   const [parts, setParts] = useState('');
   const [error, setError] = useState('');
+  // With several branches the device is taken in at one: the header's choice, else picked here.
+  const current = useCurrentBranch();
+  const [pickedBranch, setPickedBranch] = useState('');
+  const branchId = pickedBranch || current.branch;
 
   const phone = normalizePhone(phoneInput);
   const digits = phone.replace(/\D/g, '');
@@ -92,16 +98,17 @@ function NewOrder() {
       setCustomer({ ...c, devices: [...(c.devices ?? []), device] });
       setDeviceId(device.id);
     }
-    return api<{ id: string }>('/orders', { method: 'POST', body: JSON.stringify({ customerId: c.id, deviceId: dId, complaint: complaint.trim(), accessories, labor: labor || '0', partsTotal: parts || '0' }) });
+    return api<{ id: string }>('/orders', { method: 'POST', body: JSON.stringify({ customerId: c.id, deviceId: dId, complaint: complaint.trim(), accessories, labor: labor || '0', partsTotal: parts || '0', ...(branchId ? { branchId } : {}) }) });
   });
 
   const missing = useMemo(() => {
+    if (current.multi && !branchId) return 'Qaysi filialda qabul qilinayotganini tanlang';
     if (!phoneValid) return 'Mijoz telefonini yozing';
     if (!customer && !firstName.trim()) return 'Mijoz ismini yozing';
     if (newDevice && (!brand.trim() || !model.trim())) return 'Qurilma brendi va modelini yozing';
     if (!complaint.trim()) return 'Nosozlikni yozing';
     return '';
-  }, [phoneValid, customer, firstName, newDevice, brand, model, complaint]);
+  }, [current.multi, branchId, phoneValid, customer, firstName, newDevice, brand, model, complaint]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -118,6 +125,7 @@ function NewOrder() {
   return (
     <AppShell title="Yangi qabul" back="/orders" narrow>
       <form onSubmit={submit} className="space-y-4 [counter-reset:step]" noValidate>
+        {current.multi && <div className="rounded-2xl border bg-white px-4 py-3 sm:px-5"><BranchPicker value={branchId} onChange={setPickedBranch} /></div>}
         <Section title="Mijoz">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1.5">

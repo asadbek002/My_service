@@ -14,7 +14,7 @@ import { cn } from '../../../../lib/utils';
 
 type Receipt = {
   type: 'receipt' | 'delivery'; width: 58 | 80;
-  service: { name: string; phone: string; address: string; footer: string; telegram: string; instagram: string; logo?: string | null };
+  service: { name: string; branch?: string | null; phone: string; address: string; footer: string; telegram: string; instagram: string; logo?: string | null };
   order: { number: string; status: string; createdAt: string; complaint: string; accessories: string[]; labor: string; partsTotal: string; total: string; paid: string; balance: string };
   customer: { name: string; phone: string };
   device: { category: string; brand: string; model: string };
@@ -148,6 +148,7 @@ function ReceiptBody({ r, paper }: { r: Receipt; paper: 58 | 80 }) {
         {/* Thermal paper is black only: the logo prints in greyscale. */}
         {r.service.logo && <img src={r.service.logo} alt="" className={cn('mx-auto mb-1 object-contain grayscale', small ? 'h-[12mm]' : 'h-[16mm]')} />}
         <p className={cn('font-bold uppercase', small ? 'text-[13px]' : 'text-[16px]')}>{r.service.name}</p>
+        {r.service.branch && <p className="font-semibold">{r.service.branch} filiali</p>}
         {r.service.phone && <p>{phone(r.service.phone)}</p>}
         {r.service.address && <p>{r.service.address}</p>}
       </div>

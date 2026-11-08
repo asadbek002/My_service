@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { dateTime, daysSince, deviceName, fullName, money } from '../lib/format';
 import { paidOf, type Order } from '../lib/queries';
 import { cn } from '../lib/utils';
+import { useCurrentBranch } from '../lib/branches';
 import { StatusBadge } from './ui/status-badge';
 import { LATE_AFTER, Ruler, rulerKind } from './ui/ruler';
 
@@ -9,6 +10,8 @@ const COLS = 'grid-cols-[9.5rem_minmax(0,1fr)_11rem_7rem_7.5rem_7rem]';
 
 /** Desktop orders table: number, device and customer, days in the shop, stamp, total, what is still owed. */
 export function OrderTable({ orders }: { orders: Order[] }) {
+  const { multi, branch } = useCurrentBranch();
+  const showBranch = multi && !branch;
   return (
     <div className="overflow-hidden rounded-2xl border bg-white">
       <div className={cn('grid border-b text-xs font-medium text-mute', COLS)}>
@@ -29,7 +32,7 @@ export function OrderTable({ orders }: { orders: Order[] }) {
                 <span className="num px-4 font-mono text-xs">{o.number}</span>
                 <span className="min-w-0 px-3">
                   <span className="block truncate text-sm font-semibold">{deviceName(o.device)}</span>
-                  <span className="block truncate text-xs text-mute">{fullName(o.customer)} · {o.complaint}</span>
+                  <span className="block truncate text-xs text-mute">{fullName(o.customer)} · {o.complaint}{showBranch && o.branch ? ' · ' + o.branch.name : ''}</span>
                 </span>
                 <span className="flex items-end gap-2 px-3">
                   {kind ? <>

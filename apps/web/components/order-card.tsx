@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { dateTime, daysSince, deviceName, fullName, money } from '../lib/format';
 import { paidOf, type Order } from '../lib/queries';
 import { cn } from '../lib/utils';
+import { useCurrentBranch } from '../lib/branches';
 import { StatusBadge, statusLabel } from './ui/status-badge';
 import { LATE_AFTER, Ruler, rulerKind } from './ui/ruler';
 
@@ -16,12 +17,15 @@ export function OrderCard({ order, flat }: { order: Order; flat?: boolean }) {
   const kind = rulerKind(order.status);
   const days = daysSince(order.createdAt);
   const late = kind === 'tayyor' && days > LATE_AFTER;
+  // In "all branches" every card says where the device is.
+  const { multi, branch } = useCurrentBranch();
+  const where = multi && !branch ? order.branch?.name : null;
   return (
     <Link href={`/orders/${order.id}`} className={cn('block bg-white px-4 py-3.5 transition-colors active:bg-paper', flat ? 'hover:bg-[#F3F7F6]' : 'rounded-xl border hover:border-ink/30')}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-semibold">{deviceName(order.device)}</p>
-          <p className="truncate text-[13px] text-mute">{fullName(order.customer)} · <span className="num font-mono text-xs">{order.number}</span></p>
+          <p className="truncate text-[13px] text-mute">{fullName(order.customer)} · <span className="num font-mono text-xs">{order.number}</span>{where && <> · {where}</>}</p>
         </div>
         <div className="shrink-0 text-right">
           <p className="num font-mono text-sm font-semibold">{Number(order.total) > 0 ? money(order.total) : '—'}</p>

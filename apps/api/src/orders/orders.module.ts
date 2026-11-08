@@ -19,7 +19,12 @@ const DEFAULT_WARRANTY_TERMS = "Ta'mirlangan qism va bajarilgan ish uchun kafola
 export function customerScope(actor: Actor): Prisma.CustomerWhereInput {
   return actor.owner ? {} : { OR: [{ orders: { none: {} } }, { orders: { some: { branchId: { in: actor.branchIds } } } }] };
 }
-export function orderScope(actor: Actor): Prisma.OrderWhereInput {
+/**
+ * Orders the actor may see: all of the service's for the owner, staff only their branches. With
+ * `branch`, only that branch's (a branch the actor cannot see gives nothing, not an error).
+ */
+export function orderScope(actor: Actor, branch?: string): Prisma.OrderWhereInput {
+  if (branch) return { organizationId: actor.organizationId, branchId: actor.owner || actor.branchIds.includes(branch) ? branch : '-' };
   return { organizationId: actor.organizationId, ...(!actor.owner ? { branchId: { in: actor.branchIds } } : {}) };
 }
 export async function lockedOrder(tx: Prisma.TransactionClient, actor: Actor, id: string) {
@@ -55,9 +60,18 @@ export async function nextOrderNumber(tx: Prisma.TransactionClient, organization
   const counter = await tx.orderCounter.upsert({ where: { organizationId_day: { organizationId, day } }, create: { organizationId, day, value: 1 }, update: { value: { increment: 1 } } });
   return { day, number: 'MS-' + day.replaceAll('-', '').slice(2) + '-' + String(counter.value).padStart(3, '0') };
 }
-/** The organization's branch for new work: branches are not chosen in the simplified product. */
-export async function defaultBranch(tx: Prisma.TransactionClient, actor: Actor) {
-  const branch = await tx.branch.findFirst({ where: { organizationId: actor.organizationId, ...(!actor.owner ? { id: { in: actor.branchIds } } : {}) }, orderBy: { createdAt: 'asc' } });
+/**
+ * The branch new work goes to: the one chosen (an open branch the actor works in), else the actor's
+ * first open branch.
+ */
+export async function defaultBranch(tx: Prisma.TransactionClient, actor: Actor, chosen?: string) {
+  const mine = { organizationId: actor.organizationId, archivedAt: null, ...(!actor.owner ? { id: { in: actor.branchIds } } : {}) };
+  if (chosen) {
+    const branch = await tx.branch.findFirst({ where: { AND: [mine, { id: chosen }] } });
+    if (!branch) throw new BadRequestException('BRANCH_UNAVAILABLE');
+    return branch;
+  }
+  const branch = await tx.branch.findFirst({ where: mine, orderBy: { createdAt: 'asc' } });
   if (branch) return branch;
   // Onboarding always creates one; recreate it if it was ever lost.
   return tx.branch.create({ data: { organizationId: actor.organizationId, name: 'Asosiy filial' } });
@@ -150,21 +164,21 @@ class DevicesController {
 class OrdersController {
   constructor(private readonly db: Database) {}
   @Get() @Permissions('orders.view')
-  async list(@CurrentActor() actor: Actor, @Query('status') status?: string) {
-    const include = { customer: true, device: true, payments: { select: { kind: true, amount: true } } } as const;
+  async list(@CurrentActor() actor: Actor, @Query('status') status?: string, @Query('branch') branch?: string) {
+    const include = { customer: true, device: true, branch: { select: { name: true } }, payments: { select: { kind: true, amount: true } } } as const;
     if (status === 'DEBT') {
       // Handed over without full payment: delivered orders whose payments are below the total.
-      const delivered = await this.db.order.findMany({ where: { ...orderScope(actor), status: 'DELIVERED' }, include, orderBy: { createdAt: 'desc' }, take: 2000 });
+      const delivered = await this.db.order.findMany({ where: { ...orderScope(actor, branch), status: 'DELIVERED' }, include, orderBy: { createdAt: 'desc' }, take: 2000 });
       return delivered.filter(o => o.total.greaterThan(o.payments.reduce((s, p) => p.kind === 'REFUND' ? s.minus(p.amount) : s.plus(p.amount), new Prisma.Decimal(0)))).slice(0, 200);
     }
     const filter = status === 'open' ? { status: { in: OPEN_STATUSES } } : status && /^[A-Z_]{3,30}$/.test(status) ? { status } : {};
-    return this.db.order.findMany({ where: { ...orderScope(actor), ...filter }, include, orderBy: { createdAt: 'desc' }, take: 200 });
+    return this.db.order.findMany({ where: { ...orderScope(actor, branch), ...filter }, include, orderBy: { createdAt: 'desc' }, take: 200 });
   }
   @Get(':id') @Permissions('orders.view')
   async get(@CurrentActor() actor: Actor, @Param('id') id: string) {
     const order = await this.db.order.findFirst({
       where: { id, ...orderScope(actor) },
-      include: { customer: true, device: true, history: { orderBy: { createdAt: 'asc' } }, payments: { orderBy: { createdAt: 'asc' } }, warranty: true },
+      include: { customer: true, device: true, branch: { select: { id: true, name: true } }, history: { orderBy: { createdAt: 'asc' } }, payments: { orderBy: { createdAt: 'asc' } }, warranty: true },
     });
     if (!order) throw new NotFoundException();
     const totalPaid = order.payments.reduce((s, p) => p.kind === 'REFUND' ? s.minus(p.amount) : s.plus(p.amount), new Prisma.Decimal(0));
@@ -188,7 +202,7 @@ class OrdersController {
         const count = await tx.order.count({ where: { organizationId: actor.organizationId, createdAt: { gte: monthStart } } });
         if (count >= sub.plan.monthlyOrders) throw new ForbiddenException('MONTHLY_ORDER_LIMIT');
       }
-      const branch = await defaultBranch(tx, actor);
+      const branch = await defaultBranch(tx, actor, dto.branchId);
       const labor = new Prisma.Decimal(dto.labor), partsTotal = new Prisma.Decimal(dto.partsTotal);
       const order = await tx.order.create({ data: {
         organizationId: actor.organizationId, branchId: branch.id, customerId: dto.customerId, deviceId: dto.deviceId, number,
@@ -338,8 +352,8 @@ class OrdersController {
 class PaymentsController {
   constructor(private readonly db: Database) {}
   @Get() @Permissions('payments.view')
-  list(@CurrentActor() actor: Actor) {
-    return this.db.payment.findMany({ where: { organizationId: actor.organizationId, order: orderScope(actor) }, include: { order: { select: { id: true, number: true, status: true, customer: { select: { firstName: true, phone: true } } } } }, orderBy: { createdAt: 'desc' }, take: 200 });
+  list(@CurrentActor() actor: Actor, @Query('branch') branch?: string) {
+    return this.db.payment.findMany({ where: { organizationId: actor.organizationId, order: orderScope(actor, branch) }, include: { order: { select: { id: true, number: true, status: true, customer: { select: { firstName: true, phone: true } } } } }, orderBy: { createdAt: 'desc' }, take: 200 });
   }
   @Post(':id/refund') @Permissions('payments.refund')
   async refund(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: RefundDto) {

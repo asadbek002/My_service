@@ -5,13 +5,14 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, ClipboardList, Users, CreditCard, BarChart3, Receipt, ShieldCheck, Bell, UserCog, Settings,
-  Plus, Menu, X, LogOut, Search, ChevronLeft, LifeBuoy, Wrench, Wallet, Megaphone, Ban,
+  Plus, Menu, X, LogOut, Search, ChevronLeft, LifeBuoy, Wrench, Wallet, Megaphone, Ban, MapPin,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useMe, can, useBranding, type Me } from '../../lib/queries';
 import { API_BASE, api, logout } from '../../lib/api';
 import { cn } from '../../lib/utils';
 import { Mark } from './mark';
+import { BranchSwitcher } from './branch-switcher';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -34,6 +35,7 @@ const NAV = [
   { href: '/warranties', label: 'Kafolatlar', icon: ShieldCheck, permission: 'orders.view' },
   { href: '/notifications', label: 'Xabarlar', icon: Bell, permission: 'orders.view' },
   { href: '/staff', label: 'Xodimlar', icon: UserCog, permission: 'staff.view' },
+  { href: '/branches', label: 'Filiallar', icon: MapPin, permission: 'settings.manage' },
   { href: '/settings', label: 'Sozlamalar', icon: Settings, permission: 'settings.manage' },
   { href: '/account', label: 'Hisobim', icon: Wallet, permission: 'settings.manage' },
   { href: '/help', label: 'Yordam', icon: LifeBuoy, permission: null },
@@ -102,6 +104,7 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
           <Mark src={brand?.logo} />
           <span className="min-w-0 truncate text-sm font-bold tracking-[0.14em]">{brand?.name ? brand.name.toUpperCase() : 'MY SERVICE'}</span>
         </Link>
+        <div className="px-3 pt-1 empty:hidden"><BranchSwitcher dark /></div>
         {canCreate && (
           <div className="px-3 pb-2 pt-2">
             <Link href="/orders/new" className="flex h-11 items-center justify-center gap-2 rounded-md bg-brand text-sm font-semibold text-ink transition-colors hover:bg-brand-strong">
@@ -153,6 +156,8 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
               <Link href="/search" className="flex h-10 w-10 items-center justify-center rounded-full text-ink hover:bg-black/[0.05] active:bg-black/[0.08]" aria-label="Qidirish"><Search className="h-5 w-5" /></Link>
             )}
           </div>
+          {/* Phones: the branch chooser gets its own row, so page titles and actions keep their room. */}
+          <div className="px-4 pb-2 empty:hidden lg:hidden"><BranchSwitcher className="w-full" /></div>
         </header>
         <main className={cn('mx-auto w-full flex-1 px-4 pt-4 lg:px-8 lg:pb-12 lg:pt-8', tabs ? 'pb-[calc(6rem+env(safe-area-inset-bottom))]' : 'pb-[calc(2rem+env(safe-area-inset-bottom))]', narrow ? 'max-w-3xl' : 'max-w-6xl')}>
           {me && !me.support && !me.blocked && <SubscriptionNotice me={me} />}

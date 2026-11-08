@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
+import { useCurrentBranch, withBranch } from '../../lib/branches';
 import { errorText } from '../../lib/errors';
 import { dateTime, money, PAYMENT_METHODS, today } from '../../lib/format';
 import { AppShell } from '../../components/layout/app-shell';
@@ -12,7 +13,8 @@ type Row = { id: string; kind: 'PAYMENT' | 'REFUND'; amount: string; method: str
 const dayOf = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date(iso));
 
 export default function Payments() {
-  const { data, isLoading, error } = useQuery({ queryKey: ['payments'], queryFn: () => api<Row[]>('/payments') });
+  const { branch } = useCurrentBranch();
+  const { data, isLoading, error } = useQuery({ queryKey: ['payments', branch], queryFn: () => api<Row[]>(withBranch('/payments', branch)) });
   const todayTotal = (data ?? []).filter(p => dayOf(p.createdAt) === today()).reduce((s, p) => s + (p.kind === 'REFUND' ? -1 : 1) * Number(p.amount), 0);
   return (
     <AppShell title="To'lovlar" narrow>
