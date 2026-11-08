@@ -2,7 +2,8 @@
 # Daily PostgreSQL backup: a custom-format dump with its checksum, kept KEEP_DAYS days locally and
 # copied off the server (to a Telegram chat and/or an rclone remote). All business data is in PostgreSQL.
 #
-#   cron (every night at 03:15):  15 3 * * * cd ~/My_service && sh docker/backup.sh >> backups/backup.log 2>&1
+#   cron of user asadbek on lingua-server (every night at 03:30, server time Asia/Tashkent):
+#     30 3 * * * cd /opt/My_service && sh docker/backup.sh >> backups/backup.log 2>&1
 #
 # Settings (from .env or the environment):
 #   BACKUP_DIR              where dumps go (default: ./backups)

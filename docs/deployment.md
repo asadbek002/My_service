@@ -31,8 +31,10 @@ Monitor container restarts, /api/health, PostgreSQL space, Redis persistence, pe
 
 ## Updating an existing server
 
+Production runs on `lingua-server` in `/opt/My_service` (see CLAUDE.md, "Production server"); never on the old Cafe24 VPS.
+
 ```sh
-cd /root/My_service && git pull
+cd /opt/My_service && git pull
 docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
 docker compose -f docker-compose.prod.yml run --rm api pnpm db:migrate
 ```

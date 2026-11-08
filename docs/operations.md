@@ -12,10 +12,10 @@
    ```
    Avval platforma botiga (`TELEGRAM_BOT_USERNAME`) `/start` yozing — bot sizga fayl yubora olishi uchun.
 2. Bir marta qo'lda sinang: `sh docker/backup.sh` — Telegramga `myservice-<sana>.dump` kelishi kerak.
-3. Har kecha avtomatik:
+3. Har kecha avtomatik (`lingua-server`da `asadbek` foydalanuvchisining cron'i, 03:30, server vaqti `Asia/Tashkent`):
    ```
    crontab -e
-   15 3 * * * cd ~/My_service && sh docker/backup.sh >> backups/backup.log 2>&1
+   30 3 * * * cd /opt/My_service && sh docker/backup.sh >> backups/backup.log 2>&1
    ```
    Nusxa olinmasa, Telegramga «⚠️ zaxira nusxasi OLINMADI» xabari keladi.
 
