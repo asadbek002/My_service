@@ -31,6 +31,9 @@ Internet KT orqali, IP dinamik. Server vaqt zonasi `Asia/Tashkent`.
 - **Backup:** `asadbek` foydalanuvchisining cron'i, har kuni 03:30 da
   `cd /opt/My_service && sh docker/backup.sh` → `./backups` + Telegram (`BACKUP_TELEGRAM_CHAT_ID`).
 - **Resurslar:** serverdagi barcha Docker konteynerlari `lingua.slice` xotira chegarasini (7 GB) birga ishlatadi.
+- **Docker tozalash:** faqat `docker image prune -f` va `docker builder prune -f` (osilib qolgan qatlamlar).
+  `-a`, `docker system prune -a` va `docker volume prune` ishlatma, ular uchun cron ham qo'yma: Docker
+  umumiy, qo'shni loyihalarning to'xtab turgan image'lari va volume'lari (ma'lumotlari) ham o'chib ketadi.
 - **Mijoz IP'si:** `TRUST_PROXY_HOPS=1` uy nginx'i orqali to'g'ridan-to'g'ri kelgan so'rovlar uchun to'g'ri.
   Eski DNS bilan hali VPS orqali kelayotgan so'rovlarda ikki proksi bo'ladi. Ular VPS IP'si ostida ko'rinadi
   va login/SMS limitlarini o'zaro bo'lishadi.
