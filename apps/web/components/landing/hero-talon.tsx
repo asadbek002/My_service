@@ -8,9 +8,9 @@ import { cn } from '../../lib/utils';
 
 // One repair, told in three beats: taken in, on the bench, ready — and the customer hears about it.
 const BEATS: { status: string; kind: RulerKind; days: number; note: string }[] = [
-  { status: 'RECEIVED', kind: 'qabul', days: 1, note: 'Qabul qilindi, chek berildi' },
-  { status: 'IN_REPAIR', kind: 'tamir', days: 2, note: 'Ustada: ekran almashtirilmoqda' },
-  { status: 'READY', kind: 'tayyor', days: 3, note: 'Tayyor — mijozga xabar ketdi' },
+  { status: 'RECEIVED', kind: 'qabul', days: 1, note: 'Qabul qilindi, mijozga chek berildi' },
+  { status: 'IN_REPAIR', kind: 'tamir', days: 2, note: "Ta'mirlanmoqda: ekran almashtirilmoqda" },
+  { status: 'READY', kind: 'tayyor', days: 3, note: 'Tayyor — mijozga xabar yuborildi' },
 ];
 
 /**
@@ -37,10 +37,10 @@ export function HeroTalon() {
             <span className="font-mono text-[11px] text-mute">MS-261107-014</span>
           </div>
           <p className="mt-4 text-[1.6rem] font-bold leading-none tracking-tight">Samsung A52</p>
-          <p className="mt-1.5 text-[13px] text-mute">Ekran singan · Alisher, +998 90 *** 45 67</p>
+          <p className="mt-1.5 text-[13px] text-mute">Nosozlik: ekran singan · Mijoz: Alisher</p>
           <div className="mt-5 rounded-lg bg-paper p-3">
             <div className="flex items-baseline justify-between text-[12px]">
-              <span className="text-mute">ustaxonada</span>
+              <span className="text-mute">Ustaxonada turgan kunlar</span>
               <b className="num font-mono font-semibold">{b.days} kun</b>
             </div>
             <Ruler days={b.days} kind={b.kind} large className="mt-2" />

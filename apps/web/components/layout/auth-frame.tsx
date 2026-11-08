@@ -20,14 +20,14 @@ export function AuthFrame({ eyebrow, title, children, tabs }: { eyebrow: string;
           </div>
         </Link>
         <div className="mt-10 lg:mt-0">
-          <p className="max-w-md text-2xl font-bold leading-tight tracking-tight lg:text-[2.6rem]">Qabul, ta&apos;mir, to&apos;lov va qarz — bitta peshtaxtada.</p>
+          <p className="max-w-md text-2xl font-bold leading-tight tracking-tight lg:text-[2.6rem]">Buyurtma, to&apos;lov va qarzlar — bitta dasturda.</p>
           <div className="mt-6 hidden items-end gap-6 lg:flex" aria-hidden="true">
             {([[2, 'tamir', "Ta'mirda"], [4, 'tayyor', 'Tayyor'], [8, 'tayyor', 'Kutmoqda']] as const).map(([days, kind, label]) => (
               <div key={label} className="space-y-2"><Ruler days={days} kind={kind} /><p className="font-mono text-[10px] uppercase tracking-[0.08em] text-white/50">{label} · {days} kun</p></div>
             ))}
           </div>
         </div>
-        <p className="mt-6 hidden text-xs text-white/40 lg:block">Har bir qurilma necha kundan beri ustaxonada turgani — lineykada.</p>
+        <p className="mt-6 hidden text-xs text-white/40 lg:block">Har bir qurilma ustaxonada necha kundan beri turgani ko&apos;rinib turadi.</p>
       </aside>
       <div className="flex justify-center px-4 lg:items-center lg:px-10 lg:py-12">
         <section className="relative z-10 -mt-10 w-full max-w-sm pb-10 lg:mt-0 lg:pb-0">

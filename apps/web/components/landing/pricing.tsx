@@ -26,7 +26,7 @@ export function Pricing() {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-mute"><b className="text-ink">{trialText(offer.trialDays)} tekin</b> — to&apos;liq imkoniyatlar bilan. Karta kerak emas.</p>
+        <p className="text-sm text-mute"><b className="text-ink">{trialText(offer.trialDays)} bepul</b> — barcha imkoniyatlar bilan. Bank kartasi talab qilinmaydi.</p>
         <div className="flex rounded-full border bg-white p-0.5 text-sm" role="radiogroup" aria-label="To'lov davri">
           {(['MONTH', 'YEAR'] as const).map(p => (
             <button key={p} role="radio" aria-checked={period === p} onClick={() => setPeriod(p)}
@@ -44,7 +44,7 @@ export function Pricing() {
             <div key={p.id} className={cn('flex flex-col rounded-2xl border bg-white p-5', trial && 'border-ink ring-1 ring-ink')}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0"><p className="text-lg font-bold">{p.name}</p>{p.description && <p className="text-[13px] text-mute">{p.description}</p>}</div>
-                {trial && <span className="shrink-0 rounded-[6px] border-[1.5px] border-current px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-strong">Sinovda</span>}
+                {trial && <span className="shrink-0 rounded-[6px] border-[1.5px] border-current px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-strong">Sinov tarifi</span>}
               </div>
               <p className="num mt-4 font-mono text-[1.75rem] font-semibold leading-none tracking-tight">{money(price)}<span className="font-sans text-xs font-normal text-mute"> so&apos;m / {period === 'YEAR' ? 'yil' : 'oy'}</span></p>
               <p className="mt-1 h-4 text-xs text-mute">{period === 'YEAR' ? `oyiga ${money(Math.round(Number(p.yearlyTotal) / 12))} so'm` : ''}</p>

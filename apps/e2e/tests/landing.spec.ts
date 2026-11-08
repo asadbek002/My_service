@@ -3,7 +3,7 @@ import { expect, newOrder, signIn, test, tokenFor } from './fixtures';
 
 test('the home page explains the product, shows the platform prices and leads to sign-up or login', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText("Qog'oz talon o'rniga");
+  await expect(page.getByRole('heading', { level: 1 })).toContainText("Ta'mirlash ustaxonasi uchun qulay dastur");
   // Prices come from the platform's plans (the global setup made "Pro" at 149 000).
   const prices = page.locator('#narxlar');
   await expect(prices.getByText('Pro', { exact: true })).toBeVisible();
