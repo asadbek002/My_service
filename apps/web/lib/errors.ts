@@ -4,6 +4,8 @@ import { ApiError } from './api';
 const TEXT: Record<string, string> = {
   SESSION_EXPIRED: 'Sessiya tugadi. Qaytadan kiring.',
   SUBSCRIPTION_READ_ONLY: "Obuna muddati tugagan: ma'lumotlarni faqat ko'rish mumkin.",
+  SMS_DISABLED: "MyService orqali SMS yuborish siz uchun o'chirilgan. Yordam bo'limiga yozing.",
+  SMS_LIMIT_REACHED: "Oylik SMS limiti tugagan.",
   MONTHLY_ORDER_LIMIT: 'Tarifdagi oylik buyurtmalar soni tugadi.',
   STAFF_LIMIT: 'Tarifdagi xodimlar soni tugadi.',
   PRICE_BELOW_PAID: "Narx to'langan summadan kam bo'lishi mumkin emas.",

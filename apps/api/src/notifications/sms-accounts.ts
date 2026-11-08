@@ -64,6 +64,26 @@ export class SmsAccounts {
     const rows = await this.db.usageRecord.findMany({ where: { organizationId: orgId, period: smsPeriod(), metric: { in: ['sms', 'sms_extra'] } } });
     return { sent: rows.find(r => r.metric === 'sms')?.quantity ?? 0, extra: rows.find(r => r.metric === 'sms_extra')?.quantity ?? 0 };
   }
+  /**
+   * Whether the platform lets this service send one more SMS through its account: the platform can
+   * switch SMS off per service and cap it per month. Null when allowed, else the reason.
+   */
+  async refusal(orgId: string): Promise<'SMS_DISABLED' | 'SMS_LIMIT_REACHED' | null> {
+    const org = await this.db.organization.findUnique({ where: { id: orgId }, select: { smsEnabled: true, smsMonthlyCap: true } });
+    if (!org?.smsEnabled) return 'SMS_DISABLED';
+    if (org.smsMonthlyCap !== null && (await this.usage(orgId)).sent >= org.smsMonthlyCap) return 'SMS_LIMIT_REACHED';
+    return null;
+  }
+  /** Count an SMS the cap stopped; the first one of the month returns true (worth telling the platform). */
+  async countBlocked(orgId: string) {
+    const period = smsPeriod();
+    const row = await this.db.usageRecord.upsert({
+      where: { organizationId_metric_period: { organizationId: orgId, metric: 'sms_blocked', period } },
+      create: { organizationId: orgId, metric: 'sms_blocked', period, quantity: 1 }, update: { quantity: { increment: 1 } },
+    });
+    return row.quantity === 1;
+  }
+
   /** Count one platform SMS; over the plan's allowance it is also counted as extra (billed later). */
   async count(orgId: string, limit: number | null) {
     const period = smsPeriod();

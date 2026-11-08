@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Post, Put, Body, HttpCode, HttpException, Injectable, Module, OnModuleInit, OnModuleDestroy, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Controller, ForbiddenException, Get, Post, Put, Body, HttpCode, HttpException, Injectable, Module, OnModuleInit, OnModuleDestroy, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { BotModule } from '../bot/bot.module';
 import { BotService } from '../bot/bot.service';
 import { OwnBots } from '../bot/own-bot';
@@ -144,6 +144,15 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
         smsProviderId = (await ownSms.send(order.customer.phone, message('SMS'))).id;
       } else {
         if (!flags?.sms || !platformSmsConfigured()) throw new Error('SMS_NOT_CONFIGURED');
+        // The platform's switch and monthly cap for this service: a refused SMS is skipped, not retried.
+        const refusal = await this.sms.refusal(order.organizationId);
+        if (refusal) {
+          await this.db.notification.update({ where: { id: notification.id }, data: { status: 'SKIPPED', channel, errorCode: refusal } });
+          if (refusal === 'SMS_LIMIT_REACHED' && await this.sms.countBlocked(order.organizationId)) {
+            void this.bot?.notifyAdmins(`📵 <b>${esc(order.organization.name)}</b>: oylik SMS limiti tugadi (${order.organization.smsMonthlyCap} ta). Keyingi SMS'lar yuborilmaydi.`).catch(() => undefined);
+          }
+          return;
+        }
         smsProviderId = await this.platformSms(order.customer.phone, message('SMS'), event.id);
         await this.sms.count(order.organizationId, order.organization.subscription?.plan.smsPerMonth ?? null);
       }
@@ -168,9 +177,10 @@ class NotificationsController {
   /** How this service sends SMS, this month's platform SMS against the plan, and the own account's balance. */
   @Get('sms') @Permissions('settings.manage')
   async smsSettings(@CurrentActor() a: Actor) {
-    const [setting, usage, sub] = await Promise.all([
+    const [setting, usage, sub, org] = await Promise.all([
       this.sms.setting(a.organizationId), this.sms.usage(a.organizationId),
       this.db.subscription.findUnique({ where: { organizationId: a.organizationId }, include: { plan: true } }),
+      this.db.organization.findUniqueOrThrow({ where: { id: a.organizationId }, select: { smsEnabled: true, smsMonthlyCap: true } }),
     ]);
     let balance: number | null = null, error: string | null = null;
     if (setting.mode === 'own') {
@@ -180,7 +190,9 @@ class NotificationsController {
     const features = sub?.plan.features as Record<string, unknown> | undefined;
     return {
       mode: setting.mode, email: setting.email ?? null, from: setting.from ?? null, balance, error,
-      platform: { available: platformSmsConfigured() && !!features?.sms, limit: sub?.plan.smsPerMonth ?? null, sent: usage.sent, extra: usage.extra, testMode: process.env.ESKIZ_TEST_MODE === 'true' },
+      platform: { available: platformSmsConfigured() && !!features?.sms, limit: sub?.plan.smsPerMonth ?? null, sent: usage.sent, extra: usage.extra, testMode: process.env.ESKIZ_TEST_MODE === 'true',
+        // What the platform set for this service: SMS switched off, or a hard monthly cap.
+        enabled: org.smsEnabled, cap: org.smsMonthlyCap },
     };
   }
   @Put('sms') @Permissions('settings.manage')
@@ -202,6 +214,8 @@ class NotificationsController {
       else {
         const sub = await this.db.subscription.findUnique({ where: { organizationId: a.organizationId }, include: { plan: true } });
         if (!platformSmsConfigured() || !(sub?.plan.features as Record<string, unknown> | undefined)?.sms) throw new BadRequestException('SMS_NOT_CONFIGURED');
+        const refusal = await this.sms.refusal(a.organizationId);
+        if (refusal) throw new ForbiddenException(refusal);
         await this.notifications.platformSms(user.phone, process.env.ESKIZ_TEST_MODE === 'true' ? 'Bu Eskiz dan test' : text, 'test-' + a.userId + '-' + Date.now());
         await this.sms.count(a.organizationId, sub?.plan.smsPerMonth ?? null);
       }

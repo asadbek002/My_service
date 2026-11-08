@@ -194,7 +194,7 @@ function Check({ ok, children }: { ok: boolean; children: ReactNode }) {
   return <p className="flex items-start gap-2 text-sm">{ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />}<span>{children}</span></p>;
 }
 type SmsInfo = { mode: 'platform' | 'own'; email: string | null; from: string | null; balance: number | null; error: string | null;
-  platform: { available: boolean; limit: number | null; sent: number; extra: number; testMode: boolean } };
+  platform: { available: boolean; limit: number | null; sent: number; extra: number; testMode: boolean; enabled: boolean; cap: number | null } };
 
 /** Telegram status, and how SMS go out: the MyService account (plan allowance) or the service's own Eskiz. */
 function Channels() {
@@ -240,6 +240,8 @@ function Channels() {
               {s.platform.available
                 ? <p>Shu oy: <b className="num font-mono">{s.platform.sent}</b>{s.platform.limit !== null ? <> / {s.platform.limit} SMS tarifda</> : ' SMS (cheksiz)'}{s.platform.extra > 0 && <span className="text-amber-700"> · {s.platform.extra} ta ortiqcha</span>}</p>
                 : <p className="text-mute">Tarifingizda SMS yo&apos;q yoki platforma SMS hali ulanmagan. O&apos;z Eskiz akkauntingizni ulashingiz mumkin.</p>}
+              {!s.platform.enabled && <p className="rounded-md bg-red-50 px-3 py-2 text-[13px] text-red-800">MyService orqali SMS yuborish siz uchun o&apos;chirilgan. Mijozlarga faqat Telegram xabarlari boradi. Yoqish uchun yordam bo&apos;limiga yozing.</p>}
+              {s.platform.enabled && s.platform.cap !== null && <p className={`text-[13px] ${s.platform.sent >= s.platform.cap ? 'rounded-md bg-amber-50 px-3 py-2 text-amber-900' : 'text-mute'}`}>{s.platform.sent >= s.platform.cap ? `Oylik SMS limiti (${s.platform.cap} ta) tugadi: oy oxirigacha SMS yuborilmaydi, Telegram xabarlari ketaveradi.` : `Oylik SMS limiti: ${s.platform.cap} ta.`}</p>}
               {s.platform.testMode && <p className="text-xs text-amber-700">Platforma SMS hozir test rejimida.</p>}
               {s.mode === 'own' && <Button variant="secondary" className="mt-2 w-fit" disabled={busy} onClick={() => run(() => api('/notifications/sms', { method: 'PUT', body: JSON.stringify({ mode: 'platform' }) }), 'SMS endi MyService orqali ketadi')}>MyService orqali yuborish</Button>}
             </div>

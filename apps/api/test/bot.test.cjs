@@ -392,3 +392,34 @@ test('SMS: platform allowance then extra; own Eskiz account; test SMS only to yo
   // Back to the platform.
   assert.equal((await ok(await request('/notifications/sms', { token: svc.token, method: 'PUT', body: { mode: 'platform' } }))).mode, 'platform');
 });
+
+test('platform SMS controls: a service switched off or over its monthly cap sends no SMS, and the console shows it', async () => {
+  const svc = await serviceOn({ telegram: true, sms: true }, { smsPerMonth: 100 });
+  const phone = () => '+99891' + String(Math.floor(Math.random() * 1e7)).padStart(7, '0');
+  // A service cannot change its own switch or cap.
+  assert.equal((await request(`/platform/organizations/${svc.orgId}/sms`, { token: svc.token, method: 'PATCH', body: { enabled: true } })).status, 401);
+  // Cap of one: the first SMS goes, the second is skipped and counted as stopped.
+  assert.deepEqual(await ok(await request(`/platform/organizations/${svc.orgId}/sms`, { token: svc.platform, method: 'PATCH', body: { cap: 1 } })), { enabled: true, cap: 1 });
+  assert.equal((await deliverReady((await orderFor(svc.token, phone())).order.id, svc.orgId)).status, 'SENT');
+  const before = calls.filter(c => c.url.startsWith('/eskiz/') && c.method === 'send').length;
+  const capped = await deliverReady((await orderFor(svc.token, phone())).order.id, svc.orgId);
+  assert.equal(capped.status, 'SKIPPED'); assert.equal(capped.errorCode, 'SMS_LIMIT_REACHED');
+  assert.equal(calls.filter(c => c.url.startsWith('/eskiz/') && c.method === 'send').length, before, 'no SMS left the platform over the cap');
+  assert.equal((await request('/notifications/sms/test', { token: svc.token, method: 'POST' })).status, 403);
+  let info = await ok(await request('/notifications/sms', { token: svc.token }));
+  assert.equal(info.platform.cap, 1); assert.equal(info.platform.sent, 1);
+  assert.equal((await ok(await request('/account', { token: svc.token }))).usage.smsLimit, 1);
+  const overview = await ok(await request('/platform/sms', { token: svc.platform }));
+  const row = overview.rows.find(r => r.id === svc.orgId);
+  assert.equal(row.sent, 1); assert.equal(row.stopped, 1); assert.equal(row.cap, 1); assert.equal(row.allowance, 100);
+  // Switched off: nothing goes, whatever the cap.
+  await ok(await request(`/platform/organizations/${svc.orgId}/sms`, { token: svc.platform, method: 'PATCH', body: { enabled: false, cap: null } }));
+  const off = await deliverReady((await orderFor(svc.token, phone())).order.id, svc.orgId);
+  assert.equal(off.status, 'SKIPPED'); assert.equal(off.errorCode, 'SMS_DISABLED');
+  info = await ok(await request('/notifications/sms', { token: svc.token }));
+  assert.equal(info.platform.enabled, false); assert.equal(info.platform.cap, null);
+  // Back on, no cap: sends again.
+  await ok(await request(`/platform/organizations/${svc.orgId}/sms`, { token: svc.platform, method: 'PATCH', body: { enabled: true } }));
+  assert.equal((await deliverReady((await orderFor(svc.token, phone())).order.id, svc.orgId)).status, 'SENT');
+  assert.equal(await db.auditLog.count({ where: { organizationId: svc.orgId, action: 'SMS_CONTROL_CHANGED' } }), 3);
+});

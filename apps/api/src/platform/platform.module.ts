@@ -12,7 +12,8 @@ import { SubscriptionCache } from '../auth/subscription-cache';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { BotModule } from '../bot/bot.module';
 import { BotService } from '../bot/bot.service';
-import { esc } from '../bot/telegram.client';
+import { esc, tashkentDay } from '../bot/telegram.client';
+import { EskizClient } from '../notifications/eskiz.client';
 import { billingSettings, saveBillingSettings, signupPlan, yearlyPriceOf } from './billing';
 import { createOrganization } from './organizations';
 import { newTotpSecret, otpauthUrl, verifyTotp } from './totp';
@@ -21,6 +22,9 @@ import { Monitor, MonitorModule } from './monitor';
 import QRCode from 'qrcode';
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 type AdminRequest = Request & { adminId: string; platformSessionId: string };
+// One client for the console's balance check, so its Eskiz token is reused between page loads.
+let eskiz: EskizClient | null = null;
+const platformEskiz = () => (eskiz ??= new EskizClient());
 @Injectable()
 class PlatformGuard implements CanActivate {
   constructor(private readonly db: Database) {}
@@ -92,6 +96,11 @@ class ExtendDto {
 }
 class BlockDto { @IsString() @Length(1,300) reason!: string; }
 class NoteDto { @IsString() @MaxLength(2000) note!: string; }
+class SmsControlDto {
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  /** Hard monthly cap on platform SMS; null removes it. */
+  @IsOptional() @IsInt() @Min(0) @Max(1000000) cap?: number | null;
+}
 class ReplyDto { @IsString() @Length(1,4000) body!: string; }
 class AnnouncementDto {
   @IsString() @Length(1,120) title!: string;
@@ -317,6 +326,38 @@ class PlatformController {
       summary: { started: n('CODE_SENT') + n('VERIFIED') + n('COMPLETED'), verified: n('VERIFIED') + n('COMPLETED'), completed: n('COMPLETED') },
       rows: rows.map(r => ({ ...r, organizationName: r.organizationId ? name.get(r.organizationId) ?? null : null })),
     };
+  }
+  /**
+   * Platform SMS this month, service by service: what each sent through the platform's Eskiz account,
+   * the plan allowance, the platform's switch and cap, and SMS the cap stopped. Plus the Eskiz balance.
+   */
+  @Get('sms')
+  async smsOverview() {
+    const period = tashkentDay().slice(0, 7);
+    const [orgs, usage, own] = await Promise.all([
+      this.db.organization.findMany({ orderBy: { createdAt: 'desc' }, take: 1000,
+        select: { id: true, name: true, blockedAt: true, smsEnabled: true, smsMonthlyCap: true, subscription: { select: { plan: { select: { name: true, smsPerMonth: true, features: true } } } } } }),
+      this.db.usageRecord.findMany({ where: { period, metric: { in: ['sms', 'sms_extra', 'sms_blocked'] } } }),
+      this.db.organizationSetting.findMany({ where: { key: 'sms' }, select: { organizationId: true, value: true } }),
+    ]);
+    const used = (org: string, metric: string) => usage.find(u => u.organizationId === org && u.metric === metric)?.quantity ?? 0;
+    const ownIds = new Set(own.filter(o => (o.value as { mode?: string } | null)?.mode === 'own').map(o => o.organizationId));
+    let balance: number | null = null;
+    if (process.env.SMS_PROVIDER === 'eskiz' && process.env.SMS_API_KEY) { try { balance = (await platformEskiz().getUserLimit()).balance; } catch { balance = null; } }
+    const rows = orgs.map(o => ({
+      id: o.id, name: o.name, blocked: !!o.blockedAt, ownAccount: ownIds.has(o.id),
+      plan: o.subscription?.plan.name ?? null, planSms: !!(o.subscription?.plan.features as Record<string, unknown> | null)?.sms,
+      allowance: o.subscription?.plan.smsPerMonth ?? null, enabled: o.smsEnabled, cap: o.smsMonthlyCap,
+      sent: used(o.id, 'sms'), extra: used(o.id, 'sms_extra'), stopped: used(o.id, 'sms_blocked'),
+    })).sort((a, b) => b.sent - a.sent || a.name.localeCompare(b.name));
+    return { period, balance, total: rows.reduce((s, r) => s + r.sent, 0), extra: rows.reduce((s, r) => s + r.extra, 0), stopped: rows.reduce((s, r) => s + r.stopped, 0), rows };
+  }
+  @Patch('organizations/:id/sms')
+  async smsControl(@Param('id') id: string, @Body() d: SmsControlDto, @Req() req: AdminRequest) {
+    if (!await this.db.organization.findUnique({ where: { id }, select: { id: true } })) throw new NotFoundException();
+    const org = await this.db.organization.update({ where: { id }, data: { ...(d.enabled !== undefined ? { smsEnabled: d.enabled } : {}), ...(d.cap !== undefined ? { smsMonthlyCap: d.cap } : {}) }, select: { smsEnabled: true, smsMonthlyCap: true } });
+    await this.db.auditLog.create({ data: { organizationId: id, actorId: req.adminId, action: 'SMS_CONTROL_CHANGED', entityId: id, newValue: { enabled: org.smsEnabled, cap: org.smsMonthlyCap } } });
+    return { enabled: org.smsEnabled, cap: org.smsMonthlyCap };
   }
   @Get('tickets')
   async tickets(@Query('status') status?: string) {

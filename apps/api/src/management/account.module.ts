@@ -31,7 +31,7 @@ class AccountController {
   async account(@CurrentActor() a: Actor) {
     const since = monthStart();
     const [org, sub, settings, plans, orders, sms, staff, branches, invoices] = await Promise.all([
-      this.db.organization.findUniqueOrThrow({ where: { id: a.organizationId }, select: { name: true, createdAt: true, blockedAt: true, blockReason: true } }),
+      this.db.organization.findUniqueOrThrow({ where: { id: a.organizationId }, select: { name: true, createdAt: true, blockedAt: true, blockReason: true, smsEnabled: true, smsMonthlyCap: true } }),
       this.db.subscription.findUnique({ where: { organizationId: a.organizationId }, include: { plan: true } }),
       billingSettings(this.db),
       this.db.plan.findMany({ where: { active: true }, orderBy: [{ sortOrder: 'asc' }, { monthlyPrice: 'asc' }] }),
@@ -65,7 +65,7 @@ class AccountController {
         month: tashkentDay().slice(0, 7),
         orders, ordersLimit: sub?.plan.monthlyOrders ?? null,
         // Platform SMS only: an own Eskiz account is paid by the service and not limited here.
-        sms: smsSent, smsLimit: sub?.plan.smsPerMonth ?? null, smsExtra, smsExtraCost: (smsExtra * Number(settings.extraSmsPrice)).toFixed(2), smsOwnAccount: smsOwn?.mode === 'own',
+        sms: smsSent, smsLimit: org.smsMonthlyCap ?? sub?.plan.smsPerMonth ?? null, smsEnabled: org.smsEnabled, smsExtra, smsExtraCost: (smsExtra * Number(settings.extraSmsPrice)).toFixed(2), smsOwnAccount: smsOwn?.mode === 'own',
         staff, staffLimit: sub?.plan.maxStaff ?? null,
         branches, branchesLimit: sub?.plan.maxBranches ?? null,
       },

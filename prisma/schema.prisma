@@ -31,6 +31,10 @@ model Organization {
   blockReason   String?
   /// Platform's own note about this service (never shown to it).
   platformNote  String?
+  /// Set by the platform: SMS through the platform's Eskiz account on or off for this service.
+  smsEnabled    Boolean  @default(true)
+  /// Set by the platform: hard monthly cap on platform SMS (null = only the plan's allowance, extra billed).
+  smsMonthlyCap Int?
   supportTickets SupportTicket[]
 
   customers Customer[]

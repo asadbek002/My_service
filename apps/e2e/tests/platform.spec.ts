@@ -94,3 +94,26 @@ test('an announcement shows in every service and can be hidden', async ({ page, 
   await ap.locator('div').filter({ hasText: title }).getByRole('button', { name: 'O‘chirish' }).last().click();
   await admin.close();
 });
+
+test('SMS page: the platform caps a service and switches its SMS off; the service sees it in Settings', async ({ page, browser }) => {
+  const svc = await newService('SMSli');
+  await platformSignIn(page, PLATFORM.login, PLATFORM.password);
+  await page.goto('/platform/sms');
+  await page.getByLabel("Servis bo'yicha qidirish").fill(svc.name);
+  const row = page.locator('tr').filter({ has: page.getByRole('link', { name: svc.name }) });
+  await row.getByLabel('Oylik SMS limiti').fill('50');
+  await row.getByLabel('Oylik SMS limiti').press('Enter');
+  await expect(row.getByLabel('Oylik SMS limiti')).toHaveValue('50');
+  await row.getByRole('switch').click();
+  await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
+
+  const owner = await browser.newContext({ ...test.info().project.use });
+  const op = await owner.newPage();
+  await signIn(op, svc.login, svc.password);
+  await op.goto('/settings#sms');
+  await expect(op.getByText("MyService orqali SMS yuborish siz uchun o'chirilgan")).toBeVisible();
+  await owner.close();
+
+  await row.getByRole('switch').click();
+  await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
+});
