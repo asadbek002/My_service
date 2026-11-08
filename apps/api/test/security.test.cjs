@@ -920,3 +920,20 @@ test('branches: the owner opens them within the plan, decides who works where; s
   assert.equal((await request('/branches/' + chilonzor.id, { ...auth, method: 'PATCH', body: { archived: false } })).status, 403, 'reopening counts against the limit');
   assert.equal(await db.auditLog.count({ where: { organizationId: t.org.id, action: { in: ['BRANCH_CREATED', 'BRANCH_CLOSED', 'STAFF_BRANCHES_CHANGED'] } } }), 4);
 });
+
+test('login by phone: one account signs in, a phone shared by several asks for the login; login-available suggests a free one', async () => {
+  const t = await tenant();
+  const phone = '+99893' + String(Math.floor(Math.random() * 1e7)).padStart(7, '0');
+  await db.user.update({ where: { id: t.user.id }, data: { phone } });
+  for (const typed of [phone, phone.slice(4), '998 ' + phone.slice(4, 6) + ' ' + phone.slice(6)]) {
+    const r = await request('/auth/login', { method: 'POST', body: { login: typed, password } });
+    assert.equal(r.status, 200, typed);
+  }
+  assert.equal((await request('/auth/login', { method: 'POST', body: { login: phone, password: 'wrong-password-1' } })).status, 401);
+  // tenant() owners all share +998901234567: by phone it is ambiguous.
+  assert.equal((await request('/auth/login', { method: 'POST', body: { login: '+998901234567', password } })).status, 409);
+  const taken = await json(await request('/auth/login-available?login=' + t.user.login));
+  assert.equal(taken.available, false); assert.ok(taken.suggestion?.startsWith(t.user.login));
+  assert.equal((await json(await request('/auth/login-available?login=' + taken.suggestion))).available, true);
+  assert.equal((await json(await request('/auth/login-available?login=a b'))).valid, false);
+});

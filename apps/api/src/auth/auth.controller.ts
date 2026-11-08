@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Header, HttpCode, Post, Req, Res, ServiceUnavailableException, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Header, HttpCode, Post, Query, Req, Res, ServiceUnavailableException, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
@@ -59,6 +59,9 @@ export class AuthController {
     const billing = await billingSettings(this.db);
     return { open: billing.signupOpen, trialDays: billing.trialDays, sms: !!(process.env.SMS_API_KEY || process.env.ESKIZ_EMAIL) || process.env.NODE_ENV !== 'production', telegram: this.telegram.enabled && !!this.telegram.username };
   }
+  /** For the sign-up form: is this login free, and if not, a free one like it. Logins are not secret. */
+  @Get('login-available') @Public() @Header('Cache-Control', 'no-store')
+  loginAvailable(@Query('login') login = '') { return this.auth.loginAvailable(String(login).slice(0, 64)); }
   @Post('verify/sms') @Public() @HttpCode(200) @Header('Cache-Control', 'no-store')
   async sendCode(@Body() dto: VerifySmsDto, @Req() req: Request) {
     this.origin(req);

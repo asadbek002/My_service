@@ -11,6 +11,8 @@ import { AuthFrame } from '../../components/layout/auth-frame';
 import { PhoneVerify } from '../../components/phone-verify';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
+import { PasswordInput } from '../../components/ui/password-input';
+import { cn } from '../../lib/utils';
 import { FormField } from '../../components/ui/form-field';
 import { ErrorBox, Loading } from '../../components/ui/feedback';
 
@@ -54,19 +56,20 @@ function Details({ proof, phone, onRestart, onDone }: { proof: string; phone: st
   const [login, setLogin] = useState('');
   const [loginTouched, setLoginTouched] = useState(false);
   const [password, setPassword] = useState('');
-  const [repeat, setRepeat] = useState('');
   const [accept, setAccept] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const shownLogin = loginTouched ? login : suggestLogin(serviceName);
+  const check = useLoginCheck(shownLogin);
+  const left = Math.max(0, 12 - password.length);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (serviceName.trim().length < 2) return setError('Ustaxona nomini yozing');
     if (!ownerName.trim()) return setError('Ismingizni yozing');
     if (!/^[a-zA-Z0-9_.-]{3,64}$/.test(shownLogin)) return setError("Login kamida 3 belgi: lotin harflari, raqam va _ . -");
+    if (check.startsWith('taken')) return setError('Bu login band. Boshqasini yozing yoki taklif qilinganini tanlang.');
     if (password.length < 12) return setError("Parol kamida 12 belgidan iborat bo'lsin");
-    if (password !== repeat) return setError('Parollar bir xil emas');
     if (!accept) return setError('Oferta va maxfiylik siyosatiga rozilik belgisini qo‘ying');
     setBusy(true); setError('');
     try {
@@ -83,12 +86,18 @@ function Details({ proof, phone, onRestart, onDone }: { proof: string; phone: st
     <form onSubmit={submit} className="grid gap-4" noValidate>
       <p className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2.5 text-sm font-medium text-emerald-800"><Check className="h-4 w-4 shrink-0" /> <span className="num font-mono">{phone}</span> tasdiqlandi</p>
       <FormField label="Ustaxona nomi"><Input value={serviceName} onChange={e => setServiceName(e.target.value)} placeholder="Masalan: Mobile Fix" autoCapitalize="words" autoFocus /></FormField>
-      <FormField label="Ismingiz"><Input value={ownerName} onChange={e => setOwnerName(e.target.value)} autoComplete="given-name" autoCapitalize="words" /></FormField>
-      <FormField label="Login" description="Tizimga kirish uchun. Lotin harflari va raqamlar.">
+      <FormField label="Ismingiz"><Input value={ownerName} onChange={e => setOwnerName(e.target.value)} autoComplete="given-name" autoCapitalize="words" placeholder="Masalan: Sardor" /></FormField>
+      <FormField label="Login" description="Kirish uchun. Telefon raqamingiz bilan ham kirsa bo'ladi.">
         <Input value={shownLogin} onChange={e => { setLoginTouched(true); setLogin(e.target.value.trim()); }} autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
       </FormField>
-      <FormField label="Parol" description="Kamida 12 belgi"><Input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" /></FormField>
-      <FormField label="Parolni takrorlang"><Input type="password" value={repeat} onChange={e => setRepeat(e.target.value)} autoComplete="new-password" /></FormField>
+      {shownLogin.length >= 3 && check !== 'idle' && (
+        <p className={cn('-mt-2 text-xs', check === 'free' ? 'text-emerald-700' : check === 'checking' ? 'text-mute' : 'text-red-600')} aria-live="polite">
+          {check === 'free' ? '✓ Login bo‘sh' : check === 'checking' ? 'Tekshirilmoqda…' : check === 'invalid' ? 'Faqat lotin harflari, raqam va _ . -' : <>Bu login band.{suggestion(check) && <> <button type="button" className="font-semibold underline" onClick={() => { setLoginTouched(true); setLogin(suggestion(check)!); }}>{suggestion(check)}</button> bo‘sh</>}</>}
+        </p>
+      )}
+      <FormField label="Parol" description={left ? `Kamida 12 belgi — yana ${left} ta` : 'Yaxshi ✓'}>
+        <PasswordInput value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" />
+      </FormField>
       <label className="flex items-start gap-2.5 text-sm">
         <input type="checkbox" checked={accept} onChange={e => setAccept(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-ink" />
         <span><Link href="/terms" target="_blank" className="font-semibold underline">Ommaviy oferta</Link> va <Link href="/privacy" target="_blank" className="font-semibold underline">maxfiylik siyosati</Link> bilan tanishdim va roziman</span>
@@ -97,4 +106,24 @@ function Details({ proof, phone, onRestart, onDone }: { proof: string; phone: st
       <Button type="submit" variant="brand" size="lg" className="w-full" disabled={busy}>{busy ? 'Ochilmoqda…' : 'Ustaxonani ochish'}</Button>
     </form>
   );
+}
+
+type LoginCheck = 'idle' | 'checking' | 'free' | 'invalid' | 'taken' | `taken:${string}`;
+const suggestion = (c: LoginCheck) => c.startsWith('taken:') ? c.slice(6) : null;
+/** Whether the login is free, asked a moment after typing stops; a taken one comes with a free variant. */
+function useLoginCheck(login: string): LoginCheck {
+  const [state, setState] = useState<LoginCheck>('idle');
+  useEffect(() => {
+    if (login.length < 3) { setState('idle'); return; }
+    if (!/^[a-zA-Z0-9_.-]{3,64}$/.test(login)) { setState('invalid'); return; }
+    setState('checking');
+    let live = true;
+    const t = setTimeout(() => {
+      publicGet<{ available: boolean; suggestion: string | null }>('/auth/login-available?login=' + encodeURIComponent(login))
+        .then(r => { if (live) setState(r.available ? 'free' : r.suggestion ? `taken:${r.suggestion}` : 'taken'); })
+        .catch(() => { if (live) setState('idle'); });
+    }, 400);
+    return () => { live = false; clearTimeout(t); };
+  }, [login]);
+  return state;
 }

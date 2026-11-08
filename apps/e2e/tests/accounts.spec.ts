@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { OTHER_OWNER, OWNER } from '../env';
-import { apiCall, expect, isPhone, resetRateLimits, signIn, test, tokenFor, uid, uniquePhone } from './fixtures';
+import { apiCall, expect, isPhone, newService, resetRateLimits, signIn, test, tokenFor, uid, uniquePhone } from './fixtures';
 
 async function logout(page: Page) {
   if (isPhone(page)) {
@@ -17,8 +17,8 @@ async function verifyPhone(page: Page, phone: string) {
   await page.getByLabel('Telefon raqamingiz').fill(phone);
   await page.getByRole('button', { name: 'SMS kod olish' }).click();
   const code = (await page.getByText(/Sinov rejimi/).locator('b').textContent())!.trim();
+  // The sixth digit confirms by itself: no button to press.
   await page.getByPlaceholder('000000').fill(code);
-  await page.getByRole('button', { name: 'Tasdiqlash' }).click();
   await expect(page.getByText('tasdiqlandi')).toBeVisible();
 }
 
@@ -26,10 +26,10 @@ test('login form: wrong password is explained, the right one opens the dashboard
   await resetRateLimits();
   await page.goto('/login');
   await page.getByLabel('Login').fill(OWNER.login);
-  await page.getByLabel('Parol').fill('wrong-password-123');
+  await page.getByLabel('Parol', { exact: true }).fill('wrong-password-123');
   await page.getByRole('button', { name: 'Kirish' }).click();
   await expect(page.locator('p[role="alert"]').filter({ hasText: "Login yoki parol noto'g'ri" })).toBeVisible();
-  await page.getByLabel('Parol').fill(OWNER.password);
+  await page.getByLabel('Parol', { exact: true }).fill(OWNER.password);
   await page.getByRole('button', { name: 'Kirish' }).click();
   await expect(page).toHaveURL(/\/dashboard/);
   await logout(page);
@@ -47,8 +47,8 @@ test('self sign-up: phone by SMS code, the workshop opens on its 1-month trial, 
   await page.getByLabel('Ustaxona nomi').fill('Servis ' + id);
   await page.getByLabel('Ismingiz').fill('Sardor');
   await page.getByLabel('Login').fill(login);
+  await expect(page.getByText('✓ Login bo‘sh')).toBeVisible();
   await page.getByLabel(/^Parol\s*Kamida/).fill('Signup-Password-123');
-  await page.getByLabel('Parolni takrorlang').fill('Signup-Password-123');
   // The consent box is required.
   await page.getByRole('button', { name: 'Ustaxonani ochish' }).click();
   await expect(page.locator('p[role="alert"]')).toContainText('rozilik');
@@ -121,4 +121,43 @@ test("one service never sees another's orders or customers", async ({ page }) =>
     await expect(page.locator('p[role="alert"]').first()).toBeVisible();
     await expect(page.getByText('Maxfiy')).toHaveCount(0);
   }
+});
+
+test('sign-up form: the phone formats itself, a taken login is flagged with a free one to take, the password can be shown', async ({ page }) => {
+  await resetRateLimits();
+  await page.goto('/signup');
+  await page.getByLabel('Telefon raqamingiz').fill('998901234567');
+  await expect(page.getByLabel('Telefon raqamingiz')).toHaveValue('+998 90 123 45 67');
+  const phone = uniquePhone();
+  await page.getByLabel('Telefon raqamingiz').fill(phone);
+  await page.getByRole('button', { name: 'SMS kod olish' }).click();
+  // Wrong number typed: go back without waiting for the code.
+  await page.getByRole('button', { name: "Raqamni o'zgartirish" }).click();
+  await expect(page.getByRole('button', { name: 'SMS kod olish' })).toBeVisible();
+  await resetRateLimits();
+  await page.getByRole('button', { name: 'SMS kod olish' }).click();
+  const code = (await page.getByText(/Sinov rejimi/).locator('b').textContent())!.trim();
+  await page.getByPlaceholder('000000').fill(code);
+  await expect(page.getByText('tasdiqlandi')).toBeVisible();
+  await page.getByLabel('Login').fill(OWNER.login);
+  await expect(page.getByText('Bu login band.')).toBeVisible();
+  await page.getByRole('button', { name: new RegExp('^' + OWNER.login + '\\d+$') }).click();
+  await expect(page.getByText('✓ Login bo‘sh')).toBeVisible();
+  const password = page.getByLabel(/^Parol\s*Kamida/);
+  await password.fill('abc');
+  await expect(page.getByText('yana 9 ta')).toBeVisible();
+  await expect(password).toHaveAttribute('type', 'password');
+  await page.getByRole('button', { name: "Parolni ko'rsatish" }).click();
+  await expect(password).toHaveAttribute('type', 'text');
+});
+
+test('login with the phone number instead of the login', async ({ page }) => {
+  const svc = await newService('Telefonli');
+  await resetRateLimits();
+  await page.goto('/login');
+  const local = svc.phone.slice(4);
+  await page.getByLabel('Login yoki telefon raqam').fill(`${local.slice(0, 2)} ${local.slice(2, 5)} ${local.slice(5, 7)} ${local.slice(7)}`);
+  await page.getByLabel('Parol', { exact: true }).fill(svc.password);
+  await page.getByRole('button', { name: 'Kirish', exact: true }).click();
+  await expect(page).toHaveURL(/\/dashboard/);
 });

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MessageSquareText, Send } from 'lucide-react';
 import { publicPost } from '../lib/api';
 import { errorText } from '../lib/errors';
-import { normalizePhone } from '../lib/format';
+import { normalizePhone, typingPhone } from '../lib/format';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { FormField } from './ui/form-field';
@@ -60,11 +60,11 @@ export function PhoneVerify({ purpose, sms, telegram, onVerified }: { purpose: P
       setMode({ kind: 'sms', devCode: r.devCode }); setWait(r.resendAfter); setCode('');
     } catch (e) { setError(errorText(e)); } finally { setBusy(false); }
   }
-  async function checkSms() {
-    if (!/^\d{6}$/.test(code)) { setError('6 xonali kodni yozing'); return; }
+  async function checkSms(value = code) {
+    if (!/^\d{6}$/.test(value)) { setError('6 xonali kodni yozing'); return; }
     setBusy(true); setError('');
     try {
-      const r = await publicPost<{ proof: string }>('/auth/verify/check', { purpose, phone, code });
+      const r = await publicPost<{ proof: string }>('/auth/verify/check', { purpose, phone, code: value });
       verified.current = true; onVerified(r.proof, phone);
     } catch (e) { setError(errorText(e)); } finally { setBusy(false); }
   }
@@ -99,19 +99,26 @@ export function PhoneVerify({ purpose, sms, telegram, onVerified }: { purpose: P
   return (
     <div className="grid gap-4">
       <FormField label="Telefon raqamingiz">
-        <Input value={phoneInput} onChange={e => { setPhoneInput(e.target.value); if (mode.kind === 'sms') setMode({ kind: 'idle' }); }} inputMode="tel" autoComplete="tel" className="num font-mono" autoFocus />
+        <Input value={phoneInput} onChange={e => { setPhoneInput(typingPhone(e.target.value)); if (mode.kind === 'sms') setMode({ kind: 'idle' }); }} inputMode="tel" autoComplete="tel" className="num font-mono" autoFocus
+          readOnly={mode.kind === 'sms'} onKeyDown={e => { if (e.key === 'Enter' && mode.kind === 'idle') { e.preventDefault(); void sendSms(); } }} />
       </FormField>
       {mode.kind === 'sms' ? (
         <>
           <FormField label={`Kod ${phone} raqamiga yuborildi`}>
-            <Input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="000000" className="num text-center font-mono text-lg tracking-[0.4em]" autoFocus
+            <Input value={code} onChange={e => {
+              const next = e.target.value.replace(/\D/g, '').slice(0, 6);
+              setCode(next);
+              // The sixth digit (typed, pasted or filled from the SMS) confirms by itself.
+              if (next.length === 6 && !busy) void checkSms(next);
+            }} inputMode="numeric" autoComplete="one-time-code" placeholder="000000" className="num text-center font-mono text-lg tracking-[0.4em]" autoFocus
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void checkSms(); } }} />
           </FormField>
           {mode.devCode && <Notice>Sinov rejimi (SMS yuborilmadi): kod <b className="font-mono">{mode.devCode}</b></Notice>}
           <ErrorBox>{error}</ErrorBox>
-          <Button type="button" variant="brand" size="lg" className="w-full" disabled={busy || code.length !== 6} onClick={checkSms}>Tasdiqlash</Button>
+          <Button type="button" variant="brand" size="lg" className="w-full" disabled={busy || code.length !== 6} onClick={() => checkSms()}>{busy ? 'Tekshirilmoqda…' : 'Tasdiqlash'}</Button>
           <div className="flex items-center justify-between text-sm">
             <button type="button" className="font-medium text-mute underline disabled:no-underline disabled:opacity-60" disabled={wait > 0 || busy} onClick={sendSms}>{wait > 0 ? `Qayta yuborish ${wait} s` : 'Kodni qayta yuborish'}</button>
+            <button type="button" className="font-medium text-mute underline" onClick={() => { setMode({ kind: 'idle' }); setCode(''); setError(''); }}>Raqamni o&apos;zgartirish</button>
             {telegram && <button type="button" className="font-medium text-mute underline" onClick={startTelegram}>Telegram orqali</button>}
           </div>
         </>

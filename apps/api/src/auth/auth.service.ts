@@ -34,8 +34,25 @@ export class AuthService implements OnModuleInit {
     return { accessToken, refreshToken, expiresAt, expiresIn: 900 };
   }
 
+  /** A typed phone in any usual form as +998…, or null when the input is a login. */
+  private phoneOf(input: string) {
+    if (/[a-zA-Z_.]/.test(input)) return null;
+    const digits = input.replace(/\D/g, '');
+    if (digits.length === 9) return '+998' + digits;
+    if (digits.length >= 10 && digits.length <= 15) return '+' + digits;
+    return null;
+  }
+  /** Who signs in: by login, or by phone when exactly one active account has it. */
+  private async userFor(input: string) {
+    const phone = this.phoneOf(input);
+    if (!phone) return this.db.user.findUnique({ where: { login: input.toLowerCase() } });
+    const users = await this.db.user.findMany({ where: { phone, status: 'ACTIVE' }, take: 2 });
+    // A phone shared by several accounts (an owner who is also staff elsewhere) needs the login.
+    if (users.length > 1) throw new ConflictException('PHONE_HAS_MANY_ACCOUNTS');
+    return users[0] ?? null;
+  }
   async login(login: string, password: string) {
-    const user = await this.db.user.findUnique({ where: { login: login.toLowerCase() } });
+    const user = await this.userFor(login.trim());
     const valid = await argon2.verify(user?.passwordHash ?? this.dummyHash, password);
     if (!user || !valid || user.status !== 'ACTIVE') throw new UnauthorizedException('Invalid credentials');
     const token = this.mint();
@@ -158,6 +175,17 @@ export class AuthService implements OnModuleInit {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('LOGIN_TAKEN');
       throw e;
     }
+  }
+  /** Whether a login can be taken, and a free one close to it when not. */
+  async loginAvailable(input: string) {
+    const login = input.trim().toLowerCase();
+    if (!/^[a-z0-9_.-]{3,64}$/.test(login)) return { available: false, valid: false, suggestion: null };
+    if (!await this.db.user.findUnique({ where: { login }, select: { id: true } })) return { available: true, valid: true, suggestion: null };
+    for (const n of [1, 2, 3, 7, 24, 99, 2026]) {
+      const candidate = (login.slice(0, 60) + n);
+      if (!await this.db.user.findUnique({ where: { login: candidate }, select: { id: true } })) return { available: false, valid: true, suggestion: candidate };
+    }
+    return { available: false, valid: true, suggestion: null };
   }
   private async ownsService(phone: string) {
     return !!await this.db.user.findFirst({ where: { phone, roles: { some: { role: { systemKey: 'OWNER' } } } }, select: { id: true } });

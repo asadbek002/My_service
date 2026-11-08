@@ -2,8 +2,9 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsOptional, IsString, Length, Matches } from 'class-validator';
 
 export class LoginDto {
+  /** The login, or the phone the account was opened with ("+998 90 123 45 67", "901234567"). */
   @ApiProperty()
-  @IsString() @Length(3, 64) @Matches(/^[a-zA-Z0-9_.-]+$/)
+  @IsString() @Length(3, 64) @Matches(/^([a-zA-Z0-9_.-]+|[+\d\s()-]{9,20})$/)
   login!: string;
 
   @ApiProperty()

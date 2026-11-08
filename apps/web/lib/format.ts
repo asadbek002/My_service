@@ -31,6 +31,18 @@ export function normalizePhone(input: string) {
   if (digits.length === 12 && digits.startsWith('998')) return '+' + digits;
   return input.trim().startsWith('+') ? '+' + digits : digits ? '+' + digits : '';
 }
+/**
+ * An Uzbek number as it is typed: "+998 90 123 45 67". Other country codes are left as typed.
+ * Pasted "998901234567", "90 123-45-67" or "+998901234567" all come out the same.
+ */
+export function typingPhone(input: string) {
+  const raw = input.trim();
+  const digits = raw.replace(/\D/g, '');
+  if (raw.startsWith('+') && !digits.startsWith('998') && digits.length > 3) return raw;
+  const rest = (digits.startsWith('998') ? digits.slice(3) : digits).slice(0, 9);
+  const parts = [rest.slice(0, 2), rest.slice(2, 5), rest.slice(5, 7), rest.slice(7, 9)].filter(Boolean);
+  return '+998 ' + parts.join(' ');
+}
 export const fullName = (p: { firstName: string; lastName?: string | null } | null | undefined) => p ? [p.firstName, p.lastName].filter(Boolean).join(' ') : '';
 export const deviceName = (d: { brand: string; model: string } | null | undefined) => d ? `${d.brand} ${d.model}`.trim() : '';
 
