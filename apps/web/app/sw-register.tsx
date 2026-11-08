@@ -1,6 +1,9 @@
 'use client';
 import { useEffect } from 'react';
+import { useListenForInstall } from '../lib/install';
 export function ServiceWorkerRegister() {
+  // Chrome offers installing once, early: catch it here for the install page and the dashboard card.
+  useListenForInstall();
   useEffect(() => {
     if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') navigator.serviceWorker.register('/sw.js').catch(() => {});
   }, []);

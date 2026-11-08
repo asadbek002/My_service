@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { Smartphone } from 'lucide-react';
 import { errorText } from '../../lib/errors';
 import { useBranding, useMe } from '../../lib/queries';
 import { AppShell } from '../../components/layout/app-shell';
@@ -34,6 +35,10 @@ export default function SetupPage() {
           <ul className="divide-y overflow-hidden rounded-2xl border bg-white">
             {data.steps.map((s, i) => <StepRow key={s.key} k={s.key} done={s.done} index={i} />)}
           </ul>
+          <Link href="/install" className="flex items-center gap-3 rounded-2xl border bg-white p-4 text-sm hover:border-ink/30">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-strong"><Smartphone className="h-5 w-5" /></span>
+            <span className="min-w-0 flex-1"><b className="block">Ilovani telefonga o&apos;rnating</b><span className="text-mute">Android&apos;da bitta tugma, iPhone&apos;da 3 qadam. Kompyuterda QR kodni skanerlang.</span></span>
+          </Link>
           <SupportLink />
           <ErrorBox>{state}</ErrorBox>
           <div className="flex flex-col gap-2 sm:flex-row">

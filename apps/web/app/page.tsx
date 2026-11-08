@@ -147,6 +147,7 @@ export default function Home() {
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-6 text-[13px] text-mute sm:flex-row sm:items-center sm:justify-between lg:px-8">
           <p>© {new Date().getFullYear()} MyService</p>
           <nav className="flex flex-wrap gap-x-5 gap-y-2">
+            <Link href="/install" className="hover:text-ink hover:underline">Telefonga o&apos;rnatish</Link>
             <Link href="/terms" className="hover:text-ink hover:underline">Ommaviy oferta</Link>
             <Link href="/privacy" className="hover:text-ink hover:underline">Maxfiylik siyosati</Link>
             <a href={supportUrl()} target="_blank" rel="noopener noreferrer" className="hover:text-ink hover:underline">Telegram: @{supportUrl().split('/').pop()}</a>

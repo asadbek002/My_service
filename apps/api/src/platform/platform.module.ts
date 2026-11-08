@@ -1,9 +1,9 @@
-import { Body, CanActivate, Controller, ExecutionContext, Get, Header, Injectable, Module, Param, Patch, Post, Put, Query, Req, UseGuards, UnauthorizedException, ForbiddenException, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Body, CanActivate, Controller, ExecutionContext, Get, Header, Injectable, Module, Param, Patch, Post, Put, Query, Req, Res, UseGuards, UnauthorizedException, ForbiddenException, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { IsString, Length, Matches, IsInt, Min, Max, IsOptional, IsObject, IsIn, IsISO8601, IsBoolean, MaxLength } from 'class-validator';
 import { createHash, randomBytes } from 'node:crypto';
 import * as argon2 from 'argon2';
 import { Prisma } from '@prisma/client';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { Database } from '../database';
 import { Public, allowedOrigins } from '../auth/security';
 import { LoginRateGuard } from '../auth/rate-limit';
@@ -164,6 +164,15 @@ class PublicPlansController {
         maxStaff: p.maxStaff, maxBranches: p.maxBranches, monthlyOrders: p.monthlyOrders, smsPerMonth: p.smsPerMonth, features: p.features })),
     };
   }
+}
+/** The QR code a computer shows so a phone opens the install page. Only that address is ever encoded. */
+@Controller('public/install-qr') @Public()
+class InstallQrController {
+  // A picture for any page to show, like the brand icon: not limited to the API's own origin.
+  @Get() @Header('Content-Type', 'image/svg+xml') @Header('Cache-Control', 'public, max-age=86400')
+  qr(@Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    return QRCode.toString((process.env.WEB_URL ?? '') + '/install', { type: 'svg', margin: 1, width: 240 }); }
 }
 @Controller('platform/auth') @Public()
 class PlatformAuthController {
@@ -602,5 +611,5 @@ class PlatformController {
   @Get('system')
   async system() { await this.db.$queryRaw`SELECT 1`; return {database:'ok',organizations:await this.db.organization.count(),activeSubscriptions:await this.db.subscription.count({where:{status:'ACTIVE',expiresAt:{gt:new Date()}}}),pendingOutbox:await this.db.outboxEvent.count({where:{publishedAt:null}}),failedNotifications:await this.db.notification.count({where:{status:'FAILED'}})}; }
 }
-@Module({imports:[BotModule,MonitorModule,JwtModule.registerAsync({useFactory:()=>({secret:process.env.JWT_ACCESS_SECRET!})})],controllers:[PlatformAuthController,PlatformController,LegalController,PublicPlansController],providers:[PlatformGuard,LoginRateGuard,SubscriptionCache]})
+@Module({imports:[BotModule,MonitorModule,JwtModule.registerAsync({useFactory:()=>({secret:process.env.JWT_ACCESS_SECRET!})})],controllers:[PlatformAuthController,PlatformController,LegalController,PublicPlansController,InstallQrController],providers:[PlatformGuard,LoginRateGuard,SubscriptionCache]})
 export class PlatformModule {}

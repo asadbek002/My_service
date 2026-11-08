@@ -49,7 +49,10 @@ export default function Login() {
         </FormField>
         <ErrorBox>{errors.root?.message}</ErrorBox>
         <Button type="submit" variant="brand" size="lg" disabled={isSubmitting} className="w-full">{isSubmitting ? 'Kirilmoqda…' : 'Kirish'}</Button>
-        <Link href="/reset" className="justify-self-center text-sm font-medium text-mute underline hover:text-ink">Parolni unutdingizmi?</Link>
+        <div className="flex items-center justify-between text-sm">
+          <Link href="/reset" className="font-medium text-mute underline hover:text-ink">Parolni unutdingizmi?</Link>
+          <Link href="/install" className="font-medium text-mute underline hover:text-ink">Telefonga o&apos;rnatish</Link>
+        </div>
       </form>
     </AuthFrame>
   );
