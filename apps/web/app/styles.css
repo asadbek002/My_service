@@ -65,3 +65,6 @@
 @media print {
   body { background: #fff; min-width: 0; }
 }
+
+/* Russian is laid over the page after hydration (lib/i18n): hide the Uzbek flash meanwhile. */
+html[data-i18n='pending'] body { opacity: 0; }

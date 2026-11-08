@@ -1,6 +1,7 @@
 'use client';
 import { useEffect } from 'react';
 import { useListenForInstall } from '../lib/install';
+import { startTranslating } from '../lib/i18n';
 export function ServiceWorkerRegister() {
   // Chrome offers installing once, early: catch it here for the install page and the dashboard card.
   useListenForInstall();
@@ -23,6 +24,18 @@ export function NoZoom() {
       document.removeEventListener('gesturechange', stop);
       document.removeEventListener('touchmove', pinch);
     };
+  }, []);
+  return null;
+}
+
+/** Lays the Russian text over the page once React has hydrated it (see lib/i18n). */
+export function Translator() {
+  useEffect(() => {
+    // Suspense boundaries hydrate after this effect; touching their text first would break hydration.
+    let timer = 0;
+    const go = () => { timer = window.setTimeout(() => { if ('requestIdleCallback' in window) requestIdleCallback(startTranslating, { timeout: 300 }); else startTranslating(); }, 0); };
+    if (document.readyState === 'complete') go(); else window.addEventListener('load', go, { once: true });
+    return () => { window.removeEventListener('load', go); clearTimeout(timer); };
   }, []);
   return null;
 }

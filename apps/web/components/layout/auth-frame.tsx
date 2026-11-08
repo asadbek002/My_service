@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { cn } from '../../lib/utils';
 import { Mark } from './mark';
 import { Ruler } from '../ui/ruler';
+import { LangSwitch } from '../lang-switch';
 
 /**
  * Sign-in and status screens: the workshop mat on one side (top band on phones), the form on paper.
@@ -37,7 +38,7 @@ export function AuthFrame({ eyebrow, title, children, tabs }: { eyebrow: string;
             <h1 className="mt-1 text-2xl font-bold tracking-tight">{title}</h1>
             <div className="mt-5">{children}</div>
           </div>
-          <p className="mt-4 flex justify-center gap-4 text-xs text-mute"><a href="/terms" className="hover:text-ink hover:underline">Ommaviy oferta</a><a href="/privacy" className="hover:text-ink hover:underline">Maxfiylik siyosati</a></p>
+          <div className="mt-4 flex items-center justify-center gap-4 text-xs text-mute"><LangSwitch /><a href="/terms" className="hover:text-ink hover:underline">Ommaviy oferta</a><a href="/privacy" className="hover:text-ink hover:underline">Maxfiylik siyosati</a></div>
         </section>
       </div>
     </main>

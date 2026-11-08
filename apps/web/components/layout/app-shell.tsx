@@ -10,6 +10,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useMe, can, useBranding, type Me } from '../../lib/queries';
 import { API_BASE, api, logout } from '../../lib/api';
+import { LangSwitch } from '../lang-switch';
 import { cn } from '../../lib/utils';
 import { Mark } from './mark';
 import { BranchSwitcher } from './branch-switcher';
@@ -125,6 +126,7 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
             );
           })}
         </nav>
+        <LangSwitch dark className="mx-3" />
         <div className="m-3 flex items-center gap-3 rounded-lg bg-white/[0.06] p-2.5">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-semibold">{me?.firstName?.[0] ?? '·'}</span>
           <div className="min-w-0 flex-1">
@@ -213,7 +215,8 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
                 );
               })}
             </div>
-            <div className="px-3 pb-4">
+            <div className="space-y-3 px-3 pb-4">
+              <div className="flex justify-center"><LangSwitch /></div>
               <button onClick={onLogout} className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border bg-white text-sm font-semibold text-red-700">
                 <LogOut className="h-4 w-4" /> Chiqish
               </button>

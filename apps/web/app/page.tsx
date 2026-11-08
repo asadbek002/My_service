@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { LangSwitch } from '../components/lang-switch';
 import Link from 'next/link';
 import { ArrowRight, Check, Send } from 'lucide-react';
 import { Mark } from '../components/layout/mark';
@@ -49,6 +50,7 @@ export default function Home() {
         <header className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 lg:h-20 lg:px-8">
           <Link href="/" className="flex items-center gap-2.5"><Mark /><span className="text-sm font-bold tracking-[0.14em]">MY SERVICE</span></Link>
           <nav className="ml-auto flex items-center gap-1 text-sm sm:gap-2">
+            <LangSwitch dark />
             <a href="#narxlar" className="hidden rounded-md px-3 py-2 text-white/70 hover:text-white sm:block">Narxlar</a>
             <Link href="/login" className="rounded-md px-3 py-2 font-semibold hover:bg-white/10">Kirish</Link>
             <Link href="/signup" className="hidden h-10 items-center rounded-md bg-brand px-4 font-semibold text-ink hover:bg-brand-strong sm:flex">Demo versiya</Link>
