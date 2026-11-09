@@ -1,0 +1,25 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { gsm7, isGsm7, readySms, smsParts } = require('../dist/notifications/sms-text');
+
+const link = 'https://myserviceuz.uz/track/' + 'A'.repeat(43);
+
+test('one curly apostrophe triples the price; gsm7 keeps the text in one SMS', () => {
+  const uz = 'Mobile Fix · MS-261108-120\nQurilmangiz tayyor, olib ketishingiz mumkin.\nSamsung A52\nTo‘lov: 450 000 so‘m\n' + link;
+  assert.equal(isGsm7(uz), false);
+  assert.equal(smsParts(uz), 3);
+  assert.equal(isGsm7(gsm7(uz)), true);
+});
+
+test('the default "ready" SMS is one part, even for long names', () => {
+  for (const [service, device, due] of [
+    ['Mobile Fix servis', 'Samsung Galaxy A52', '450 000'],
+    ['E2E Servis', 'Apple iPhone 12', null],
+    ["Juda uzun nomli ta‘mirlash servis markazi Chilonzor filiali", 'Lenovo IdeaPad Gaming 3 15ACH6 82K2027QRK UltraSlim', '1 250 000'],
+  ]) {
+    const text = readySms(service, device, due, link);
+    assert.equal(smsParts(text), 1, text);
+    assert.ok(text.endsWith(link), 'the tracking link is always whole');
+    if (due) assert.match(text, new RegExp("To'lov: " + due + " so'm"));
+  }
+});

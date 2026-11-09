@@ -13,6 +13,7 @@ import { createLink } from './links.module';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { orderScope } from '../orders/orders.module';
+import { gsm7, readySms } from './sms-text';
 
 class SmsSettingsDto {
   @IsIn(['platform', 'own']) mode!: 'platform' | 'own';
@@ -119,6 +120,10 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
     const variables = { customer_name: order.customer.firstName, order_number: order.number, device: order.device.brand+' '+order.device.model, repair: order.complaint, price: order.total.toString(), paid: paid.toString(), balance: order.total.minus(paid).toString(), status: order.status, warranty_end: warrantyEnd, link };
     const templates = await this.db.notificationTemplate.findMany({ where: { organizationId: order.organizationId, type: event.type, active: true } });
     const message = (channel:string) => { const template=templates.find(t=>t.channel===channel); return template?render(template.body,variables):defaultText; };
+    // SMS is paid per part: GSM letters only, and the default "ready" text fits in one.
+    const smsMessage = () => { const template=templates.find(t=>t.channel==='SMS');
+      if (template) return gsm7(render(template.body,variables));
+      return event.type==='ORDER_READY' ? readySms(order.organization.name, order.device.brand+' '+order.device.model, due.greaterThan(0) ? sum(due).replace(/ so.m$/, '') : null, link) : gsm7(defaultText); };
     let channel = 'SMS';
     try {
       // Same client as the bot: token clean-up, TELEGRAM_API_BASE and error reasons apply here too.
@@ -141,7 +146,7 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
       const ownSms = await this.sms.own(order.organizationId);
       let smsProviderId = '';
       if (ownSms) {
-        smsProviderId = (await ownSms.send(order.customer.phone, message('SMS'))).id;
+        smsProviderId = (await ownSms.send(order.customer.phone, smsMessage())).id;
       } else {
         if (!flags?.sms || !platformSmsConfigured()) throw new Error('SMS_NOT_CONFIGURED');
         // The platform's switch and monthly cap for this service: a refused SMS is skipped, not retried.
@@ -153,7 +158,7 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
           }
           return;
         }
-        smsProviderId = await this.platformSms(order.customer.phone, message('SMS'), event.id);
+        smsProviderId = await this.platformSms(order.customer.phone, smsMessage(), event.id);
         await this.sms.count(order.organizationId, order.organization.subscription?.plan.smsPerMonth ?? null);
       }
       await this.db.notification.update({ where: { id: notification.id }, data: { status: 'SENT', channel, providerId: smsProviderId, sentAt: new Date(), errorCode: null } });
