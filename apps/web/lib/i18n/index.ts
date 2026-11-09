@@ -29,7 +29,7 @@ const rules = patterns.map(([uz, ru]) => ({
   re: new RegExp('^' + escape(norm(uz)).replace(/\\\{(\d)\\\}/g, '(.+?)') + '$'),
   ru,
 }));
-const DELIMS = [' · ', ': ', '. ', ' — ', ', '];
+const DELIMS = ['. ', ' — ', ' · ', ': ', ', '];
 
 /** Russian for one piece of Uzbek text, or null when there is none. */
 export function translate(text: string, depth = 0): string | null {
@@ -121,7 +121,8 @@ function tree(root: Element) {
 }
 
 // Pages that stay Uzbek: legal texts and the platform owner's console.
-const UZBEK_ONLY = /^\/(platform|terms|privacy)(\/|$)/;
+// The tracking page is the customer's: it stays Uzbek (so does the receipt itself, marked translate="no").
+const UZBEK_ONLY = /^\/(platform|terms|privacy|track)(\/|$)/;
 
 let started = false;
 /** Starts translating the page into Russian when that is the chosen language. Call after hydration. */

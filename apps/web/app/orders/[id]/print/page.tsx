@@ -127,7 +127,7 @@ function PrintReceipt() {
       {error && <p className="no-print mx-auto mt-6 max-w-sm rounded-md bg-red-50 p-3 text-sm text-red-700">{errorText(error)}</p>}
       {data && (
         <div className="flex justify-center px-2 py-6 print:block print:p-0">
-          <div ref={paperRef} className="bg-white shadow-sm print:shadow-none" style={{ width: paper + 'mm' }}>
+          <div ref={paperRef} translate="no" data-no-i18n className="bg-white shadow-sm print:shadow-none" style={{ width: paper + 'mm' }}>
             <ReceiptBody r={data} paper={paper} />
           </div>
         </div>

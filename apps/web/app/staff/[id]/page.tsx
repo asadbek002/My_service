@@ -20,6 +20,7 @@ const ACTIONS: Record<string, string> = {
   ORDER_CANCELLED: 'Bekor qildi', PRICE_CHANGE: "Narxni o'zgartirdi", PAYMENT_RECEIVED: "To'lov oldi", PAYMENT_REFUNDED: 'Pul qaytardi',
   CUSTOMER_CREATED: "Mijoz qo'shdi", DEVICE_CREATED: "Qurilma qo'shdi", EXPENSE_CREATED: "Xarajat yozdi", STAFF_CREATED: "Xodim qo'shdi",
   STAFF_UPDATED: "Xodimni o'zgartirdi", STAFF_PASSWORD_RESET: 'Parolni yangiladi', SETTING_CHANGED: "Sozlamani o'zgartirdi",
+  AUTH_LOGIN: "Tizimga kirdi", AUTH_LOGOUT: "Tizimdan chiqdi", AUTH_PASSWORD_CHANGED: "Parolini o'zgartirdi", AUTH_PASSWORD_RESET: "Parolni tikladi", CUSTOMER_UPDATED: "Mijozni o'zgartirdi", BRANCH_CREATED: "Filial ochdi", BRANCH_UPDATED: "Filialni o'zgartirdi", BRANCH_CLOSED: "Filialni yopdi", BRANCH_REOPENED: "Filialni qayta ochdi", STAFF_BRANCHES_CHANGED: "Xodim filiallarini o'zgartirdi", RECEIPT_SENT_TELEGRAM: "Chekni Telegramga yubordi", TELEGRAM_LINKED: "Telegramni uladi", OWN_BOT_CONNECTED: "Botni uladi", OWN_BOT_DISCONNECTED: "Botni uzdi", PLAN_CHOSEN: "Tarif tanladi", ROLE_PERMISSIONS_CHANGED: "Ruxsatlarni o'zgartirdi", SMS_TEST: "Test SMS yubordi", TERMS_ACCEPTED: "Ofertaga rozilik berdi", ALERT_CHAT_LINKED: "Xabar oluvchi qo'shdi",
 };
 
 export default function StaffMember() {

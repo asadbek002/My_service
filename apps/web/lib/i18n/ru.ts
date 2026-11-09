@@ -1,5 +1,56 @@
 /* Russian for the Uzbek interface: generated from the strings on screen, keys are the Uzbek text as written in the code. */
 export const exact: Record<string, string> = {
+  "Tizimga kirdi": "Вошёл в систему",
+  "Tizimdan chiqdi": "Вышел из системы",
+  "Parolini o'zgartirdi": "Сменил пароль",
+  "Parolni tikladi": "Восстановил пароль",
+  "Mijozni o'zgartirdi": "Изменил клиента",
+  "Filial ochdi": "Открыл филиал",
+  "Filialni o'zgartirdi": "Изменил филиал",
+  "Filialni yopdi": "Закрыл филиал",
+  "Filialni qayta ochdi": "Снова открыл филиал",
+  "Xodim filiallarini o'zgartirdi": "Изменил филиалы сотрудника",
+  "Chekni Telegramga yubordi": "Отправил чек в Telegram",
+  "Telegramni uladi": "Подключил Telegram",
+  "Botni uladi": "Подключил бота",
+  "Botni uzdi": "Отключил бота",
+  "Tarif tanladi": "Выбрал тариф",
+  "Ruxsatlarni o'zgartirdi": "Изменил права",
+  "Test SMS yubordi": "Отправил тестовое SMS",
+  "Ofertaga rozilik berdi": "Принял оферту",
+  "Xabar oluvchi qo'shdi": "Добавил получателя сообщений",
+  "qarz": "долг",
+  "Qarz bilan topshirildi": "Выдан в долг",
+  "Ta'mirlangan qism va bajarilgan ish uchun kafolat. Namlik, zarba va boshqa ustaxonada ochilgan holatlarga tatbiq etilmaydi.": "Гарантия на отремонтированную часть и выполненную работу. Не распространяется на влагу, удары и вскрытие в другой мастерской.",
+  "Botdagi sahifangiz — Instagram, vizitka yoki peshtaxtaga qo'ying. Bu havola orqali kelgan mijoz manzil va telefoningizni darhol ko'radi:": "Ваша страница в боте — разместите в Instagram, на визитке или на стойке. Клиент, пришедший по этой ссылке, сразу увидит ваш адрес и телефон:",
+  "Buyurtmani «Tayyor» qilganingizda: mijoz Telegram botga ulangan bo'lsa — Telegramga, bo'lmasa SMS ga. Mijoz botga telefon raqamini yuborib yoki buyurtma sahifasidagi «Mijozga havola» tugmasi bilan yuborilgan Telegram havolasi orqali ulanadi.": "Когда вы отмечаете заказ «Готов»: если клиент подключён к Telegram-боту — в Telegram, иначе по SMS. Клиент подключается к боту, отправив свой номер телефона, или по ссылке, отправленной кнопкой «Ссылка для клиента» на странице заказа.",
+  "Filialda hali qurilmalar bor: avval ularni mijozga bering yoki bekor qiling.": "В филиале ещё есть устройства: сначала выдайте их клиентам или отмените заказы.",
+  "Havola https:// bilan boshlanishi kerak": "Ссылка должна начинаться с https://",
+  "Hech narsa o'zgarmadi: summani yoki holatni o'zgartiring.": "Ничего не изменилось: измените сумму или статус.",
+  "Kunlik hisobot (20:00)": "Ежедневный отчёт (20:00)",
+  "Login kamida 3 belgi: lotin harflari, raqam va _ . -": "Логин — минимум 3 символа: латинские буквы, цифры и _ . -",
+  "Mos tarifni tanlab, to'lovni amalga oshirasiz. To'lov qilinmasa ham ma'lumotlaringiz o'chirilmaydi: bir necha kundan so'ng dastur faqat ko'rish rejimiga o'tadi.": "Вы выбираете подходящий тариф и оплачиваете. Даже без оплаты ваши данные не удаляются: через несколько дней программа переходит в режим только просмотра.",
+  "Qarzdorlar davrga bog'liq emas: yuklab olingan paytdagi holat.": "Должники не зависят от периода: состояние на момент скачивания.",
+  "Qurilma hali ustaxonada: to'lov berishda olinadi, bu hali qarz emas.": "Устройство ещё в мастерской: оплата берётся при выдаче, это ещё не долг.",
+  "Telefon, noutbuk va texnika ta'miri ustaxonalari uchun: qabul va chek, ta'mir holati, mijozga Telegram/SMS xabar, to'lov, qarz va hisobot. Bepul demo versiya.": "Для мастерских по ремонту телефонов, ноутбуков и техники: приём и чек, статус ремонта, сообщения клиенту в Telegram/SMS, оплаты, долги и отчёты. Бесплатная демо-версия.",
+  "Xodim bo'lmagan odam (sherik, ikkinchi telefon) ham xabar olishi mumkin: nom yozing, havola oling va unga yuboring. U botda Start bosadi.": "Сообщения может получать и не сотрудник (партнёр, второй телефон): введите имя, получите ссылку и отправьте ему. Он нажмёт Start в боте.",
+  "Xodim hamma ishni qila oladi: qabul, to'lov, hisobot, sozlamalar.": "Сотрудник может делать всё: приём, оплаты, отчёты, настройки.",
+  "Yangi qabul va tayyor qurilmalar haqida xabar, har kuni 20:00 da kunlik hisobot, buyurtma qidirish.": "Сообщения о новых приёмах и готовых устройствах, ежедневный отчёт в 20:00, поиск заказов.",
+  "Telegram: @": "Telegram: @",
+  "kun": "дн.",
+  "xodim": "сотрудн.",
+  "-qadam": "-й шаг",
+  "bepul": "бесплатно",
+  "tekin.": "бесплатно.",
+  "Asosiy filial": "Основной филиал",
+  "1 kishi ishlaydigan ustaxonalar uchun": "Для мастерских, где работает 1 человек",
+  "Oddiy ustaxona": "Обычная мастерская",
+  "Bir nechta filial yoki katta servislar uchun": "Для нескольких филиалов или больших сервисов",
+  "Biznes": "Бизнес",
+  "so'm / oy": "сум / мес",
+  "so'm / yil": "сум / год",
+  "Cheksiz xodim": "Без ограничения сотрудников",
+  "Cheksiz filial": "Без ограничения филиалов",
   "qabulda": "на приёме",
   "ta'mirda": "в ремонте",
   "tayyor": "готово",
@@ -9,8 +60,7 @@ export const exact: Record<string, string> = {
   "gacha": "(до этой даты)",
   "cheksiz": "безлимит",
   "yozing.": "напишите.",
-  "xodim": "сотр.",
-  "— barcha imkoniyatlar bilan. Bank kartasi talab qilinmaydi.": "— со всеми возможностями. Банковская карта не нужна.",
+    "— barcha imkoniyatlar bilan. Bank kartasi talab qilinmaydi.": "— со всеми возможностями. Банковская карта не нужна.",
   "— Buyurtmasiz —": "— Без заказа —",
   "— Do'konni tanlang —": "— Выберите магазин —",
   "— faqat to'lovni tuzatish": "— только исправить оплату",
@@ -986,6 +1036,15 @@ export const exact: Record<string, string> = {
 
 /** Text with values in it: {0}, {1}… stand for the values, which are translated on their own when they are known words. */
 export const patterns: [string, string][] = [
+  ["Yillik · {0} oy bepul", "Ежегодно · {0} мес. бесплатно"],
+  ["{0} oy bepul", "{0} мес. бесплатно"],
+  ["{0} kun bepul", "{0} дн. бесплатно"],
+  ["{0} oy tekin.", "{0} мес. бесплатно."],
+  ["{0} kun tekin.", "{0} дн. бесплатно."],
+  ["{0} ta xodim", "Сотрудников: {0}"],
+  ["{0} ta filial", "Филиалов: {0}"],
+  ["{0} / {1} bajarildi", "Выполнено {0} из {1}"],
+  ["{0}-qadam", "Шаг {0}"],
   ["Kafolat {0} gacha", "Гарантия до {0}"],
   ["Kafolat: {0} gacha", "Гарантия: до {0}"],
   [
@@ -1030,11 +1089,11 @@ export const patterns: [string, string][] = [
   ],
   [
    "Oyiga {0} ta SMS",
-   "{0} SMS в месяц"
+   "SMS в месяц: {0}"
   ],
   [
    "Oyiga {0} ta buyurtma",
-   "{0} заказов в месяц"
+   "Заказов в месяц: {0}"
   ],
   [
    "Oylik SMS limiti ({0} ta) tugadi: oy oxirigacha SMS yuborilmaydi, Telegram xabarlari ketaveradi.",
@@ -1195,5 +1254,7 @@ export const patterns: [string, string][] = [
   [
    "{0} kun",
    "{0} дн."
-  ]
+  ],
+  ["{0} gacha", "до {0}"],
+  ["qabul {0}", "приём {0}"],
 ];
