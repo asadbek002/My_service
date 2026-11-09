@@ -22,8 +22,33 @@ const ghost = 'h-11 sm:h-10 px-4 rounded-md border text-sm font-semibold disable
 
 /** "99 000" → "99000"; empty stays empty. */
 const digits = (v: FormDataEntryValue | null) => String(v ?? '').replace(/[\s,]/g, '');
-/** A limit field: empty means unlimited (null). */
-const limit = (v: FormDataEntryValue | null) => { const s = digits(v); return s === '' ? null : Number(s); };
+/**
+ * A limit: the "Cheksiz" box, an empty field or the word itself mean unlimited (null). 0 means
+ * unlimited too, except for SMS, where 0 is "no SMS in the plan".
+ */
+function limit(d: FormData, name: string) {
+  if (d.get(name + 'Unlimited') === 'on') return null;
+  const s = digits(d.get(name));
+  if (s === '' || /^(cheksiz|∞|-)$/i.test(s)) return null;
+  const n = Number(s);
+  return n === 0 && name !== 'smsPerMonth' ? null : n;
+}
+
+/** Number or "Cheksiz": a box makes unlimited one click instead of an empty field nobody guesses. */
+function LimitField({ name, label, value, zero }: { name: string; label: string; value: number | null; zero?: boolean }) {
+  const [unlimited, setUnlimited] = useState(value === null);
+  useEffect(() => setUnlimited(value === null), [value]);
+  return (
+    <div className="space-y-1 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <label htmlFor={'limit-' + name} className="font-medium">{label}</label>
+        <label className="flex items-center gap-1.5 text-xs text-mute"><input type="checkbox" name={name + 'Unlimited'} checked={unlimited} onChange={e => setUnlimited(e.target.checked)} className="h-4 w-4 accent-ink" /> Cheksiz</label>
+      </div>
+      <input id={'limit-' + name} name={name} inputMode="numeric" pattern="[\d\s]{0,12}|[Cc]heksiz|∞" title="Son yoki «cheksiz»" disabled={unlimited} defaultValue={value === null ? '' : String(value)}
+        placeholder={unlimited ? 'cheksiz' : zero ? '0 — SMS yo‘q' : 'masalan 1000'} className={field + ' disabled:bg-paper disabled:text-mute'} />
+    </div>
+  );
+}
 const limitText = (v: number | null, unit = '') => v === null ? 'cheksiz' : `${v}${unit}`;
 
 function planBody(d: FormData, base?: Plan) {
@@ -33,10 +58,10 @@ function planBody(d: FormData, base?: Plan) {
     description: String(d.get('description') ?? '').trim() || null,
     monthlyPrice: digits(d.get('monthlyPrice')) || '0',
     yearlyPrice: yearly === '' ? null : yearly,
-    maxStaff: limit(d.get('maxStaff')),
-    maxBranches: limit(d.get('maxBranches')),
-    monthlyOrders: limit(d.get('monthlyOrders')),
-    smsPerMonth: limit(d.get('smsPerMonth')),
+    maxStaff: limit(d, 'maxStaff'),
+    maxBranches: limit(d, 'maxBranches'),
+    monthlyOrders: limit(d, 'monthlyOrders'),
+    smsPerMonth: limit(d, 'smsPerMonth'),
     sortOrder: Number(digits(d.get('sortOrder')) || 0),
     active: d.get('active') === 'on',
     features: { ...(base?.features ?? {}), ...Object.fromEntries(FEATURES.map(([k]) => [k, d.get(k) === 'on'])) },
@@ -60,16 +85,12 @@ function PlanForm({ plan, busy, onSubmit, onCancel }: { plan?: Plan; busy: boole
           <input name="yearlyPrice" inputMode="numeric" pattern="[\d\s]{0,15}" defaultValue={plan?.yearlyPrice ? Number(plan.yearlyPrice).toString() : ''} placeholder="avtomatik" className={field} /></label>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <label className="block space-y-1 text-sm"><span className="font-medium">Xodim</span>
-          <input name="maxStaff" inputMode="numeric" pattern="\d{0,6}" defaultValue={num(plan?.maxStaff)} placeholder="cheksiz" className={field} /></label>
-        <label className="block space-y-1 text-sm"><span className="font-medium">Filial</span>
-          <input name="maxBranches" inputMode="numeric" pattern="\d{0,6}" defaultValue={num(plan?.maxBranches)} placeholder="cheksiz" className={field} /></label>
-        <label className="block space-y-1 text-sm"><span className="font-medium">Buyurtma / oy</span>
-          <input name="monthlyOrders" inputMode="numeric" pattern="\d{0,9}" defaultValue={num(plan?.monthlyOrders)} placeholder="cheksiz" className={field} /></label>
-        <label className="block space-y-1 text-sm"><span className="font-medium">SMS / oy</span>
-          <input name="smsPerMonth" inputMode="numeric" pattern="\d{0,9}" defaultValue={num(plan?.smsPerMonth)} placeholder="cheksiz" className={field} /></label>
+        <LimitField name="maxStaff" label="Xodim" value={plan ? plan.maxStaff : null} />
+        <LimitField name="maxBranches" label="Filial" value={plan ? plan.maxBranches : null} />
+        <LimitField name="monthlyOrders" label="Buyurtma / oy" value={plan ? plan.monthlyOrders : null} />
+        <LimitField name="smsPerMonth" label="SMS / oy" value={plan ? plan.smsPerMonth : null} zero />
       </div>
-      <p className="text-[11px] text-mute">Bo&apos;sh qoldirilsa — cheksiz. Yillik narx bo&apos;sh bo&apos;lsa, umumiy sozlamadagi «bepul oylar» bo&apos;yicha hisoblanadi.</p>
+      <p className="text-[11px] text-mute">«Cheksiz» belgilansa yoki son bo&apos;sh qoldirilsa — cheksiz. Yillik narx bo&apos;sh bo&apos;lsa, umumiy sozlamadagi «bepul oylar» bo&apos;yicha hisoblanadi.</p>
       <div className="grid grid-cols-1 gap-1.5 text-sm sm:grid-cols-2">
         {FEATURES.map(([k, l]) => <label key={k} className="flex items-center gap-2"><input type="checkbox" name={k} defaultChecked={plan ? !!plan.features?.[k] : k !== 'own_bot'} className="h-4 w-4" />{l}</label>)}
       </div>
@@ -133,7 +154,7 @@ export function PlansTab({ plans, busy, run }: { plans: Plan[]; busy: boolean; r
         {plans.length === 0 && <p className="text-sm text-mute">Hali tarif yo&apos;q</p>}
         {plans.map(p => editing === p.id ? (
           <div key={p.id} className="rounded-lg border border-ink p-3">
-            <PlanForm plan={p} busy={busy} onCancel={() => setEditing(null)}
+            <PlanForm key={JSON.stringify(p)} plan={p} busy={busy} onCancel={() => setEditing(null)}
               onSubmit={d => void run(async () => { await platformApi('/plans/' + p.id, { method: 'PATCH', body: JSON.stringify(planBody(d, p)) }); setEditing(null); }, `«${String(d.get('name'))}» saqlandi`)} />
           </div>
         ) : (
