@@ -183,6 +183,7 @@ function TemplateForm({ channel, template }: { channel: 'TELEGRAM' | 'SMS'; temp
     <div className="grid gap-2">
       <span className="text-sm font-medium">{channel === 'TELEGRAM' ? 'Telegram' : 'SMS'}</span>
       <Textarea value={body} onChange={e => setBody(e.target.value)} rows={3} placeholder="Hurmatli {{customer_name}}, {{device}} tayyor. To'lov: {{balance}} so'm." />
+      {channel === 'SMS' && <p className="text-xs text-mute">O&apos;z SMS matningiz faqat o&apos;z Eskiz akkauntingiz ulangan bo&apos;lsa ishlatiladi: uni avval Eskiz kabinetida moderatsiyadan o&apos;tkazing. MyService orqali yuborilganda doim standart matn ketadi.</p>}
       <ErrorBox>{state.error}</ErrorBox><Notice>{state.ok}</Notice>
       <Button variant="secondary" size="sm" className="w-fit" onClick={save}>Saqlash</Button>
     </div>

@@ -23,3 +23,13 @@ test('the default "ready" SMS is one part, even for long names', () => {
     if (due) assert.match(text, new RegExp("To'lov: " + due + " so'm"));
   }
 });
+
+test('codes name the resource and the purpose, as Eskiz moderation requires', () => {
+  const { SMS } = require('../dist/notifications/sms-text');
+  for (const [text, purpose] of [[SMS.signupCode('123456'), "ro'yxatdan o'tish uchun"], [SMS.resetCode('123456'), 'parolni tiklash uchun']]) {
+    assert.match(text, /MyService \(myserviceuz\.uz\) saytida/);
+    assert.ok(text.includes(purpose), text);
+    assert.equal(smsParts(text), 1);
+    assert.equal(isGsm7(text), true);
+  }
+});

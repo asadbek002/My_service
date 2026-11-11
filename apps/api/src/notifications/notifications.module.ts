@@ -13,7 +13,7 @@ import { createLink } from './links.module';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { orderScope } from '../orders/orders.module';
-import { gsm7, readySms } from './sms-text';
+import { gsm7, readySms, SMS } from './sms-text';
 
 class SmsSettingsDto {
   @IsIn(['platform', 'own']) mode!: 'platform' | 'own';
@@ -121,8 +121,10 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
     const templates = await this.db.notificationTemplate.findMany({ where: { organizationId: order.organizationId, type: event.type, active: true } });
     const message = (channel:string) => { const template=templates.find(t=>t.channel===channel); return template?render(template.body,variables):defaultText; };
     // SMS is paid per part: GSM letters only, and the default "ready" text fits in one.
-    const smsMessage = () => { const template=templates.find(t=>t.channel==='SMS');
-      if (template) return gsm7(render(template.body,variables));
+    // A service's own SMS text goes only through its own Eskiz account (moderated there); the
+    // platform's account sends only the fixed texts approved for it.
+    const smsMessage = (own: boolean) => { const template=templates.find(t=>t.channel==='SMS');
+      if (template && own) return gsm7(render(template.body,variables));
       return event.type==='ORDER_READY' ? readySms(order.organization.name, order.device.brand+' '+order.device.model, due.greaterThan(0) ? sum(due).replace(/ so.m$/, '') : null, link) : gsm7(defaultText); };
     let channel = 'SMS';
     try {
@@ -146,7 +148,7 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
       const ownSms = await this.sms.own(order.organizationId);
       let smsProviderId = '';
       if (ownSms) {
-        smsProviderId = (await ownSms.send(order.customer.phone, smsMessage())).id;
+        smsProviderId = (await ownSms.send(order.customer.phone, smsMessage(true))).id;
       } else {
         if (!flags?.sms || !platformSmsConfigured()) throw new Error('SMS_NOT_CONFIGURED');
         // The platform's switch and monthly cap for this service: a refused SMS is skipped, not retried.
@@ -158,7 +160,7 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
           }
           return;
         }
-        smsProviderId = await this.platformSms(order.customer.phone, smsMessage(), event.id);
+        smsProviderId = await this.platformSms(order.customer.phone, smsMessage(false), event.id);
         await this.sms.count(order.organizationId, order.organization.subscription?.plan.smsPerMonth ?? null);
       }
       await this.db.notification.update({ where: { id: notification.id }, data: { status: 'SENT', channel, providerId: smsProviderId, sentAt: new Date(), errorCode: null } });
@@ -213,7 +215,7 @@ class NotificationsController {
     const today = await this.db.auditLog.count({ where: { organizationId: a.organizationId, action: 'SMS_TEST', createdAt: { gte: new Date(Date.now() - 86400000) } } });
     if (today >= 5) throw new HttpException('TOO_MANY_TESTS', 429);
     const own = await this.sms.own(a.organizationId);
-    const text = 'MyService: SMS sozlamasi ishlayapti.';
+    const text = SMS.test();
     try {
       if (own) await own.send(user.phone, text);
       else {

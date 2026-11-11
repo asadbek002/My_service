@@ -26,20 +26,28 @@ export function smsParts(text: string) {
 }
 
 /**
- * "Ready" for a customer, in one SMS: "Mobile Fix: Samsung A52 tayyor, olib ketishingiz mumkin.
- * To'lov: 450 000 so'm. https://…/track/…". The polite tail, then the device, give way to fit.
+ * Every SMS sent through the platform's Eskiz account. Eskiz sends only texts its moderators have
+ * approved, entered exactly as the subscriber sees them; codes must name the resource and the purpose.
+ * Keep this the only place these words live, and resubmit a text to Eskiz whenever it changes.
+ */
+export const SITE = 'myserviceuz.uz';
+export const SMS = {
+  signupCode: (code: string) => `MyService (${SITE}) saytida ro'yxatdan o'tish uchun tasdiqlash kodi: ${code}`,
+  resetCode: (code: string) => `MyService (${SITE}) saytida parolni tiklash uchun tasdiqlash kodi: ${code}`,
+  test: () => `MyService (${SITE}): SMS xabarnoma sozlamasi ishlayapti.`,
+};
+
+/**
+ * "Ready" for a customer, always one of two fixed shapes and one SMS:
+ *   Mobile Fix: Samsung A52 tayyor. To'lov: 450 000 so'm. https://…/track/…
+ *   Mobile Fix: Samsung A52 tayyor, olib ketishingiz mumkin. https://…/track/…
+ * Only the names shrink when they are too long; the words never change (Eskiz moderation).
  */
 export function readySms(service: string, device: string, due: string | null, link: string) {
-  const pay = due ? ` To'lov: ${due} so'm.` : '';
-  const build = (s: string, d: string, tail: string) => gsm7(`${s}: ${d} tayyor${tail}.${pay} ${link}`).replace(/\s+/g, ' ');
-  for (const tail of [', olib ketishingiz mumkin', '']) {
-    const t = build(service, device, tail);
-    if (smsParts(t) === 1) return t;
-  }
-  // Very long names: shorten the device, then the service name.
-  let s = service, d = device;
-  while (smsParts(build(s, d, '')) > 1 && (d.length > 12 || s.length > 12)) {
+  const build = (s: string, d: string) => gsm7(due ? `${s}: ${d} tayyor. To'lov: ${due} so'm. ${link}` : `${s}: ${d} tayyor, olib ketishingiz mumkin. ${link}`).replace(/\s+/g, ' ');
+  let s = gsm7(service).trim(), d = gsm7(device).trim();
+  while (smsParts(build(s, d)) > 1 && (d.length > 8 || s.length > 8)) {
     if (d.length >= s.length) d = d.slice(0, -1); else s = s.slice(0, -1);
   }
-  return build(s.trim(), d.trim(), '');
+  return build(s.trim(), d.trim());
 }

@@ -1,5 +1,6 @@
 /* Russian for the Uzbek interface: generated from the strings on screen, keys are the Uzbek text as written in the code. */
 export const exact: Record<string, string> = {
+  "O'z SMS matningiz faqat o'z Eskiz akkauntingiz ulangan bo'lsa ishlatiladi: uni avval Eskiz kabinetida moderatsiyadan o'tkazing. MyService orqali yuborilganda doim standart matn ketadi.": "Свой текст SMS используется, только если подключён ваш собственный аккаунт Eskiz: сначала пройдите с ним модерацию в кабинете Eskiz. Через MyService всегда уходит стандартный текст.",
   "Tizimga kirdi": "Вошёл в систему",
   "Tizimdan chiqdi": "Вышел из системы",
   "Parolini o'zgartirdi": "Сменил пароль",

@@ -1,4 +1,5 @@
 import { BadRequestException, Global, HttpException, Injectable, Logger, Module, OnModuleDestroy, ServiceUnavailableException } from '@nestjs/common';
+import { SMS } from '../notifications/sms-text';
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import Redis from 'ioredis';
 import { EskizClient } from '../notifications/eskiz.client';
@@ -55,7 +56,7 @@ export class PhoneVerification implements OnModuleDestroy {
     }
     if (!this.showCode()) {
       if (!this.smsConfigured()) throw new ServiceUnavailableException('SMS_UNAVAILABLE');
-      try { await this.eskiz.send(phone, `MyService: tasdiqlash kodi ${code}. Kodni hech kimga bermang.`); }
+      try { await this.eskiz.send(phone, purpose === 'reset' ? SMS.resetCode(code) : SMS.signupCode(code)); }
       catch (e) {
         this.logger.warn('Verification SMS failed: ' + (e instanceof Error ? e.message : 'unknown'));
         throw new ServiceUnavailableException('SMS_UNAVAILABLE');
