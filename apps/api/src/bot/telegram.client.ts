@@ -74,19 +74,6 @@ export class TelegramClient {
     form.set('photo', new Blob([new Uint8Array(png)], { type: 'image/png' }), 'chek.png');
     return this.call<{ message_id: number }>('sendPhoto', form);
   }
-
-  /** Several photos as one album (sendMediaGroup, 2–10 items); a single one goes as a plain photo. */
-  sendPhotos(chatId: string | number, files: { name: string; mime: string; bytes: Buffer }[], caption: string) {
-    const form = new FormData();
-    form.set('chat_id', String(chatId));
-    const one = files.length === 1;
-    if (one) { form.set('caption', caption); form.set('photo', new Blob([new Uint8Array(files[0]!.bytes)], { type: files[0]!.mime }), files[0]!.name + '.jpg'); }
-    else {
-      form.set('media', JSON.stringify(files.slice(0, 10).map((f, i) => ({ type: 'photo', media: 'attach://' + f.name, ...(i === 0 ? { caption } : {}) }))));
-      for (const f of files.slice(0, 10)) form.set(f.name, new Blob([new Uint8Array(f.bytes)], { type: f.mime }), f.name + '.jpg');
-    }
-    return this.call(one ? 'sendPhoto' : 'sendMediaGroup', form, 60_000);
-  }
 }
 
 /** Escape text for Telegram's HTML parse mode. */

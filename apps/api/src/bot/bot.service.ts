@@ -6,7 +6,6 @@ import { Database } from '../database';
 import { PhoneVerification } from '../auth/verification';
 import { esc, fmtDate, som, STATUS_LABEL, tashkentDay, TelegramClient, type Keyboard } from './telegram.client';
 import { trackSignup } from '../auth/signup-funnel';
-import { linkByOrderToken, numberFromCommand, orderCard, photosCommand, sendOrderPhotos } from './order-card';
 
 type Message = {
   text?: string; chat?: { id?: number; type?: string }; from?: { id?: number; first_name?: string };
@@ -91,8 +90,6 @@ export class BotService {
       if (text === '/stop') return await this.onStop(chatId);
       if (text === BTN.myOrders || text === '/orders') return await this.send(chatId, await this.customerOrders(chatId));
       if (text === BTN.warranty || text === '/warranty') return await this.send(chatId, await this.customerWarranties(chatId));
-      const photosOf = numberFromCommand(text);
-      if (photosOf) return await this.customerPhotos(chatId, photosOf);
       if (text === BTN.contact) return await this.sendServices(chatId);
       if (text === BTN.tg) return await this.sendContactItem(chatId, 'tg');
       if (text === BTN.ig) return await this.sendContactItem(chatId, 'ig');
@@ -154,13 +151,20 @@ export class BotService {
       return this.send(chatId, '✅ Platforma boshqaruviga ulandingiz. Yangi servislar va obunalar haqida xabar olasiz.');
     }
     if (payload && /^[A-Za-z0-9_-]{43}$/.test(payload)) {
-      // The order's one link (receipt QR, «Mijozga havola»): ties this chat to the customer and shows the order.
-      const r = await linkByOrderToken(this.db, payload, chatId, null);
-      if ('error' in r) return this.send(chatId, r.error === 'TAKEN'
-        ? 'Bu buyurtma boshqa Telegram hisobiga ulangan. O‘zingiz ekanligingizni tasdiqlash uchun telefon raqamingizni yuboring.'
-        : 'Havola eskirgan. Telefon raqamingizni yuborib ulaning.');
-      await this.send(chatId, `✅ <b>${esc(r.order.organization.name)}</b> ga ulandingiz. Qurilmangiz holati o‘zgarganda shu yerga xabar keladi.`);
-      return this.showOrder(this.telegram, chatId, r.order.organizationId, r.order.id, r.order.number);
+      // Order link printed/shared by the service: connects this chat to that customer.
+      const linked = await this.db.$transaction(async tx => {
+        const link = await tx.customerLink.findUnique({ where: { tokenHash: hash(payload) } });
+        if (!link || link.purpose !== 'TELEGRAM' || link.expiresAt <= new Date()) return null;
+        const used = await tx.customerLink.updateMany({ where: { id: link.id, consumedAt: null }, data: { consumedAt: new Date() } });
+        if (!used.count) return null;
+        const order = await tx.order.findFirst({ where: { id: link.orderId, organizationId: link.organizationId }, include: { organization: true } });
+        if (!order) return null;
+        await tx.customer.update({ where: { organizationId_id: { organizationId: link.organizationId, id: order.customerId } }, data: { telegramChatId: chatId, telegramBot: null } });
+        await tx.auditLog.create({ data: { organizationId: link.organizationId, action: 'TELEGRAM_LINKED', entityId: order.customerId } });
+        return order;
+      });
+      if (linked) return this.send(chatId, `✅ <b>${esc(linked.organization.name)}</b> ga ulandingiz. Qurilmangiz tayyor bo‘lganda shu yerga xabar keladi.\n\n` + await this.customerOrders(chatId));
+      return this.send(chatId, 'Havola eskirgan yoki ishlatilgan. Telefon raqamingizni yuborib ulaning.');
     }
     const w = await this.who(chatId);
     if (w.users.length || w.admin || w.customers) return this.send(chatId, `Assalomu alaykum${name ? ', ' + esc(name) : ''}! Quyidagi tugmalardan foydalaning.`);
@@ -199,25 +203,12 @@ export class BotService {
 
   // ---------- Customer views ----------
 
-  /** The order card with its «Saytda ko'rish» button, then the intake photos as an album. */
-  async showOrder(client: TelegramClient, chatId: string, orgId: string, orderId: string, number: string) {
-    const card = await orderCard(this.db, orgId, orderId, true);
-    if (card) await client.send(chatId, card.text, card.keyboard);
-    await sendOrderPhotos(client, this.db, chatId, orgId, orderId, number);
-  }
-
-  /** «/rasm_…»: the photos of one of this customer's own orders. */
-  private async customerPhotos(chatId: string, number: string) {
-    const order = await this.db.order.findFirst({ where: { number, customer: { telegramChatId: chatId, telegramBot: null } }, select: { id: true, organizationId: true } });
-    if (!order || !await sendOrderPhotos(this.telegram, this.db, chatId, order.organizationId, order.id, number)) return this.send(chatId, 'Bu buyurtmada rasm yo‘q.');
-  }
-
   async customerOrders(chatId: string) {
     const customers = await this.db.customer.findMany({ where: { telegramChatId: chatId }, select: { id: true } });
     if (!customers.length) return 'Buyurtmalaringizni ko‘rish uchun telefon raqamingizni yuboring.';
     const orders = await this.db.order.findMany({
       where: { customerId: { in: customers.map(c => c.id) }, status: { not: 'CANCELLED' } },
-      include: { device: true, organization: true, payments: { select: { kind: true, amount: true } }, _count: { select: { photos: true } } },
+      include: { device: true, organization: true, payments: { select: { kind: true, amount: true } } },
       orderBy: { createdAt: 'desc' }, take: 10,
     });
     if (!orders.length) return 'Hozircha buyurtma yo‘q.';
@@ -225,7 +216,7 @@ export class BotService {
     return '<b>Buyurtmalaringiz</b>\n\n' + orders.map(o => {
       const paid = o.payments.reduce((s, p) => p.kind === 'REFUND' ? s.minus(p.amount) : s.plus(p.amount), new Prisma.Decimal(0));
       const due = o.total.minus(paid);
-      return `<b>${esc(o.number)}</b> · ${esc(o.organization.name)}\n${esc(o.device.brand + ' ' + o.device.model)} — <b>${STATUS_LABEL[o.status] ?? o.status}</b>\nNarx: ${som(o.total)}${due.greaterThan(0) ? ' · To‘lash kerak: ' + som(due) : ''}${o._count.photos ? '\n📷 Rasmlar: ' + photosCommand(o.number) : ''}`;
+      return `<b>${esc(o.number)}</b> · ${esc(o.organization.name)}\n${esc(o.device.brand + ' ' + o.device.model)} — <b>${STATUS_LABEL[o.status] ?? o.status}</b>\nNarx: ${som(o.total)}${due.greaterThan(0) ? ' · To‘lash kerak: ' + som(due) : ''}`;
     }).join('\n\n');
   }
 

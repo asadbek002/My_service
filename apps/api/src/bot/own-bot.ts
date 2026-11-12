@@ -5,7 +5,6 @@ import { Database } from '../database';
 import { seal, unseal } from '../common/secret-box';
 import { esc, fmtDate, som, STATUS_LABEL, TelegramClient, type Keyboard } from './telegram.client';
 import { serviceCards, type Update } from './bot.service';
-import { linkByOrderToken, numberFromCommand, orderCard, photosCommand, sendOrderPhotos } from './order-card';
 
 type OwnBotSetting = { token: string; secret: string; username: string; botId: number; connectedAt: string };
 const KEY = 'own_bot';
@@ -138,12 +137,6 @@ export class OwnBots {
       const keyboard = linked.length ? customerKeyboard : shareKeyboard;
       if (text === BTN.orders || text === '/orders') return client.send(chatId, await this.orders(orgId, linked), keyboard);
       if (text === BTN.warranty || text === '/warranty') return client.send(chatId, await this.warranties(orgId, linked), keyboard);
-      const photosOf = numberFromCommand(text);
-      if (photosOf) {
-        const order = linked.length ? await this.db.order.findFirst({ where: { organizationId: orgId, number: photosOf, customerId: { in: linked.map(c => c.id) } }, select: { id: true } }) : null;
-        if (!order || !await sendOrderPhotos(client, this.db, chatId, orgId, order.id, photosOf)) return client.send(chatId, 'Bu buyurtmada rasm yo‘q.', keyboard);
-        return;
-      }
       if (text === BTN.contact) {
         for (const card of await serviceCards(this.db, [orgId])) {
           await client.send(chatId, card.text, card.buttons.length ? { inline_keyboard: [card.buttons] } : keyboard);
@@ -165,16 +158,20 @@ export class OwnBots {
 
   private async onStart(client: TelegramClient, orgId: string, orgName: string, chatId: string, payload: string | undefined, name?: string) {
     if (payload && /^[A-Za-z0-9_-]{43}$/.test(payload)) {
-      // The order's one link (receipt QR, «Mijozga havola»): connects this chat to that customer of this service only.
-      const r = await linkByOrderToken(this.db, payload, chatId, 'own', orgId);
-      if ('error' in r) return client.send(chatId, r.error === 'TAKEN'
-        ? 'Bu buyurtma boshqa Telegram hisobiga ulangan. O‘zingiz ekanligingizni tasdiqlash uchun telefon raqamingizni yuboring.'
-        : 'Havola eskirgan. Telefon raqamingizni yuborib ulaning.', shareKeyboard);
-      await client.send(chatId, `✅ <b>${esc(orgName)}</b> ga ulandingiz. Qurilmangiz holati o‘zgarganda shu yerga xabar keladi.`, customerKeyboard);
-      const card = await orderCard(this.db, orgId, r.order.id);
-      if (card) await client.send(chatId, card.text, card.keyboard);
-      await sendOrderPhotos(client, this.db, chatId, orgId, r.order.id, r.order.number);
-      return;
+      // Order link from the receipt: connects this chat to that customer of this service only.
+      const customerId = await this.db.$transaction(async tx => {
+        const link = await tx.customerLink.findUnique({ where: { tokenHash: hash(payload) } });
+        if (!link || link.purpose !== 'TELEGRAM' || link.organizationId !== orgId || link.expiresAt <= new Date()) return null;
+        const used = await tx.customerLink.updateMany({ where: { id: link.id, consumedAt: null }, data: { consumedAt: new Date() } });
+        if (!used.count) return null;
+        const order = await tx.order.findFirst({ where: { id: link.orderId, organizationId: orgId } });
+        if (!order) return null;
+        await tx.customer.update({ where: { organizationId_id: { organizationId: orgId, id: order.customerId } }, data: { telegramChatId: chatId, telegramBot: 'own' } });
+        await tx.auditLog.create({ data: { organizationId: orgId, action: 'TELEGRAM_LINKED', entityId: order.customerId, newValue: { bot: 'own' } } });
+        return order.customerId;
+      });
+      if (customerId) return client.send(chatId, `✅ <b>${esc(orgName)}</b> ga ulandingiz. Qurilmangiz tayyor bo‘lganda shu yerga xabar keladi.\n\n` + await this.orders(orgId, [{ id: customerId }]), customerKeyboard);
+      return client.send(chatId, 'Havola eskirgan yoki ishlatilgan. Telefon raqamingizni yuborib ulaning.', shareKeyboard);
     }
     const linked = await this.linked(orgId, chatId);
     if (linked.length) return client.send(chatId, `Assalomu alaykum${name ? ', ' + esc(name) : ''}! Quyidagi tugmalardan foydalaning.`, customerKeyboard);
@@ -194,14 +191,14 @@ export class OwnBots {
     if (!customers.length) return 'Buyurtmalaringizni ko‘rish uchun telefon raqamingizni yuboring.';
     const orders = await this.db.order.findMany({
       where: { organizationId: orgId, customerId: { in: customers.map(c => c.id) }, status: { not: 'CANCELLED' } },
-      include: { device: true, payments: { select: { kind: true, amount: true } }, _count: { select: { photos: true } } }, orderBy: { createdAt: 'desc' }, take: 10,
+      include: { device: true, payments: { select: { kind: true, amount: true } } }, orderBy: { createdAt: 'desc' }, take: 10,
     });
     if (!orders.length) return 'Hozircha buyurtma yo‘q.';
     orders.sort((x, y) => Number(OPEN.includes(y.status)) - Number(OPEN.includes(x.status)));
     return '<b>Buyurtmalaringiz</b>\n\n' + orders.map(o => {
       const paid = o.payments.reduce((s, p) => p.kind === 'REFUND' ? s.minus(p.amount) : s.plus(p.amount), new Prisma.Decimal(0));
       const due = o.total.minus(paid);
-      return `<b>${esc(o.number)}</b>\n${esc(o.device.brand + ' ' + o.device.model)} — <b>${STATUS_LABEL[o.status] ?? o.status}</b>\nNarx: ${som(o.total)}${due.greaterThan(0) ? ' · To‘lash kerak: ' + som(due) : ''}${o._count.photos ? '\n📷 Rasmlar: ' + photosCommand(o.number) : ''}`;
+      return `<b>${esc(o.number)}</b>\n${esc(o.device.brand + ' ' + o.device.model)} — <b>${STATUS_LABEL[o.status] ?? o.status}</b>\nNarx: ${som(o.total)}${due.greaterThan(0) ? ' · To‘lash kerak: ' + som(due) : ''}`;
     }).join('\n\n');
   }
   private async warranties(orgId: string, customers: { id: string }[]) {

@@ -19,7 +19,7 @@ type Receipt = {
   customer: { name: string; phone: string };
   device: { category: string; brand: string; model: string };
   warranty: { endDate: string; terms: string | null } | null;
-  trackingUrl: string; botUrl: string | null; qrSvg: string; printedAt: string;
+  qrSvg: string; printedAt: string;
 };
 
 export default function Page() {
@@ -66,10 +66,8 @@ function PrintReceipt() {
     return [
       `🧾 ${data.service.name} · ${data.type === 'delivery' ? 'Berish' : 'Qabul'} cheki ${data.order.number}`,
       device && `📱 ${device}`,
-      // One link: the bot shows the status and photos and sends the news free; the page is only without a bot.
-      links && (links.telegram
-        ? `\n📲 Qurilmangiz holati va rasmlari Telegramda. Havolani bosing va «Start» ni bosing — tayyor bo‘lganda shu yerga xabar keladi:\n${links.telegram}`
-        : `\n🔎 Qurilmangiz holatini shu sahifada kuzatib boring:\n${links.tracking}`),
+      links && `\n🔎 Qurilmangiz holatini shu sahifada kuzatib boring:\n${links.tracking}`,
+      links?.telegram && `\n🤖 Xabarlarni Telegramda olish uchun botimizga kiring va «Start» ni bosing:\n${links.telegram}`,
     ].filter(Boolean).join('\n');
   }
   async function shareImage() {
@@ -184,7 +182,7 @@ function ReceiptBody({ r, paper }: { r: Receipt; paper: 58 | 80 }) {
       {line}
       <div className="flex flex-col items-center gap-1 py-1">
         <div className={cn(small ? 'w-[26mm]' : 'w-[30mm]', '[&>svg]:h-auto [&>svg]:w-full')} dangerouslySetInnerHTML={{ __html: r.qrSvg }} />
-        <p className="text-center">{r.botUrl ? 'Holat va xabarlar Telegramda: skanerlang, «Start» ni bosing' : 'Holatni kuzatish uchun skanerlang'}</p>
+        <p className="text-center">Holatni kuzatish uchun skanerlang</p>
       </div>
       {r.type === 'receipt' && <p className="mt-1">Qurilmani olishda ushbu chekni ko&apos;rsating.</p>}
       {r.service.footer && <p className="mt-1 whitespace-pre-wrap text-center">{r.service.footer}</p>}

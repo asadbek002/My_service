@@ -50,28 +50,3 @@ test('a service turns intake photos on, takes them at intake and removes one on 
   await page.getByRole('switch', { name: 'Qabulda qurilma rasmi' }).click();
   await expect(page.getByRole('switch', { name: 'Qabulda qurilma rasmi' })).toHaveAttribute('aria-checked', 'false');
 });
-
-/** One link: a customer not in Telegram is flagged on the order, the QR is shown, the tracking page shows the photos. */
-test('the order offers the Telegram QR and the tracking page shows the intake photos', async ({ page }, info) => {
-  test.skip(info.project.name !== 'desktop', 'one viewport is enough');
-  const svc = await newService('Bitta havola');
-  await apiCall(svc.token, '/settings/general/photos', { value: { enabled: true } }, 'PUT');
-  const order = await newOrder(svc.token);
-  await apiCall(svc.token, `/orders/${order.id}/photos`, { image: 'data:image/png;base64,' + PNG.toString('base64') });
-  await signIn(page, svc.login, svc.password);
-  await page.goto(`/orders/${order.id}`);
-  await expect(page.getByText('Mijoz Telegramga ulanmagan')).toBeVisible();
-  await page.getByRole('button', { name: 'QR ko‘rsatish' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Telegram QR' });
-  await expect(dialog.getByRole('img', { name: 'Telegram bot QR kodi' }).locator('svg')).toBeVisible();
-  await expect(dialog.getByText('Mijoz ulanishi kutilmoqda')).toBeVisible();
-  await dialog.getByRole('button', { name: 'Yopish' }).click();
-  await expect(dialog).toHaveCount(0);
-
-  // The tracking page: the photo loads, and the bot is offered.
-  const { tracking } = await apiCall<{ tracking: string }>(svc.token, `/orders/${order.id}/links`, {});
-  await page.goto(new URL(tracking).pathname);
-  const photo = page.getByRole('img', { name: 'Qabul rasmi 1' });
-  await expect.poll(() => photo.evaluate(i => (i as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
-  await expect(page.getByRole('link', { name: /Telegramda kuzatish/ })).toHaveAttribute('href', /^https:\/\/t\.me\/myservice_e2e_bot\?start=/);
-});
