@@ -66,8 +66,10 @@ fi
 if [ -d uploads ]; then
   mkdir -p "$BACKUP_DIR/uploads"
   cp -a -u uploads/. "$BACKUP_DIR/uploads/" && echo "photos mirrored: $(du -sh uploads | cut -f1)" || alert "rasmlar nusxalanmadi"
+  # A service deleted by its owner leaves no photos in the mirror either.
+  for d in "$BACKUP_DIR"/uploads/*/; do [ -d "$d" ] && [ ! -d "uploads/$(basename "$d")" ] && rm -rf -- "$d"; done
   if [ -n "${BACKUP_RCLONE_REMOTE:-}" ] && command -v rclone >/dev/null 2>&1; then
-    rclone copy uploads "$BACKUP_RCLONE_REMOTE/uploads" && echo "photos copied to $BACKUP_RCLONE_REMOTE" || alert "rasmlar rclone bilan nusxalanmadi"
+    rclone sync uploads "$BACKUP_RCLONE_REMOTE/uploads" && echo "photos copied to $BACKUP_RCLONE_REMOTE" || alert "rasmlar rclone bilan nusxalanmadi"
   fi
 fi
 

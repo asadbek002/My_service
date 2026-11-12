@@ -1,0 +1,11 @@
+{
+  "name": "myservice-ios",
+  "private": true,
+  "description": "App Store wrapper (Capacitor) around https://myserviceuz.uz. Built on a Mac; see ../README.md.",
+  "scripts": { "sync": "cap sync ios", "open": "cap open ios" },
+  "dependencies": {
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/ios": "^7.0.0",
+    "@capacitor/cli": "^7.0.0"
+  }
+}

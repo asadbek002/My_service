@@ -32,7 +32,9 @@ export default function Login() {
   async function onSubmit(data: LoginInput) {
     try {
       await login(data.login, data.password);
-      router.replace('/dashboard');
+      // Back to the page that sent here (e.g. /delete-account), only within this site.
+      const next = new URLSearchParams(window.location.search).get('next');
+      router.replace(next && /^\/(?!\/)[\w\-/]*$/.test(next) ? next : '/dashboard');
     } catch (e) {
       setError('root', { message: loginError(e) });
     }

@@ -7,6 +7,7 @@ import { BotModule } from '../bot/bot.module';
 import { BotService } from '../bot/bot.service';
 import { esc, som, tashkentDay } from '../bot/telegram.client';
 import { billingSettings, yearlyPriceOf } from '../platform/billing';
+import { AccountDeletionController } from './account-deletion';
 
 class PlanChoiceDto {
   @IsString() @Length(1, 100) planId!: string;
@@ -151,5 +152,5 @@ class AnnouncementsController {
   list() { return this.db.announcement.findMany({ where: { active: true }, orderBy: { createdAt: 'desc' }, take: 5, select: { id: true, title: true, body: true, level: true, createdAt: true } }); }
 }
 
-@Module({ imports: [BotModule], controllers: [AccountController, SupportController, AnnouncementsController] })
+@Module({ imports: [BotModule], controllers: [AccountController, AccountDeletionController, SupportController, AnnouncementsController] })
 export class AccountModule {}

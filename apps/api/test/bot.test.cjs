@@ -427,3 +427,42 @@ test('platform SMS controls: a service switched off or over its monthly cap send
   assert.equal((await deliverReady((await orderFor(svc.token, phone())).order.id, svc.orgId)).status, 'SENT');
   assert.equal(await db.auditLog.count({ where: { organizationId: svc.orgId, action: 'SMS_CONTROL_CHANGED' } }), 3);
 });
+
+test('account deletion: a staff member removes only themselves; the owner removes the whole service and every row of it', async () => {
+  const svc = await serviceOn({ telegram: true });
+  const phone = '+99897' + String(Math.floor(Math.random() * 1e7)).padStart(7, '0');
+  const { customer, order } = await orderFor(svc.token, phone);
+  await db.organizationSetting.upsert({ where: { organizationId_key: { organizationId: svc.orgId, key: 'photos' } }, create: { organizationId: svc.orgId, key: 'photos', value: { enabled: true } }, update: {} });
+  const png = 'data:image/png;base64,' + Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000000020001e221bc330000000049454e44ae426082', 'hex').toString('base64');
+  await ok(await request('/orders/' + order.id + '/photos', { token: svc.token, method: 'POST', body: { image: png } }), 201);
+  await ok(await request('/orders/' + order.id + '/payments', { token: svc.token, method: 'POST', body: { amount: '50000', method: 'CASH', idempotencyKey: randomUUID() } }), 201).catch(() => undefined);
+
+  // A staff member: wrong password refused; then only their own account goes, the service stays.
+  const login = 'del' + randomUUID().slice(0, 6);
+  await ok(await request('/staff', { token: svc.token, method: 'POST', body: { login, firstName: 'Aziz', temporaryPassword: 'Staff-Temp-12345', phone: '+998901234001' } }), 201);
+  const staff = await signIn(login, 'Staff-Temp-12345', 'Staff-Password-123');
+  assert.equal((await request('/account/delete', { token: staff, method: 'POST', body: { password: 'nope-nope-nope' } })).status, 400);
+  assert.deepEqual(await ok(await request('/account/delete', { token: staff, method: 'POST', body: { password: 'Staff-Password-123' } })), { deleted: 'user' });
+  const gone = await db.user.findFirst({ where: { organizationId: svc.orgId, firstName: "O'chirilgan xodim" } });
+  assert.ok(gone && gone.phone === '' && gone.login.startsWith('deleted-') && gone.status === 'ARCHIVED');
+  assert.equal((await request('/auth/login', { method: 'POST', body: { login, password: 'Staff-Password-123' } })).status, 401);
+  assert.ok(await db.order.findUnique({ where: { id: order.id } }), 'the service keeps its orders');
+
+  // The owner must type the service's name; then everything of the service is gone, other services untouched.
+  const other = await serviceOn({ telegram: true });
+  await orderFor(other.token, phone);
+  const org = await db.organization.findUnique({ where: { id: svc.orgId } });
+  assert.equal((await request('/account/delete', { token: svc.token, method: 'POST', body: { password: 'Boss-Password-123', confirm: 'boshqa nom' } })).status, 400);
+  assert.deepEqual(await ok(await request('/account/delete', { token: svc.token, method: 'POST', body: { password: 'Boss-Password-123', confirm: '  ' + org.name.toUpperCase() + ' ' } })), { deleted: 'organization' });
+  assert.equal(await db.organization.count({ where: { id: svc.orgId } }), 0);
+  const tables = await db.$queryRaw`SELECT table_name FROM information_schema.columns WHERE table_schema = current_schema() AND column_name = 'organizationId'`;
+  for (const { table_name } of tables) {
+    const [{ n }] = await db.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "${table_name}" WHERE "organizationId" = $1`, svc.orgId);
+    assert.equal(n, 0, table_name + ' still has rows of the deleted service');
+  }
+  assert.equal(await db.customer.count({ where: { id: customer.id } }), 0);
+  assert.ok(await db.customer.count({ where: { organizationId: other.orgId } }) > 0, 'another service keeps its data');
+  const fs = require('node:fs');
+  assert.ok(!fs.existsSync(path.resolve(__dirname, '..', 'uploads', svc.orgId)), 'photo files are removed');
+  assert.equal((await request('/auth/me', { token: svc.token })).status, 401);
+});

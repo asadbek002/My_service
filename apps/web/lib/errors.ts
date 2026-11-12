@@ -3,6 +3,9 @@ import { ApiError } from './api';
 // Server messages are stable English codes; the operator sees what happened and what to do.
 const TEXT: Record<string, string> = {
   SESSION_EXPIRED: 'Sessiya tugadi. Qaytadan kiring.',
+  WRONG_PASSWORD: "Parol noto'g'ri.",
+  CONFIRM_NAME: "Servis nomini aynan ko'rsatilgandek yozing.",
+  SUPPORT_SESSION: "Yordam rejimida hisobni o'chirib bo'lmaydi.",
   SUBSCRIPTION_READ_ONLY: "Obuna muddati tugagan: ma'lumotlarni faqat ko'rish mumkin.",
   SMS_DISABLED: "MyService orqali SMS yuborish siz uchun o'chirilgan. Yordam bo'limiga yozing.",
   SMS_LIMIT_REACHED: "Oylik SMS limiti tugagan.",

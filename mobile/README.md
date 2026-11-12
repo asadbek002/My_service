@@ -1,0 +1,85 @@
+# MyService — Google Play va App Store
+
+Ikkala ilova ham `https://myserviceuz.uz` saytini ochadi. Sayt yangilansa (git pull + docker compose),
+ilova ham yangilanadi; do'konga faqat nom, ikonka yoki native qism o'zgarganda yangi versiya yuboriladi.
+
+Tayyor narsalar (repo ichida):
+
+| Talab | Qayerda |
+|---|---|
+| Ilova ichida hisobni o'chirish | Menyu → «Hisobni o'chirish» (`/delete-account`) |
+| Hisobni o'chirish veb-havolasi (Google) | `https://myserviceuz.uz/delete-account` |
+| Maxfiylik siyosati | `https://myserviceuz.uz/privacy` |
+| Foydalanish shartlari | `https://myserviceuz.uz/terms` |
+| Ko'rib chiquvchi uchun demo hisob | `apps/api/scripts/demo-account.cjs` |
+| Ikonkalar | `store/app-store-1024.png`, `store/play-store-512.png` |
+| Digital Asset Links (Google) | `/.well-known/assetlinks.json` (.env: `ANDROID_PACKAGE`, `ANDROID_SHA256`) |
+| iOS ilovada tarif/to'lov yashirilgan | `apps/web/lib/native.ts` (user agent `MyServiceApp-iOS`) |
+
+## 0. Ikkalasidan oldin
+
+1. Platforma panelida yuridik ma'lumotlarni to'ldiring (kompaniya, INN, manzil, email) — **«Serverlar joylashuvi»
+   haqiqiy joyni yozsin** (hozir server Koreyada). Do'kon shakllari maxfiylik siyosatiga mos bo'lishi shart.
+   O'zbekiston fuqarolarining shaxsiy ma'lumotlari mamlakat ichida saqlanishi haqidagi talabni yurist bilan aniqlang.
+2. Demo hisob yarating (serverda):
+   ```sh
+   cd /opt/My_service && docker compose -f docker-compose.prod.yml exec api node apps/api/scripts/demo-account.cjs demo
+   ```
+   Chiqqan login va parolni saqlang. Qayta ishga tushirsangiz, demo tozalanib qaytadan yaratiladi.
+
+## 1. Google Play (TWA — Bubblewrap)
+
+Kerak: Google Play Developer hisobi ($25, bir martalik), kompyuterda Node.js va Java 17.
+
+```sh
+npm i -g @bubblewrap/cli
+cd mobile/android-twa
+bubblewrap init --manifest https://myserviceuz.uz/manifest.webmanifest   # twa-manifest.json tayyor, savollarga Enter
+bubblewrap build                                                         # app-release-bundle.aab
+```
+- `android.keystore` va uning parolini **hech qayerda yo'qotmang va git'ga qo'ymang** (u .gitignore'da).
+- Play Console → yangi ilova → `app-release-bundle.aab` ni yuklang.
+- Play Console → *Test and release → App integrity → App signing* dagi **SHA-256** ni serverdagi `.env` ga yozing:
+  ```
+  ANDROID_PACKAGE=uz.myserviceuz.app
+  ANDROID_SHA256=AA:BB:...:FF
+  ```
+  keyin `docker compose -f docker-compose.prod.yml up -d web`. Tekshirish:
+  `curl -s https://myserviceuz.uz/.well-known/assetlinks.json` — ichida paket nomi chiqishi kerak.
+  Bu bo'lmasa ilova tepasida brauzer manzil qatori ko'rinadi.
+- Yangi shaxsiy developer hisoblar uchun Google chiqarishdan oldin **12 ta testerda 14 kunlik yopiq test** talab qiladi.
+
+Play Console shakllari:
+- **App access**: «All or some functionality is restricted» → demo login/parol.
+- **Data safety**: to'planadi — ism, telefon (hisob va mijozlar), qurilma rasmlari (ixtiyoriy), ilova ichidagi harakatlar;
+  shifrlangan holda uzatiladi (HTTPS); foydalanuvchi o'chirishni so'ray oladi (yuqoridagi havola); uchinchi tomonga sotilmaydi.
+- **Account deletion**: `https://myserviceuz.uz/delete-account`.
+- **Category**: Business. **Target audience**: 18+.
+
+## 2. App Store (Capacitor, Mac kerak)
+
+Kerak: Apple Developer Program ($99/yil), Mac va Xcode.
+
+```sh
+cd mobile/ios
+npm install
+npx cap add ios
+npx cap sync ios
+npx cap open ios      # Xcode: Signing & Capabilities → Team; App Icon ← store/app-store-1024.png
+```
+Muhim:
+- Ilova `MyServiceApp-iOS` belgisi bilan ochiladi: tarif tanlash va to'lov matnlari unda ko'rinmaydi
+  (Apple 3.1.1/3.1.3(b): obuna saytda boshqariladi). Ilovada «saytda to'lang» kabi havola **qo'shmang**.
+- Apple 4.2 qoidasi: faqat sayt o'ramini ko'pincha rad etadi. Rad etilsa, native imkoniyat qo'shamiz
+  (push-bildirishnomalar «qurilma tayyor», native kamera) — bu keyingi ish.
+- App Review Information: demo login/parol, izoh: «B2B app for phone repair shops; subscriptions are sold
+  to businesses outside the app (3.1.3(b)); account deletion: menu → Hisobni o'chirish».
+
+## Do'kon matni (tayyor)
+
+**Nomi:** MyService — ta'mir servisi
+**Qisqa tavsif (80):** Telefon va texnika ta'miri ustaxonasi uchun: qabul, chek, holat, to'lov, hisobot.
+**To'liq tavsif:**
+> MyService — ta'mirlash ustaxonalari va servis markazlari uchun dastur. Qurilmani qabul qilib chek chiqaring,
+> ta'mir holatini kuzating, mijozga Telegram yoki SMS orqali xabar yuboring, to'lov va qarzni yuriting,
+> kafolatni nazorat qiling, kunlik va oylik hisobotni ko'ring. Bir nechta filial va xodim, o'zbek va rus tilida.

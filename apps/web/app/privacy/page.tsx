@@ -6,7 +6,7 @@ import { LegalPage, useLegal } from '../../components/legal-page';
 export default function Privacy() {
   const v = useLegal();
   return (
-    <LegalPage title="Maxfiylik siyosati" updated="19.10.2026">
+    <LegalPage title="Maxfiylik siyosati" updated="13.11.2026">
       <p>Ushbu siyosat {v('company', 'KOMPANIYA NOMI')} MyService dasturida qaysi shaxsiy ma&apos;lumotlarni qanday maqsadda qayta ishlashini tushuntiradi. U O&apos;zbekiston Respublikasining «Shaxsga doir ma&apos;lumotlar to&apos;g&apos;risida»gi qonuniga muvofiq tuzilgan.</p>
 
       <h2>1. Qanday ma&apos;lumotlar</h2>
@@ -41,6 +41,7 @@ export default function Privacy() {
 
       <h2>6. Sizning huquqlaringiz</h2>
       <p>Siz o&apos;zingiz haqidagi ma&apos;lumotni ko&apos;rish, tuzatish yoki o&apos;chirishni so&apos;rashingiz mumkin. Mijoz bo&apos;lsangiz, avval ma&apos;lumotni kiritgan ustaxonaga murojaat qiling; Telegram xabarlarini /stop buyrug&apos;i bilan o&apos;chirasiz.</p>
+      <p><b>Hisobni o&apos;chirish.</b> Ilovada yoki <a href="/delete-account">myserviceuz.uz/delete-account</a> sahifasida hisobingizni o&apos;zingiz o&apos;chirasiz. Ustaxona egasi o&apos;chirsa — servis va undagi barcha ma&apos;lumotlar (buyurtmalar, mijozlar, to&apos;lovlar, xodimlar, rasmlar) darhol o&apos;chiriladi; xodim o&apos;chirsa — uning ismi, telefoni va logini o&apos;chiriladi, u ishlagan buyurtmalar servisda qoladi. Zaxira nusxalardan ma&apos;lumot saqlash muddati (14 kun) tugagach o&apos;chadi.</p>
 
       <h2>7. Aloqa</h2>
       <ul>

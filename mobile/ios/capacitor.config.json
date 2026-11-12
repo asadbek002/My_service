@@ -1,0 +1,14 @@
+{
+  "appId": "uz.myserviceuz.app",
+  "appName": "MyService",
+  "webDir": "www",
+  "server": {
+    "url": "https://myserviceuz.uz/dashboard",
+    "allowNavigation": ["myserviceuz.uz", "*.myserviceuz.uz"]
+  },
+  "ios": {
+    "appendUserAgent": "MyServiceApp-iOS",
+    "contentInset": "automatic",
+    "limitsNavigationsToAppBoundDomains": true
+  }
+}

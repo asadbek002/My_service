@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMe, can, useBranding, type Me } from '../../lib/queries';
 import { API_BASE, api, logout } from '../../lib/api';
 import { LangSwitch } from '../lang-switch';
+import { useIosApp } from '../../lib/native';
 import { cn } from '../../lib/utils';
 import { Mark } from './mark';
 import { BranchSwitcher } from './branch-switcher';
@@ -137,6 +138,7 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
             <LogOut className="h-4 w-4" />
           </button>
         </div>
+        {!me?.support && <Link href="/delete-account" className="mx-3 mb-3 text-xs text-white/40 underline hover:text-white/70">Hisobni o&apos;chirish</Link>}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -220,6 +222,7 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
               <button onClick={onLogout} className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border bg-white text-sm font-semibold text-red-700">
                 <LogOut className="h-4 w-4" /> Chiqish
               </button>
+              {!me?.support && <Link href="/delete-account" className="block text-center text-xs text-mute underline">Hisobni o&apos;chirish</Link>}
             </div>
           </div>
         </div>
@@ -234,6 +237,7 @@ const DAY = 86_400_000;
  * days, and once the service is read-only. Otherwise the first sign is a refused intake.
  */
 function SubscriptionNotice({ me }: { me: Me }) {
+  const iosApp = useIosApp();
   const sub = me.subscription;
   if (!sub) return null;
   const now = Date.now(), ends = new Date(sub.expiresAt).getTime(), grace = new Date(sub.graceUntil ?? sub.expiresAt).getTime();
@@ -244,7 +248,7 @@ function SubscriptionNotice({ me }: { me: Me }) {
     : ends - now <= 7 * DAY ? `${sub.status === 'TRIAL' ? 'Sinov muddati' : 'Obuna'} ${days(ends)} kundan keyin tugaydi.`
     : '';
   if (!text) return null;
-  const owner = can(me, 'settings.manage');
+  const owner = can(me, 'settings.manage') && !iosApp;
   return (
     <div role="status" className={cn('mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border px-4 py-3 text-sm', readOnly ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-300 bg-amber-50 text-amber-950')}>
       <Wallet className="h-4 w-4 shrink-0" />

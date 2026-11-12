@@ -1,5 +1,6 @@
 'use client';
 
+import { useIosApp } from '../../lib/native';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -42,6 +43,7 @@ export default function AccountPage() {
   const [period, setPeriod] = useState<'MONTH' | 'YEAR' | null>(null);
   const [state, setState] = useState<{ ok?: string; error?: string }>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const iosApp = useIosApp();
   if (error) return <AppShell title="Hisobim" narrow><ErrorBox>{errorText(error)}</ErrorBox></AppShell>;
   if (isLoading || !data) return <AppShell title="Hisobim" narrow><Loading rows={4} /></AppShell>;
   const sub = data.subscription;
@@ -83,7 +85,7 @@ export default function AccountPage() {
             </>
           )}
         </section>
-        {sub?.readOnly && <ErrorBox>Obuna muddati tugagan: ma&apos;lumotlarni ko&apos;rish mumkin, yangi buyurtma yozib bo&apos;lmaydi. Quyida tarif tanlab, to&apos;lovni amalga oshiring.</ErrorBox>}
+        {sub?.readOnly && <ErrorBox>{iosApp ? "Obuna muddati tugagan: ma'lumotlarni ko'rish mumkin, yangi buyurtma yozib bo'lmaydi." : "Obuna muddati tugagan: ma'lumotlarni ko'rish mumkin, yangi buyurtma yozib bo'lmaydi. Quyida tarif tanlab, to'lovni amalga oshiring."}</ErrorBox>}
 
         {/* This month against the plan's limits */}
         <section className="rounded-2xl border bg-white p-4 sm:p-5">
@@ -98,7 +100,8 @@ export default function AccountPage() {
           </div>
         </section>
 
-        {/* Plans */}
+        {/* Plans (not in the iOS app: Apple allows selling there only through its in-app purchase) */}
+        {!iosApp && (<>
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-base font-bold">Tariflar</h2>
@@ -141,6 +144,8 @@ export default function AccountPage() {
           </div>
           <p className="text-xs text-mute">Tanlangan tarif keyingi to&apos;lovdan boshlab ulanadi. Click va Payme orqali to&apos;lov tez orada qo&apos;shiladi; hozircha to&apos;lash uchun <Link href="/help" className="underline">yordam bo&apos;limiga</Link> yozing.</p>
         </section>
+
+        </>)}
 
         {/* Payments */}
         <section className="rounded-2xl border bg-white p-4 sm:p-5">
