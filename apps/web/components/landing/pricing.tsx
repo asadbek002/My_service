@@ -5,20 +5,20 @@ import Link from 'next/link';
 import { Check } from 'lucide-react';
 import { publicGet } from '../../lib/api';
 import { money } from '../../lib/format';
-import { planLines, type PlanLimits } from '../../lib/plans';
+import { planLines } from '../../lib/plans';
+import type { Offer } from '../../lib/site';
 import { cn } from '../../lib/utils';
 
-type Plan = PlanLimits & { id: string; name: string; description: string | null; monthlyPrice: string; yearlyTotal: string };
-type Offer = { trialDays: number; yearlyFreeMonths: number; signupOpen: boolean; trialPlanId: string | null; plans: Plan[] };
 
 export const trialText = (days: number) => days % 30 === 0 ? `${days / 30} oy` : `${days} kun`;
 
 /** The plans exactly as the platform priced them (Platforma → Tariflar), monthly or for a year. */
-export function Pricing() {
-  const [offer, setOffer] = useState<Offer | null>(null);
+export function Pricing({ initial }: { initial?: Offer | null }) {
+  // Server-rendered prices when the page could fetch them (search engines read them); else load here.
+  const [offer, setOffer] = useState<Offer | null>(initial ?? null);
   const [failed, setFailed] = useState(false);
   const [period, setPeriod] = useState<'MONTH' | 'YEAR'>('MONTH');
-  useEffect(() => { publicGet<Offer>('/public/plans').then(setOffer).catch(() => setFailed(true)); }, []);
+  useEffect(() => { if (!initial) publicGet<Offer>('/public/plans').then(setOffer).catch(() => setFailed(true)); }, [initial]);
 
   if (failed) return <p className="rounded-xl border bg-white p-5 text-sm text-mute">Narxlarni yuklab bo&apos;lmadi. Sahifani yangilang yoki <Link href="/signup" className="font-semibold text-ink underline">demo versiyani oching</Link> — narxlar ilova ichida ham bor.</p>;
   if (!offer) return <div className="grid gap-4 md:grid-cols-3" aria-busy="true" aria-label="Yuklanmoqda">{[0, 1, 2].map(i => <div key={i} className="h-80 animate-pulse rounded-2xl bg-black/[0.04]" />)}</div>;

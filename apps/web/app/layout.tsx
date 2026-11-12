@@ -3,11 +3,17 @@ import type { ReactNode } from 'react';
 import { NoZoom, ServiceWorkerRegister, Translator } from './sw-register';
 import { earlyScript } from '../lib/i18n/early';
 import { QueryProvider } from '../components/query-provider';
+import { SITE_URL } from '../lib/site';
 import './styles.css';
 
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: 'MyService',
+  applicationName: 'MyService',
+  twitter: { card: 'summary_large_image' },
+  // Search Console / Yandex Webmaster: set the codes they give at build time (or verify by DNS).
+  verification: { google: process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION || undefined, yandex: process.env.NEXT_PUBLIC_YANDEX_VERIFICATION || undefined },
   description: "Ta'mirlash servisi uchun buyurtmalar, to'lovlar va hisobot",
   manifest: '/manifest.webmanifest',
   icons: { icon: '/icon.svg', apple: '/apple-touch-icon.png' },

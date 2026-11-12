@@ -49,7 +49,7 @@ export default defineConfig({
       url: WEB + '/login',
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
-      env: { PORT: '3000', HOSTNAME: '0.0.0.0' },
+      env: { PORT: '3000', HOSTNAME: '0.0.0.0', API_INTERNAL_URL: API },
     },
   ],
 });

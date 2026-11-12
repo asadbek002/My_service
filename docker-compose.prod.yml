@@ -71,8 +71,13 @@ services:
         NEXT_PUBLIC_API_URL: /api
         NEXT_PUBLIC_SUPPORT_TELEGRAM: ${NEXT_PUBLIC_SUPPORT_TELEGRAM:-myserviceuzz}
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:3003:3000"
+    # Host network like the API: the home page reads the prices from the API on the server
+    # (127.0.0.1:3004), so search engines see them. Still listens only on 127.0.0.1:3003.
+    network_mode: host
+    environment:
+      PORT: "3003"
+      HOSTNAME: 127.0.0.1
+      API_INTERNAL_URL: http://127.0.0.1:3004/api
     depends_on:
       - api
 

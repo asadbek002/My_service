@@ -18,7 +18,7 @@ Internet KT orqali, IP dinamik. Server vaqt zonasi `Asia/Tashkent`.
   ```
   Yangi migratsiya bo'lsa: `docker compose -f docker-compose.prod.yml run --rm api pnpm db:migrate`.
   Keyin tekshirish: `curl -s http://127.0.0.1:3004/api/health` va `bash ~/check-all.sh`.
-- **Portlar (o'zgartirma):** web `127.0.0.1:3003`, api `127.0.0.1:3004` (`network_mode: host`),
+- **Portlar (o‘zgartirma):** web `127.0.0.1:3003`, api `127.0.0.1:3004` (ikkalasi `network_mode: host`),
   Postgres `127.0.0.1:55432`, Redis `127.0.0.1:56379`. Qo'shni loyihalar band qilgan portlarni egallama:
   3000, 3001, 3002, 3007, 3010, 5432, 8000, 8443.
 - **nginx:** `/etc/nginx/sites-available/myserviceuz` (SSL certbot orqali, avtomatik yangilanadi):
