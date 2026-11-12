@@ -3,6 +3,9 @@ import type { PlanLimits } from './plans';
 /** The public address, for canonical links, the sitemap and structured data. */
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://myserviceuz.uz').replace(/\/$/, '');
 
+/** IndexNow key (Bing, Yandex): public on purpose, served as /<key>.txt from public/. */
+export const INDEXNOW_KEY = '43a812c94a5730805a8eb1b22b969e3d';
+
 export type PublicPlan = PlanLimits & { id: string; name: string; description: string | null; monthlyPrice: string; yearlyTotal: string };
 export type Offer = { trialDays: number; yearlyFreeMonths: number; signupOpen: boolean; trialPlanId: string | null; plans: PublicPlan[] };
 

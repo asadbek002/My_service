@@ -19,6 +19,9 @@ export const PATH: [string, string, string][] = [
 ];
 
 export const FAQ: [string, string][] = [
+  ["MyService qanday dastur va kimlar uchun?", "MyService — O'zbekistondagi telefon, noutbuk, planshet va maishiy texnika ta'mirlash ustaxonalari va servis markazlari uchun onlayn dastur (CRM). Qurilma qabuli va chek, ta'mir holati, mijozga SMS va Telegram xabar, to'lov, qarz, kafolat va hisobotni bitta joyda yuritadi. O'zbek va rus tilida ishlaydi."],
+  ["Narxi qancha?", "Birinchi 30 kun bepul, bank kartasi kerak emas. Keyin ustaxona hajmiga qarab oylik tarif tanlanadi; narxlar shu sahifadagi «Narxlar» bo'limida. Yillik to'lovda 2 oy bepul."],
+  ["Mijozga xabar qanday boradi?", "Qurilma «Tayyor» qilinganda mijozga avtomatik xabar ketadi: Telegram botga ulangan bo'lsa Telegramga, bo'lmasa SMS. Xabarda buyurtma holatini ko'rish havolasi bo'ladi."],
   ['Kompyuter shartmi?', "Yo'q. Dastur telefon, planshet va kompyuterda ishlaydi. Barcha qurilmalarda ma'lumotlar bir xil."],
   ['Chek printeri shartmi?', "Shart emas. Printer bo'lsa, chek 58 yoki 80 mm termoprinterda chop etiladi. Printer bo'lmasa, chek rasm ko'rinishida mijozning Telegramiga yuboriladi."],
   ['Xodimlarim ham foydalana oladimi?', "Ha. Har bir xodimga alohida login va parol beriladi. Kim qaysi ishni bajargani tarixda ko'rinadi."],

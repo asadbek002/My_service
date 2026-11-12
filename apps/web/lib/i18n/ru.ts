@@ -1,5 +1,11 @@
 /* Russian for the Uzbek interface: generated from the strings on screen, keys are the Uzbek text as written in the code. */
 export const exact: Record<string, string> = {
+  "MyService qanday dastur va kimlar uchun?": "Что такое MyService и для кого он?",
+  "MyService — O'zbekistondagi telefon, noutbuk, planshet va maishiy texnika ta'mirlash ustaxonalari va servis markazlari uchun onlayn dastur (CRM). Qurilma qabuli va chek, ta'mir holati, mijozga SMS va Telegram xabar, to'lov, qarz, kafolat va hisobotni bitta joyda yuritadi. O'zbek va rus tilida ishlaydi.": "MyService — онлайн-программа (CRM) для мастерских и сервисных центров по ремонту телефонов, ноутбуков, планшетов и бытовой техники в Узбекистане. Приём устройств и чек, статус ремонта, SMS и Telegram клиенту, оплаты, долги, гарантии и отчёты — в одном месте. Работает на узбекском и русском.",
+  "Narxi qancha?": "Сколько стоит?",
+  "Birinchi 30 kun bepul, bank kartasi kerak emas. Keyin ustaxona hajmiga qarab oylik tarif tanlanadi; narxlar shu sahifadagi «Narxlar» bo'limida. Yillik to'lovda 2 oy bepul.": "Первые 30 дней бесплатно, банковская карта не нужна. Затем выбирается месячный тариф по размеру мастерской; цены — в разделе «Цены» на этой странице. При оплате за год 2 месяца бесплатно.",
+  "Mijozga xabar qanday boradi?": "Как клиент получает сообщение?",
+  "Qurilma «Tayyor» qilinganda mijozga avtomatik xabar ketadi: Telegram botga ulangan bo'lsa Telegramga, bo'lmasa SMS. Xabarda buyurtma holatini ko'rish havolasi bo'ladi.": "Когда устройство отмечено «Готов», клиенту автоматически уходит сообщение: в Telegram, если он подключён к боту, иначе SMS. В сообщении есть ссылка на статус заказа.",
   "O'z SMS matningiz faqat o'z Eskiz akkauntingiz ulangan bo'lsa ishlatiladi: uni avval Eskiz kabinetida moderatsiyadan o'tkazing. MyService orqali yuborilganda doim standart matn ketadi.": "Свой текст SMS используется, только если подключён ваш собственный аккаунт Eskiz: сначала пройдите с ним модерацию в кабинете Eskiz. Через MyService всегда уходит стандартный текст.",
   "Tizimga kirdi": "Вошёл в систему",
   "Tizimdan chiqdi": "Вышел из системы",

@@ -31,12 +31,18 @@ test.describe('SEO', () => {
     const robots = await (await request.get('/robots.txt')).text();
     expect(robots).toContain('Sitemap: https://myserviceuz.uz/sitemap.xml');
     expect(robots).toMatch(/Allow: \/ru\$/);
+    expect(robots).toContain('User-Agent: GPTBot');
+    expect(robots).toContain('User-Agent: PerplexityBot');
+    const key = /INDEXNOW_KEY = '([0-9a-f]{32})'/.exec(require('node:fs').readFileSync(require('node:path').join(__dirname, '../../web/lib/site.ts'), 'utf8'))![1]!;
+    expect(robots).toContain(`Allow: /${key}.txt`);
+    expect(await (await request.get(`/${key}.txt`)).text()).toBe(key);
     const llms = await request.get('/llms.txt');
     expect(llms.headers()['content-type']).toContain('text/plain');
     const text = await llms.text();
     expect(text).toContain('# MyService');
     expect(text).toMatch(/Pro: 149 000 so'm\/oy/);
     expect(text).toContain('Частые вопросы');
+    expect(text).toContain('Narxi qancha?');
     const og = await request.get('/opengraph-image');
     expect(og.headers()['content-type']).toBe('image/png');
   });
