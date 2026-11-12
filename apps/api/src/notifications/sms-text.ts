@@ -51,17 +51,3 @@ export function readySms(service: string, device: string, due: string | null, li
   }
   return build(s.trim(), d.trim());
 }
-
-/**
- * "Received" for a customer who is not in Telegram yet: one SMS with the order's bot link. Pressing Start in
- * the bot connects them, so "ready" and the rest come there free instead of by SMS.
- *   Mobile Fix: Samsung A60 qabul qilindi. Telegramda kuzating: https://t.me/…?start=…
- */
-export function receivedSms(service: string, device: string, link: string) {
-  const build = (s: string, d: string) => gsm7(`${s}: ${d} qabul qilindi. Telegramda kuzating: ${link}`).replace(/\s+/g, ' ');
-  let s = gsm7(service).trim(), d = gsm7(device).trim();
-  while (smsParts(build(s, d)) > 1 && (d.length > 8 || s.length > 8)) {
-    if (d.length >= s.length) d = d.slice(0, -1); else s = s.slice(0, -1);
-  }
-  return build(s.trim(), d.trim());
-}

@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { gsm7, isGsm7, readySms, receivedSms, smsParts } = require('../dist/notifications/sms-text');
+const { gsm7, isGsm7, readySms, smsParts } = require('../dist/notifications/sms-text');
 
 const link = 'https://myserviceuz.uz/track/' + 'A'.repeat(43);
 
@@ -31,14 +31,5 @@ test('codes name the resource and the purpose, as Eskiz moderation requires', ()
     assert.ok(text.includes(purpose), text);
     assert.equal(smsParts(text), 1);
     assert.equal(isGsm7(text), true);
-  }
-});
-
-test('"received" with the bot link is always one SMS and keeps its fixed words', () => {
-  const link = 'https://t.me/a_rather_long_service_name_bot?start=' + 'A'.repeat(43);
-  for (const [service, device] of [['Mobile Fix', 'Samsung A60'], ["Chilonzor ta‘mirlash servis markazi Mobile Fix", 'Lenovo IdeaPad Gaming 3 15ACH6 82K2027QRK']]) {
-    const text = receivedSms(service, device, link);
-    assert.equal(smsParts(text), 1, text); assert.ok(isGsm7(text));
-    assert.match(text, / qabul qilindi\. Telegramda kuzating: https:\/\/t\.me\/\S+$/);
   }
 });
