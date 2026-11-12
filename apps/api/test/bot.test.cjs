@@ -134,6 +134,9 @@ test('bot: customers, staff, admins, alerts and receipt photo', async () => {
   assert.equal(lastTo(staffChat).text.split('\n\n').length, 1);
   await tg(staffChat, { text: '📊 Bugungi hisobot' });
   assert.ok(lastTo(staffChat).text.includes('Qabul qilindi: <b>1</b>'), lastTo(staffChat).text);
+  // Staff work in the bot; "my orders" is a customer's button and is not on their keyboard.
+  const staffButtons = lastTo(staffChat).reply_markup.keyboard.flat().map(b => b.text);
+  assert.ok(staffButtons.includes('📊 Bugungi hisobot')); assert.ok(!staffButtons.includes('📦 Buyurtmalarim'));
 
   // Worker: staff hear about a new order; the customer gets "received" by Telegram only, never SMS.
   const { Notifications } = require('../dist/notifications/notifications.module.js');
@@ -198,6 +201,7 @@ test('bot: customers, staff, admins, alerts and receipt photo', async () => {
   await tg(adminChat, { text: '/start ' + admin.url.split('start=')[1] });
   await tg(adminChat, { text: '📈 Platforma' });
   assert.ok(lastTo(adminChat).text.includes('MyService platforma'));
+  assert.ok(!lastTo(adminChat).reply_markup.keyboard.flat().some(b => b.text === '📦 Buyurtmalarim'), 'no customer button for the platform owner');
   assert.equal((await ok(await request('/platform/bot', { token: platform }))).adminLinked, true);
   // A customer cannot read platform numbers.
   await tg(customerChat, { text: '/stats' });

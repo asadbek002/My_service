@@ -20,3 +20,6 @@ backups/
 # Playwright output
 test-results/
 playwright-report/
+
+# Intake photos (customer devices): never commit
+uploads/

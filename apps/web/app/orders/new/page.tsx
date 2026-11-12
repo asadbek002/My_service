@@ -9,7 +9,8 @@ import { useCurrentBranch } from '../../../lib/branches';
 import { BranchPicker } from '../../../components/branch-picker';
 import { errorText } from '../../../lib/errors';
 import { fullName, normalizePhone, phone as fmtPhone, som } from '../../../lib/format';
-import { useOrderMutation, type Customer, type Device } from '../../../lib/queries';
+import { useDefaults, useOrderMutation, type Customer, type Device } from '../../../lib/queries';
+import { PhotoPicker, uploadPhotos } from '../../../components/order-photos';
 import { AppShell, ActionBar } from '../../../components/layout/app-shell';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -110,13 +111,19 @@ function NewOrder() {
     return '';
   }, [current.multi, branchId, phoneValid, customer, firstName, newDevice, brand, model, complaint]);
 
+  const { data: defaults } = useDefaults();
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (missing) { setError(missing); return; }
     setError('');
     try {
       const order = await create.mutateAsync(undefined);
-      router.replace('/orders/' + order.id + '?new=1');
+      // The order is saved first; its photos follow (a failed photo never loses the order).
+      let failed = 0;
+      if (photos.length) { setUploading(true); failed = await uploadPhotos(order.id, photos); }
+      router.replace('/orders/' + order.id + '?new=1' + (failed ? '&photos_failed=' + failed : ''));
     } catch (err) {
       setError(errorText(err));
     }
@@ -212,6 +219,12 @@ function NewOrder() {
           <Textarea value={complaint} onChange={e => setComplaint(e.target.value)} placeholder="Masalan: ekran singan, zaryad olmaydi" rows={3} />
         </Section>
 
+        {defaults?.intakePhotos && (
+          <Section title="Qurilma holati" hint="Tirnalgan, singan joylarini rasmga oling">
+            <PhotoPicker photos={photos} onChange={setPhotos} />
+          </Section>
+        )}
+
         <Section title="Narx" hint="Keyin ham o'zgartirsa bo'ladi">
           <div className="grid grid-cols-2 gap-3">
             <label className="grid gap-1.5"><span className="text-sm font-medium">Usta haqi</span><MoneyInput value={labor} onChange={setLabor} /></label>
@@ -230,7 +243,7 @@ function NewOrder() {
             <span className="text-[11px] text-mute">Jami</span>
             <span className="num font-mono text-[15px] font-semibold leading-tight">{total > 0 ? som(total) : '—'}</span>
           </div>
-          <Button type="submit" variant="brand" size="lg" disabled={create.isPending}>{create.isPending ? 'Saqlanmoqda…' : 'Qabul qilish'}</Button>
+          <Button type="submit" variant="brand" size="lg" disabled={create.isPending || uploading}>{uploading ? 'Rasmlar yuklanmoqda…' : create.isPending ? 'Saqlanmoqda…' : 'Qabul qilish'}</Button>
         </ActionBar>
       </form>
     </AppShell>

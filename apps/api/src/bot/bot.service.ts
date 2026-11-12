@@ -31,10 +31,11 @@ const customerKeyboard: Keyboard = { keyboard: [[{ text: BTN.myOrders }, { text:
 // Before sharing a phone the contact button still works: anyone may reach the service.
 const shareKeyboard: Keyboard = { keyboard: [[{ text: BTN.share, request_contact: true }], [{ text: BTN.tg }, { text: BTN.ig }], [{ text: BTN.addr }, { text: BTN.call }], [{ text: BTN.help }]], resize_keyboard: true };
 const staffKeyboard = (admin: boolean): Keyboard => ({
-  keyboard: [[{ text: BTN.today }, { text: BTN.ready }], [{ text: BTN.search }, { text: BTN.myOrders }], ...(admin ? [[{ text: BTN.platform }]] : [])],
+  // Staff and the platform owner work here: "my orders" is a customer's button, not theirs.
+  keyboard: [[{ text: BTN.today }, { text: BTN.ready }], [{ text: BTN.search }, { text: BTN.help }], ...(admin ? [[{ text: BTN.platform }]] : [])],
   resize_keyboard: true,
 });
-const adminKeyboard: Keyboard = { keyboard: [[{ text: BTN.platform }], [{ text: BTN.myOrders }, { text: BTN.help }]], resize_keyboard: true };
+const adminKeyboard: Keyboard = { keyboard: [[{ text: BTN.platform }], [{ text: BTN.help }]], resize_keyboard: true };
 
 /**
  * One platform bot for everyone:
@@ -304,6 +305,7 @@ export class BotService {
 
   private async help(chatId: string) {
     const w = await this.who(chatId);
+    if (w.admin && !w.users.length) return `<b>Platforma egasi uchun</b>\n${BTN.platform} — servislar, obunalar va tushum\nYangi servislar va to‘lovlar haqida xabarlar shu yerga keladi\n/stop — botni o‘chirish`;
     if (w.users.length) return `<b>Xodim uchun</b>\n${BTN.today} — bugungi kassa va buyurtmalar\n${BTN.ready} — olib ketilmagan qurilmalar\nRaqam, telefon yoki ism yozing — buyurtmani topaman\n/stop — botni o‘chirish`;
     return `${BTN.myOrders} — ta’mirdagi va oldingi qurilmalaringiz\n${BTN.warranty} — kafolat muddati\n${BTN.tg} / ${BTN.ig} — servis ijtimoiy tarmoqlari\n${BTN.addr} — manzil va xarita\n${BTN.call} — qo’ng’iroq qilish\n/stop — xabarlarni o’chirish`;
   }

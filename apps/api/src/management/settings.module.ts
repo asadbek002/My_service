@@ -56,12 +56,12 @@ class SettingsController{
  // Non-sensitive defaults every staff member needs (expense form, delivery form, receipt).
  @Get('defaults')
  async defaults(@CurrentActor()a:Actor){
-  const rows=await this.db.organizationSetting.findMany({where:{organizationId:a.organizationId,key:{in:['warranty_terms','expense_categories','receipt']}}});
+  const rows=await this.db.organizationSetting.findMany({where:{organizationId:a.organizationId,key:{in:['warranty_terms','expense_categories','receipt','photos']}}});
   const value=(key:string)=>rows.find(r=>r.key===key)?.value as Record<string,unknown>|undefined;
   const items=value('expense_categories')?.items;
   const categories=Array.isArray(items)?items.filter((x):x is string=>typeof x==='string'&&x.trim().length>0):[];
   const text=value('warranty_terms')?.text;
-  return{warrantyTerms:typeof text==='string'?text:'',expenseCategories:categories.length?categories:['RENT','SALARY','DELIVERY','ADVERTISEMENT','UTILITY','TRANSPORT','PURCHASE','OTHER'],receiptWidth:value('receipt')?.width===58?58:80};
+  return{warrantyTerms:typeof text==='string'?text:'',expenseCategories:categories.length?categories:['RENT','SALARY','DELIVERY','ADVERTISEMENT','UTILITY','TRANSPORT','PURCHASE','OTHER'],receiptWidth:value('receipt')?.width===58?58:80,intakePhotos:value('photos')?.enabled===true};
  }
  @Get('telegram')@Permissions('settings.manage')
  async telegram(@CurrentActor()a:Actor){
@@ -110,7 +110,7 @@ class SettingsController{
  general(@CurrentActor()a:Actor){return this.db.organizationSetting.findMany({where:{organizationId:a.organizationId,key:{not:'logo'}}})}
  @Put('general/:key')@Permissions('settings.manage')
  async setting(@CurrentActor()a:Actor,@Param('key')key:string,@Body()d:SettingsDto){
-  if(!['general','expense_categories','warranty_terms','receipt','bot_contact'].includes(key))throw new BadRequestException('Unknown setting');
+  if(!['general','expense_categories','warranty_terms','receipt','bot_contact','photos'].includes(key))throw new BadRequestException('Unknown setting');
   if(JSON.stringify(d.value).length>16000)throw new BadRequestException('Setting too large');
   const result=await this.db.organizationSetting.upsert({where:{organizationId_key:{organizationId:a.organizationId,key}},create:{organizationId:a.organizationId,key,value:d.value as Prisma.InputJsonObject},update:{value:d.value as Prisma.InputJsonObject}});
   await this.db.auditLog.create({data:{organizationId:a.organizationId,actorId:a.userId,action:'SETTING_CHANGED',entityId:key}});return result;

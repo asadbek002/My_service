@@ -1,5 +1,27 @@
 /* Russian for the Uzbek interface: generated from the strings on screen, keys are the Uzbek text as written in the code. */
 export const exact: Record<string, string> = {
+  "Qabulda rasm olish o'chirilgan. Uni Sozlamalarda yoqish mumkin.": "Фото при приёме выключено. Его можно включить в Настройках.",
+  "Rasm juda katta. Boshqa rasm tanlang.": "Изображение слишком большое. Выберите другое.",
+  "Faqat rasm (JPG, PNG yoki WebP) yuklash mumkin.": "Можно загружать только изображения (JPG, PNG или WebP).",
+  "Bitta buyurtmaga 10 tadan ortiq rasm qo'shib bo'lmaydi.": "К одному заказу нельзя добавить больше 10 фото.",
+  "Tirnalgan, singan joylarini rasmga oling": "Сфотографируйте царапины и повреждения",
+  "Rasmga olish": "Сфотографировать",
+  "Yana qo'shish": "Добавить ещё",
+  "Rasmni olib tashlash": "Убрать фото",
+  "Rasmlar yuklanmoqda…": "Загрузка фото…",
+  "Qabul paytidagi holati": "Состояние при приёме",
+  "Qurilmaning tirnalgan, singan joylarini rasmga olib qo'ying — keyin bahs bo'lmaydi.": "Сфотографируйте царапины и повреждения устройства — потом не будет споров.",
+  "Bu rasm o'chirilsinmi?": "Удалить это фото?",
+  "Qabul rasmi": "Фото при приёме",
+  "Qabulda qurilma rasmi": "Фото устройства при приёме",
+  "Qabul qilishda qurilmaning holatini (tirnalgan, singan joylarini) rasmga olib saqlaysiz. Keyin mijoz bilan bahs bo'lmaydi.": "При приёме вы фотографируете состояние устройства (царапины, повреждения). Потом не будет споров с клиентом.",
+  "Yoqilgan": "Включено",
+  "O'chirilgan": "Выключено",
+  "Yangi qabulda «Qurilma holati» bo'limi chiqadi": "В новом приёме появится раздел «Состояние устройства»",
+  "Qabul sahifasida rasm bo'limi ko'rinmaydi": "На странице приёма нет раздела с фото",
+  "Rasm olish o'chirildi": "Фото при приёме выключено",
+  "Rasm olish yoqildi": "Фото при приёме включено",
+  "Har bir buyurtmaga 10 tagacha rasm. Rasmlar buyurtma yopilganidan keyin 180 kun saqlanadi. O'chirsangiz, oldingi rasmlar joyida qoladi.": "До 10 фото на заказ. Фото хранятся 180 дней после закрытия заказа. Если выключить, прежние фото останутся.",
   "MyService qanday dastur va kimlar uchun?": "Что такое MyService и для кого он?",
   "MyService — O'zbekistondagi telefon, noutbuk, planshet va maishiy texnika ta'mirlash ustaxonalari va servis markazlari uchun onlayn dastur (CRM). Qurilma qabuli va chek, ta'mir holati, mijozga SMS va Telegram xabar, to'lov, qarz, kafolat va hisobotni bitta joyda yuritadi. O'zbek va rus tilida ishlaydi.": "MyService — онлайн-программа (CRM) для мастерских и сервисных центров по ремонту телефонов, ноутбуков, планшетов и бытовой техники в Узбекистане. Приём устройств и чек, статус ремонта, SMS и Telegram клиенту, оплаты, долги, гарантии и отчёты — в одном месте. Работает на узбекском и русском.",
   "Narxi qancha?": "Сколько стоит?",
@@ -1043,6 +1065,10 @@ export const exact: Record<string, string> = {
 
 /** Text with values in it: {0}, {1}… stand for the values, which are translated on their own when they are known words. */
 export const patterns: [string, string][] = [
+  ["{0} / {1} ta rasm", "{0} / {1} фото"],
+  ["{0} ta rasm yuklanmadi. Pastdagi «Qabul paytidagi holati» bo'limidan qayta qo'shing.", "Не загрузилось фото: {0}. Добавьте их снова в разделе «Состояние при приёме» ниже."],
+  ["Rasm {0}", "Фото {0}"],
+  ["Qabul rasmi, {0}", "Фото при приёме, {0}"],
   ["Yillik · {0} oy bepul", "Ежегодно · {0} мес. бесплатно"],
   ["{0} oy bepul", "{0} мес. бесплатно"],
   ["{0} kun bepul", "{0} дн. бесплатно"],

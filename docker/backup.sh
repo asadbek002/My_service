@@ -61,5 +61,15 @@ if [ -n "${BACKUP_RCLONE_REMOTE:-}" ] && command -v rclone >/dev/null 2>&1; then
   rclone copy "$dir" "$BACKUP_RCLONE_REMOTE/$stamp" && echo "copied to $BACKUP_RCLONE_REMOTE" || alert "rclone nusxalamadi"
 fi
 
-find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -mtime +"$KEEP_DAYS" -exec rm -rf -- {} +
+# Intake photos (files in ./uploads): one mirror next to the dumps (no daily copies, photos only grow),
+# and off the server through rclone when it is set up. Too big for Telegram.
+if [ -d uploads ]; then
+  mkdir -p "$BACKUP_DIR/uploads"
+  cp -a -u uploads/. "$BACKUP_DIR/uploads/" && echo "photos mirrored: $(du -sh uploads | cut -f1)" || alert "rasmlar nusxalanmadi"
+  if [ -n "${BACKUP_RCLONE_REMOTE:-}" ] && command -v rclone >/dev/null 2>&1; then
+    rclone copy uploads "$BACKUP_RCLONE_REMOTE/uploads" && echo "photos copied to $BACKUP_RCLONE_REMOTE" || alert "rasmlar rclone bilan nusxalanmadi"
+  fi
+fi
+
+find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -name '20*' -mtime +"$KEEP_DAYS" -exec rm -rf -- {} +
 trap - EXIT

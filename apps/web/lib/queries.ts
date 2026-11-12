@@ -29,7 +29,7 @@ export type Dashboard = {
   recent: (Pick<Order, 'id' | 'number' | 'status' | 'total' | 'createdAt'> & { customer: { firstName: string; phone: string }; device: { brand: string; model: string } })[];
   todayCash: string; monthCash: string; debt: string; revenueByDay: { day: string; revenue: string }[];
 };
-export type Defaults = { warrantyTerms: string; expenseCategories: string[]; receiptWidth: 58 | 80 };
+export type Defaults = { warrantyTerms: string; expenseCategories: string[]; receiptWidth: 58 | 80; intakePhotos: boolean };
 
 /** What was paid on an order: payments minus refunds. */
 export function paidOf(payments: Pick<Payment, 'kind' | 'amount'>[]) {

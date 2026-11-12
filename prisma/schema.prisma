@@ -312,6 +312,7 @@ model Order {
   repairActions RepairAction[]
   commissions CommissionEntry[]
   warranty Warranty?
+  photos OrderPhoto[]
   parentOrderId String?
   warrantyClaims WarrantyClaim[]
   attachments Attachment[]
@@ -771,4 +772,17 @@ model SignupAttempt {
   updatedAt      DateTime  @updatedAt
 
   @@index([updatedAt])
+}
+
+/// A picture of the device taken at intake (its condition), stored as a file under UPLOAD_DIR.
+model OrderPhoto {
+  id String @id @default(cuid())
+  organizationId String
+  orderId String
+  mime String
+  size Int
+  createdById String?
+  createdAt DateTime @default(now())
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  @@index([organizationId, orderId])
 }

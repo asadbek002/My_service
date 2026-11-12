@@ -39,6 +39,7 @@ export default function Settings() {
           <OwnBotBlock />
           <OrderAlerts />
           <RolesBlock />
+          <PhotosBlock enabled={value('photos').enabled === true} />
           <WarrantyForm terms={str(value('warranty_terms').text)} />
           <ExpenseCategories items={value('expense_categories').items} />
           <ReadyMessage />
@@ -112,6 +113,27 @@ function ServiceForm({ general, receipt }: { general: Record<string, unknown>; r
         <ErrorBox>{state.error}</ErrorBox><Notice>{state.ok}</Notice>
         <Button disabled={busy} className="sm:w-fit">Saqlash</Button>
       </form>
+    </Block>
+  );
+}
+
+/** Intake photos: off by default; a service that wants them turns them on here. */
+function PhotosBlock({ enabled }: { enabled: boolean }) {
+  const { save, busy, state } = useSave();
+  return (
+    <Block id="photos" title="Qabulda qurilma rasmi" hint="Qabul qilishda qurilmaning holatini (tirnalgan, singan joylarini) rasmga olib saqlaysiz. Keyin mijoz bilan bahs bo'lmaydi.">
+      <div className="grid gap-3">
+        <label className="flex items-center justify-between gap-4 rounded-xl border px-4 py-3">
+          <span className="text-sm"><b className="block">{enabled ? 'Yoqilgan' : "O'chirilgan"}</b><span className="text-mute">{enabled ? "Yangi qabulda «Qurilma holati» bo'limi chiqadi" : 'Qabul sahifasida rasm bo\'limi ko\'rinmaydi'}</span></span>
+          <button type="button" role="switch" aria-checked={enabled} aria-label="Qabulda qurilma rasmi" disabled={busy}
+            onClick={() => save('photos', { enabled: !enabled }, enabled ? "Rasm olish o'chirildi" : 'Rasm olish yoqildi')}
+            className={cn('relative h-7 w-12 shrink-0 rounded-full transition-colors', enabled ? 'bg-st-tayyor' : 'bg-black/15')}>
+            <span className={cn('absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all', enabled ? 'left-[22px]' : 'left-0.5')} />
+          </button>
+        </label>
+        <p className="text-xs text-mute">Har bir buyurtmaga 10 tagacha rasm. Rasmlar buyurtma yopilganidan keyin 180 kun saqlanadi. O&apos;chirsangiz, oldingi rasmlar joyida qoladi.</p>
+        <ErrorBox>{state.error}</ErrorBox><Notice>{state.ok}</Notice>
+      </div>
     </Block>
   );
 }

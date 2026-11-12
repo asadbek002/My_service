@@ -9,7 +9,8 @@ import { api } from '../../../lib/api';
 import { errorText } from '../../../lib/errors';
 import { date, dateTime, daysSince, deviceName, fullName, idempotencyKey, money, phone, PAYMENT_METHODS, som, initials } from '../../../lib/format';
 import { LATE_AFTER, Ruler, rulerKind, type RulerKind } from '../../../components/ui/ruler';
-import { can, post, useMe, useOrder, useOrderMutation, usePaymentMethods, type Me, type OrderDetail, type Payment } from '../../../lib/queries';
+import { OrderPhotos } from '../../../components/order-photos';
+import { can, post, useDefaults, useMe, useOrder, useOrderMutation, usePaymentMethods, type Me, type OrderDetail, type Payment } from '../../../lib/queries';
 import { cn } from '../../../lib/utils';
 import { useCurrentBranch } from '../../../lib/branches';
 import { AppShell, ActionBar } from '../../../components/layout/app-shell';
@@ -30,7 +31,10 @@ export default function Page() {
 
 function OrderPage() {
   const { id } = useParams<{ id: string }>();
-  const justCreated = useSearchParams().get('new') === '1';
+  const params = useSearchParams();
+  const justCreated = params.get('new') === '1';
+  const photosFailed = Number(params.get('photos_failed') ?? 0);
+  const { data: defaults } = useDefaults();
   const { data: me } = useMe();
   const { data: order, isLoading, error: loadError } = useOrder(id);
   const [panel, setPanel] = useState<Panel>(null);
@@ -98,6 +102,8 @@ function OrderPage() {
 
         <Payments order={order} canRefund={can(me, 'payments.refund')} />
         <OrderParts orderId={id} canAdd={canEdit && isOpen} canEdit={canEdit} owner={owner} />
+        {photosFailed > 0 && <ErrorBox>{`${photosFailed} ta rasm yuklanmadi. Pastdagi «Qabul paytidagi holati» bo'limidan qayta qo'shing.`}</ErrorBox>}
+        <OrderPhotos orderId={id} canAdd={!!defaults?.intakePhotos && can(me, 'orders.create') && order.status !== 'CANCELLED'} canDelete={canEdit} />
         {order.warranty && (
           <section className="flex gap-3 rounded-lg border bg-white p-4">
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />

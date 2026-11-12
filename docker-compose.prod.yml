@@ -50,10 +50,14 @@ services:
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
       PORT: "3004"
       API_HOST: 127.0.0.1
+      UPLOAD_DIR: /app/uploads
       # The home network has an IPv6 address with no route out, and Node's dual-stack racing gives
       # each address 250 ms, too short for Telegram's servers in Europe, so fetch timed out
       # (ETIMEDOUT) while curl -4 worked. IPv4 first, one plain connect.
       NODE_OPTIONS: --dns-result-order=ipv4first --no-network-family-autoselection
+    # Intake photos: files on the host in ./uploads (backed up by docker/backup.sh).
+    volumes:
+      - ./uploads:/app/uploads
     # In .env: DATABASE_URL=...@127.0.0.1:55432/..., REDIS_URL=redis://:<password>@127.0.0.1:56379
     # (unusual ports so they never collide with a PostgreSQL/Redis installed on the host itself).
     depends_on:
