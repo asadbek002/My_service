@@ -321,6 +321,8 @@ model Order {
   @@unique([organizationId, id])
   @@unique([organizationId, number])
   @@index([organizationId, branchId, status])
+  // Lists and the dashboard read the newest orders first.
+  @@index([organizationId, createdAt])
 }
 model OrderAssignment {
   organizationId String
@@ -428,6 +430,8 @@ model Payment {
   order Order @relation(fields: [organizationId,orderId], references: [organizationId,id], onDelete: Restrict)
   @@unique([organizationId,idempotencyKey])
   @@index([organizationId,orderId])
+  // Cash of today / this month on the dashboard and in reports.
+  @@index([organizationId,createdAt])
 }
 model RepairSession {
   id String @id @default(cuid())

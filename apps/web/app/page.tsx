@@ -2,9 +2,10 @@ import type { Metadata } from 'next';
 import { HomePage } from '../components/landing/home-page';
 import { serverOffer } from '../lib/site';
 
-// Rendered per request (the prices are cached for 10 minutes in serverOffer), never baked at build time
-// when the API is not there.
-export const dynamic = 'force-dynamic';
+// The same page for everyone: built once, then rebuilt in the background at most every 5 minutes, so a crowd
+// of visitors costs nothing (rendering it per request took ~15 ms of CPU each). Prices come from serverOffer;
+// when the API is not reachable (build time) the browser loads them, as before.
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: { absolute: "MyService — ta'mirlash ustaxonasi va servis markazi uchun dastur (CRM)" },

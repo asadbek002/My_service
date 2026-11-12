@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
+import { debtorIds } from './debt';
 import { CustomerDto, DeviceDto, OrderDto, PriceDto, ComplaintDto, StatusDto, PaymentDto, RefundDto, DeliverDto, FixDeliveryDto, CustomerUpdateDto } from './orders.dto';
 
 // Simplified flow: RECEIVED → IN_REPAIR → READY → DELIVERED, CANCELLED from any open state.
@@ -165,11 +166,17 @@ class OrdersController {
   constructor(private readonly db: Database) {}
   @Get() @Permissions('orders.view')
   async list(@CurrentActor() actor: Actor, @Query('status') status?: string, @Query('branch') branch?: string) {
-    const include = { customer: true, device: true, branch: { select: { name: true } }, payments: { select: { kind: true, amount: true } } } as const;
+    // Only what the lists show: 200 orders with every column of the customer and device cost more to send than to find.
+    const include = {
+      customer: { select: { id: true, firstName: true, lastName: true, phone: true, telegramChatId: true } },
+      device: { select: { id: true, category: true, brand: true, model: true, imei: true } },
+      branch: { select: { name: true } }, payments: { select: { kind: true, amount: true } },
+    } as const;
     if (status === 'DEBT') {
       // Handed over without full payment: delivered orders whose payments are below the total.
-      const delivered = await this.db.order.findMany({ where: { ...orderScope(actor, branch), status: 'DELIVERED' }, include, orderBy: { createdAt: 'desc' }, take: 2000 });
-      return delivered.filter(o => o.total.greaterThan(o.payments.reduce((s, p) => p.kind === 'REFUND' ? s.minus(p.amount) : s.plus(p.amount), new Prisma.Decimal(0)))).slice(0, 200);
+      const scope = orderScope(actor, branch);
+      const ids = await debtorIds(this.db, scope, { only: 'DELIVERED' }, 200);
+      return this.db.order.findMany({ where: { ...scope, id: { in: ids } }, include, orderBy: { createdAt: 'desc' } });
     }
     const filter = status === 'open' ? { status: { in: OPEN_STATUSES } } : status && /^[A-Z_]{3,30}$/.test(status) ? { status } : {};
     return this.db.order.findMany({ where: { ...orderScope(actor, branch), ...filter }, include, orderBy: { createdAt: 'desc' }, take: 200 });

@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
+import { debtorIds, debtTotal } from '../orders/debt';
 import { OPEN_STATUSES, defaultBranch, nextOrderNumber, orderScope, record } from '../orders/orders.module';
 
 class ExpenseDto {
@@ -51,21 +52,21 @@ class ReportsController {
   async dashboard(@CurrentActor() a: Actor, @Query('branch') branch?: string) {
     const scope = orderScope(a, branch);
     const today = startOfDay(tashkentDay()), monthStart = startOfDay(tashkentDay().slice(0, 8) + '01'), week = new Date(today.getTime() - 6 * 86400000);
-    const [groups, recent, open, payments] = await Promise.all([
+    const [groups, recent, debt, payments, todayReceived] = await Promise.all([
       this.db.order.groupBy({ by: ['status'], where: { ...scope, status: { in: OPEN_STATUSES } }, _count: true }),
       this.db.order.findMany({ where: scope, include: { customer: { select: { firstName: true, phone: true } }, device: { select: { brand: true, model: true } } }, orderBy: { createdAt: 'desc' }, take: 8 }),
       // Debt = handed over but not fully paid (unpaid work still in the shop is not a debt yet).
-      this.db.order.findMany({ where: { ...scope, status: 'DELIVERED' }, select: { total: true, payments: { select: { kind: true, amount: true } } } }),
+      debtTotal(this.db, scope, { only: 'DELIVERED' }),
       this.db.payment.findMany({ where: { organizationId: a.organizationId, order: scope, createdAt: { gte: monthStart < week ? monthStart : week } }, select: { kind: true, amount: true, createdAt: true } }),
+      this.db.order.count({ where: { ...scope, createdAt: { gte: today } } }),
     ]);
-    const debt = open.reduce((s, o) => { const left = o.total.minus(paidOf(o.payments)); return left.greaterThan(0) ? s.plus(left) : s; }, new Prisma.Decimal(0));
     const cashByDay = Array.from({ length: 7 }, (_, i) => {
       const day = new Date(week.getTime() + i * 86400000), next = new Date(day.getTime() + 86400000);
       return { day: tashkentDay(day), revenue: paidOf(payments.filter(p => p.createdAt >= day && p.createdAt < next)) };
     });
     return {
       statuses: groups.map(g => ({ status: g.status, count: g._count })),
-      todayReceived: await this.db.order.count({ where: { ...scope, createdAt: { gte: today } } }),
+      todayReceived,
       recent,
       todayCash: paidOf(payments.filter(p => p.createdAt >= today)),
       monthCash: paidOf(payments.filter(p => p.createdAt >= monthStart)),
@@ -88,7 +89,7 @@ class ReportsController {
         tx.payment.groupBy({ by: ['kind'], where: { organizationId: a.organizationId, createdAt: period, order: scope }, _sum: { amount: true } }),
         tx.expense.groupBy({ by: ['category'], where: { organizationId: a.organizationId, createdAt: period, ...expenseBranch }, _sum: { amount: true } }),
         tx.order.count({ where: { ...scope, createdAt: period } }),
-        tx.order.findMany({ where: { ...scope, status: { not: 'CANCELLED' } }, include: { customer: { select: { firstName: true, lastName: true, phone: true } }, device: { select: { brand: true, model: true } }, payments: { select: { kind: true, amount: true } } }, orderBy: { createdAt: 'desc' } }),
+        debtorIds(tx, scope, { except: 'CANCELLED' }, 500).then(ids => tx.order.findMany({ where: { ...scope, id: { in: ids } }, include: { customer: { select: { firstName: true, lastName: true, phone: true } }, device: { select: { brand: true, model: true } }, payments: { select: { kind: true, amount: true } } }, orderBy: { createdAt: 'desc' } })),
         tx.sourcedPart.aggregate({ where: { organizationId: a.organizationId, status: 'TAKEN' }, _sum: { cost: true } }),
         // Every expense of the period, so the report can list and filter them, not only the totals.
         tx.expense.findMany({ where: { organizationId: a.organizationId, createdAt: period, ...expenseBranch }, select: { id: true, category: true, amount: true, note: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1000 }),
