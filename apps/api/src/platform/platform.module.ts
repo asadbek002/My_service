@@ -1,4 +1,4 @@
-import { Body, CanActivate, Controller, ExecutionContext, Get, Header, Injectable, Module, Param, Patch, Post, Put, Query, Req, Res, UseGuards, UnauthorizedException, ForbiddenException, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Body, CanActivate, Controller, Delete, ExecutionContext, Get, Header, Injectable, Module, Param, Patch, Post, Put, Query, Req, Res, UseGuards, UnauthorizedException, ForbiddenException, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { IsString, Length, Matches, IsInt, Min, Max, IsOptional, IsObject, IsIn, IsISO8601, IsBoolean, MaxLength } from 'class-validator';
 import { createHash, randomBytes } from 'node:crypto';
 import * as argon2 from 'argon2';
@@ -473,6 +473,23 @@ class PlatformController {
         return plan;
       });
     } catch(e) { if(e instanceof Prisma.PrismaClientKnownRequestError&&e.code==='P2002') throw new ConflictException('Plan name exists');throw e; }
+  }
+  /**
+   * Delete a plan nobody uses: no service on it, none switching to it, not the sign-up plan.
+   * A plan in use is hidden instead (its services keep working).
+   */
+  @Delete('plans/:id')
+  async deletePlan(@Param('id') id: string, @Req() req: AdminRequest) {
+    const plan = await this.db.plan.findUnique({ where: { id } });
+    if (!plan) throw new NotFoundException('Tarif topilmadi');
+    const using = await this.db.subscription.count({ where: { OR: [{ planId: id }, { nextPlanId: id }] } });
+    if (using) throw new ConflictException(`Bu tarifda ${using} ta servis bor yoki unga o'tmoqchi. Avval ularni boshqa tarifga o'tkazing yoki tarifni yashiring.`);
+    if ((await billingSettings(this.db)).signupPlanId === id) throw new ConflictException("Bu tarif yangi servislarga beriladigan tarif sifatida tanlangan. Avval «Umumiy sozlamalar»da boshqasini tanlang.");
+    await this.db.$transaction([
+      this.db.plan.delete({ where: { id } }),
+      this.db.auditLog.create({ data: { organizationId: 'PLATFORM', actorId: req.adminId, action: 'PLAN_DELETED', entityId: id, oldValue: { name: plan.name } } }),
+    ]);
+    return { deleted: true };
   }
   @Get('billing-settings')
   billing() { return billingSettings(this.db); }

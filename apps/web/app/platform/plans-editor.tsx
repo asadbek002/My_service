@@ -164,7 +164,12 @@ export function PlansTab({ plans, busy, run }: { plans: Plan[]; busy: boolean; r
                 <p className="font-semibold">{p.name}{!p.active && <span className="ml-2 rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase text-mute">yashirin</span>}</p>
                 {p.description && <p className="text-xs text-mute">{p.description}</p>}
               </div>
-              <button className="shrink-0 rounded-md border px-3 py-1.5 text-xs font-semibold hover:border-ink" onClick={() => setEditing(p.id)}>Tahrirlash</button>
+              <div className="flex shrink-0 gap-1.5">
+                <button className="rounded-md border px-3 py-1.5 text-xs font-semibold hover:border-ink" onClick={() => setEditing(p.id)}>Tahrirlash</button>
+                <button className="rounded-md border px-3 py-1.5 text-xs font-semibold text-red-600 hover:border-red-600 disabled:cursor-not-allowed disabled:opacity-40" disabled={busy || !!p._count?.subscriptions}
+                  title={p._count?.subscriptions ? "Bu tarifda servislar bor: avval ularni boshqa tarifga o'tkazing yoki tarifni yashiring" : undefined}
+                  onClick={() => { if (window.confirm(`«${p.name}» tarifi butunlay o'chirilsinmi? Buni qaytarib bo'lmaydi.`)) void run(() => platformApi('/plans/' + p.id, { method: 'DELETE' }), `«${p.name}» o'chirildi`); }}>O&apos;chirish</button>
+              </div>
             </div>
             <p className="num mt-2 font-mono text-base font-semibold">{money(p.monthlyPrice)}<span className="font-sans text-xs font-normal text-mute"> / oy</span>
               {p.yearlyTotal && <span className="ml-3 font-sans text-xs font-normal text-mute">yiliga {money(p.yearlyTotal)}{p.yearlyPrice === null ? ' (avto)' : ''}</span>}</p>
