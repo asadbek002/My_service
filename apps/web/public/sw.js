@@ -1,7 +1,7 @@
 // The installed app: pages always come from the network (fresh data, offline page as fallback); the app's
 // code (/_next/static, named by content hash, never changes) is kept on the phone and served from there,
 // so opening the app does not download ~400 KB of JavaScript again over a slow or distant connection.
-const CACHE='myservice-shell-v5';const STATIC='myservice-static-v1';const SHELL=['/offline','/icon.svg','/icon-192.png'];
+const CACHE='myservice-shell-v6';const STATIC='myservice-static-v1';const SHELL=['/offline','/icon.svg','/icon-192.png'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE&&k!==STATIC).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 async function fromStatic(req){

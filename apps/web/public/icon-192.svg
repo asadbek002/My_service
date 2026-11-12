@@ -1,1 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#FF6A2B"/><path d="M144 355V157h64l48 74 48-74h64v198h-61V249l-51 75-51-75v106z" fill="#111113"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1D4ED8"/><stop offset="1" stop-color="#22A6F2"/></linearGradient></defs><rect width="512" height="512" rx="112" fill="#fff"/>
+  <rect x="160" y="84" width="192" height="344" rx="38" fill="#111113"/>
+  <rect x="174" y="136" width="164" height="236" rx="4" fill="#fff"/>
+  <rect x="180" y="142" width="152" height="224" rx="2" fill="none" stroke="url(#g)" stroke-width="8"/>
+  <rect x="226" y="106" width="60" height="10" rx="5" fill="#fff"/>
+  <circle cx="256" cy="400" r="12" fill="#fff"/>
+  <path fill-rule="evenodd" fill="url(#g)" d="M244.2,201.3L246.1,184.7L265.9,184.7L267.8,201.3L284.9,208.4L298.0,198.0L312.0,212.0L301.6,225.1L308.7,242.2L325.3,244.1L325.3,263.9L308.7,265.8L301.6,282.9L312.0,296.0L298.0,310.0L284.9,299.6L267.8,306.7L265.9,323.3L246.1,323.3L244.2,306.7L227.1,299.6L214.0,310.0L200.0,296.0L210.4,282.9L203.3,265.8L186.7,263.9L186.7,244.1L203.3,242.2L210.4,225.1L200.0,212.0L214.0,198.0L227.1,208.4Z M280,254 a24,24 0 1,0 -48,0 a24,24 0 1,0 48,0Z"/></svg>

@@ -152,7 +152,7 @@ class BrandController{
   const fallback=[
    {src:'/icon-192.png',sizes:'192x192',type:'image/png',purpose:'any'},
    {src:'/icon-512.png',sizes:'512x512',type:'image/png',purpose:'any'},
-   {src:'/icon-512.png',sizes:'512x512',type:'image/png',purpose:'maskable'},
+   {src:'/icon-maskable-512.png',sizes:'512x512',type:'image/png',purpose:'maskable'},
   ];
   // The version in the URL changes with the logo, so a new logo is never hidden behind a cached old one.
   const own=b?.icon?(()=>{const src=`/api/public/brand/${orgId}/icon?v=${createHash('sha256').update(b.icon).digest('hex').slice(0,12)}`;const type=b.icon.slice(5,b.icon.indexOf(';'));
