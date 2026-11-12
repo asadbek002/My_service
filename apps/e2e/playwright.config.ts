@@ -40,6 +40,8 @@ export default defineConfig({
         NODE_ENV: 'test', PORT: '3001', DATABASE_URL, REDIS_URL,
         JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET ?? 'e2e-only-secret-at-least-32-characters-long',
         WEB_URL: WEB, CORS_ORIGINS: WEB,
+        // A bot name without a token: order links and QR codes are made, nothing is sent to Telegram.
+        TELEGRAM_BOT_USERNAME: 'myservice_e2e_bot',
       },
     },
     {

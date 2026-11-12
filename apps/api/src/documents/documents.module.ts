@@ -6,6 +6,8 @@ import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { createLink } from '../notifications/links.module';
 import { orderScope } from '../orders/orders.module';
+import { BotModule } from '../bot/bot.module';
+import { OwnBots } from '../bot/own-bot';
 
 /**
  * Data for the printable thermal receipt (58/80 mm). The web app renders and prints it;
@@ -13,7 +15,7 @@ import { orderScope } from '../orders/orders.module';
  */
 @Controller('orders')
 class ReceiptController {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: Database, private readonly own: OwnBots) {}
 
   @Get(':id/receipt') @Permissions('orders.view')
   async receipt(@CurrentActor() a: Actor, @Param('id') id: string, @Query('type') type?: string) {
@@ -28,8 +30,12 @@ class ReceiptController {
     const branches = await this.db.branch.count({ where: { organizationId: a.organizationId } });
     const branch = branches > 1 ? order.branch : null;
 
-    // Only the hash of a tracking token is stored, so each print mints a new 90-day link for the QR.
+    // Only the hash of a token is stored, so each print mints new links (a year each).
     const trackingUrl = process.env.WEB_URL + '/track/' + await createLink(this.db, a.organizationId, id, 'TRACK');
+    // One link for the customer: the QR opens the bot (the service's own when it has one), which connects them
+    // and shows the order, its photos and the tracking page; later messages come there free instead of SMS.
+    const username = (await this.own.client(a.organizationId))?.username ?? process.env.TELEGRAM_BOT_USERNAME?.trim().replace(/^@/, '');
+    const botUrl = username ? 'https://t.me/' + username + '?start=' + await createLink(this.db, a.organizationId, id, 'TELEGRAM') : null;
 
     return {
       type: type === 'delivery' ? 'delivery' : 'receipt',
@@ -50,12 +56,12 @@ class ReceiptController {
       customer: { name: [order.customer.firstName, order.customer.lastName].filter(Boolean).join(' '), phone: order.customer.phone },
       device: { category: order.device.category, brand: order.device.brand, model: order.device.model },
       warranty: order.warranty ? { endDate: order.warranty.endDate, terms: order.warranty.terms } : null,
-      trackingUrl,
-      qrSvg: await QRCode.toString(trackingUrl, { type: 'svg', margin: 0, width: 140 }),
+      trackingUrl, botUrl,
+      qrSvg: await QRCode.toString(botUrl ?? trackingUrl, { type: 'svg', margin: 0, width: 140 }),
       printedAt: new Date(),
     };
   }
 }
 
-@Module({ controllers: [ReceiptController] })
+@Module({ imports: [BotModule], controllers: [ReceiptController] })
 export class DocumentsModule {}

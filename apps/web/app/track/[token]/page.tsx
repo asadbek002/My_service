@@ -1,19 +1,21 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, Send, X } from 'lucide-react';
 import { API_BASE } from '../../../lib/api';
 import { date, money } from '../../../lib/format';
 import { cn } from '../../../lib/utils';
 import { Mark } from '../../../components/layout/mark';
 
-type Tracking = { service?: { name: string; logo: string | null }; number: string; status: string; device: string; total: string; paid: string; balance: string; receivedAt: string; warrantyEnd: string | null };
+type Tracking = { service?: { name: string; logo: string | null }; number: string; status: string; device: string; total: string; paid: string; balance: string; receivedAt: string; warrantyEnd: string | null; complaint?: string; photos?: string[]; telegram?: string | null };
 const STEPS = [['RECEIVED', 'Qabul qilindi'], ['IN_REPAIR', "Ta'mirlanmoqda"], ['READY', 'Tayyor — olib ketishingiz mumkin'], ['DELIVERED', 'Berildi']] as const;
 
 export default function TrackPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params);
   const [data, setData] = useState<Tracking | null>(null);
   const [error, setError] = useState('');
+  const [open, setOpen] = useState<string | null>(null);
+  const photo = (id: string) => `${API_BASE}/public/track/${encodeURIComponent(token)}/photos/${encodeURIComponent(id)}`;
   useEffect(() => {
     fetch(API_BASE + '/public/track/' + encodeURIComponent(token), { cache: 'no-store', referrerPolicy: 'no-referrer' })
       .then(async r => { if (!r.ok) throw new Error('Havola topilmadi yoki muddati tugagan.'); setData(await r.json()); })
@@ -54,7 +56,37 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
             {Number(data.balance) > 0 && <p className="flex justify-between font-semibold"><span>To&apos;lash kerak</span><span className="num font-mono">{money(data.balance)} so&apos;m</span></p>}
             {data.warrantyEnd && <p className="pt-2 text-emerald-700">Kafolat {date(data.warrantyEnd)} gacha</p>}
           </div>
+          {!!data.photos?.length && (
+            <>
+              <div className="talon-cut" />
+              <div className="p-5">
+                <p className="eyebrow">Qabul paytidagi holati</p>
+                {data.complaint && <p className="mt-1 text-sm text-mute">{data.complaint}</p>}
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {data.photos.map((id, i) => (
+                    <button key={id} type="button" onClick={() => setOpen(id)} className="aspect-square overflow-hidden rounded-lg border bg-paper">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={photo(id)} alt={`Qabul rasmi ${i + 1}`} loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </article>
+      )}
+      {data?.telegram && (
+        <a href={data.telegram} className="mt-4 flex items-center gap-3 rounded-lg bg-[#229ED9] p-4 text-white">
+          <Send className="h-5 w-5 shrink-0" />
+          <span className="min-w-0 text-sm"><b className="block">Telegramda kuzatish</b>Tayyor bo&apos;lganda xabar shu yerga keladi — «Start» ni bosing.</span>
+        </a>
+      )}
+      {open && (
+        <div role="dialog" aria-modal="true" aria-label="Rasm" className="fixed inset-0 z-50 flex flex-col bg-black/90" onClick={() => setOpen(null)}>
+          <div className="flex justify-end p-3"><button type="button" aria-label="Yopish" className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-white"><X className="h-5 w-5" /></button></div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={photo(open)} alt="Qabul rasmi" referrerPolicy="no-referrer" className="mx-auto min-h-0 flex-1 object-contain p-3" />
+        </div>
       )}
     </main>
   );

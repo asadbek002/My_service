@@ -7,13 +7,12 @@ import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { orderScope } from './orders.module';
+import { photoFile } from './photo-files';
+export { UPLOAD_DIR } from './photo-files';
 
-/** Where photo files live: a folder on the server (docker: ./uploads on the host). Backed up by docker/backup.sh. */
-export const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads'));
 const MAX_BYTES = 1_500_000; // the browser resizes to ~1600 px JPEG first, usually 150–400 KB
 const MAX_PER_ORDER = 10;
 const KEEP_DAYS_AFTER_CLOSE = 180;
-const TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/png': 'png' };
 
 class PhotoDto { @IsString() @MaxLength(2_100_000) image!: string; }
 
@@ -22,8 +21,7 @@ export async function photosEnabled(db: Database, organizationId: string) {
   const row = await db.organizationSetting.findUnique({ where: { organizationId_key: { organizationId, key: 'photos' } } });
   return (row?.value as { enabled?: unknown } | undefined)?.enabled === true;
 }
-const fileOf = (p: { organizationId: string; orderId: string; id: string; mime: string }) =>
-  path.join(UPLOAD_DIR, p.organizationId, p.orderId, `${p.id}.${TYPES[p.mime] ?? 'bin'}`);
+const fileOf = photoFile;
 
 /**
  * Photos of a device's condition at intake: taken on the new-order screen (or later on the order),

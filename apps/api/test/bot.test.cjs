@@ -427,3 +427,65 @@ test('platform SMS controls: a service switched off or over its monthly cap send
   assert.equal((await deliverReady((await orderFor(svc.token, phone())).order.id, svc.orgId)).status, 'SENT');
   assert.equal(await db.auditLog.count({ where: { organizationId: svc.orgId, action: 'SMS_CONTROL_CHANGED' } }), 3);
 });
+
+test('one link: the order link connects the customer, shows the card and photos, works again, never steals', async () => {
+  const svc = await serviceOn({ telegram: true });
+  await db.organizationSetting.create({ data: { organizationId: svc.orgId, key: 'photos', value: { enabled: true } } });
+  const phone = '+99895' + String(Math.floor(Math.random() * 1e7)).padStart(7, '0');
+  const { customer, order } = await orderFor(svc.token, phone);
+  const png = 'data:image/png;base64,' + Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000000020001e221bc330000000049454e44ae426082', 'hex').toString('base64');
+  for (let i = 0; i < 2; i++) await ok(await request('/orders/' + order.id + '/photos', { token: svc.token, method: 'POST', body: { image: png } }), 201);
+  assert.equal((await ok(await request('/orders/' + order.id + '/telegram', { token: svc.token }))).connected, false);
+
+  // The order screen's QR and the receipt QR are the bot link.
+  const links = await ok(await request('/orders/' + order.id + '/links', { token: svc.token, method: 'POST' }), 201);
+  assert.match(links.telegram, /^https:\/\/t\.me\/myservice_test_bot\?start=[A-Za-z0-9_-]{43}$/); assert.ok(links.qrSvg.startsWith('<svg'));
+  const receipt = await ok(await request('/orders/' + order.id + '/receipt', { token: svc.token }));
+  assert.match(receipt.botUrl, /^https:\/\/t\.me\/myservice_test_bot\?start=/);
+  // The tracking page offers the bot while the customer is not in Telegram, and shows the photos.
+  const trackToken = links.tracking.split('/').pop();
+  const page = await ok(await request('/public/track/' + trackToken));
+  assert.equal(page.photos.length, 2); assert.match(page.telegram, /^https:\/\/t\.me\//);
+  const img = await request('/public/track/' + trackToken + '/photos/' + page.photos[0]);
+  assert.equal(img.status, 200); assert.equal(img.headers.get('content-type'), 'image/png');
+  assert.equal((await request('/public/track/' + trackToken + '/photos/nope')).status, 404);
+
+  // Start: linked at once, then the order card with the site button, then the photo album.
+  const chat = 610000000 + Math.floor(Math.random() * 1e6);
+  const payload = links.telegram.split('start=')[1];
+  const before = calls.length;
+  await tg(chat, { text: '/start ' + payload });
+  assert.equal((await db.customer.findUnique({ where: { id: customer.id } })).telegramChatId, String(chat));
+  const sent = calls.slice(before).filter(c => c.method === 'sendMessage' && String(c.body.chat_id) === String(chat));
+  assert.ok(sent[0].body.text.includes('ulandingiz'), sent[0].body.text);
+  const card = sent.find(c => c.body.text.includes(order.number)).body;
+  assert.ok(card.text.includes('Muammo: Ekran') && card.text.includes('/rasm_') && card.text.includes('● Qabul'), card.text);
+  assert.match(card.reply_markup.inline_keyboard[0][0].url, /\/track\/[A-Za-z0-9_-]{43}$/);
+  const album = calls.slice(before).find(c => c.method === 'sendMediaGroup');
+  assert.ok(album && String(album.body).includes(String(chat)) && String(album.body).includes('attach://p1'));
+
+  // The same link again (second phone tap, after /stop) still works for this chat.
+  await tg(chat, { text: '/stop' });
+  await tg(chat, { text: '/start ' + payload });
+  assert.equal((await db.customer.findUnique({ where: { id: customer.id } })).telegramChatId, String(chat));
+  // Someone else with a photo of the receipt cannot take the customer over.
+  const stranger = chat + 1;
+  await tg(stranger, { text: '/start ' + payload });
+  assert.ok(lastTo(stranger).text.includes('boshqa Telegram'), lastTo(stranger).text);
+  assert.equal((await db.customer.findUnique({ where: { id: customer.id } })).telegramChatId, String(chat));
+
+  // «Buyurtmalarim» lists the photos command; it sends the album only to the order's own customer.
+  await tg(chat, { text: '📦 Buyurtmalarim' });
+  const command = /\/rasm_\d{6}_\d{3,}/.exec(lastTo(chat).text)[0];
+  const n = calls.length;
+  await tg(chat, { text: command });
+  assert.ok(calls.slice(n).some(c => c.method === 'sendMediaGroup'));
+  const m = calls.length;
+  await tg(stranger, { text: command });
+  assert.ok(!calls.slice(m).some(c => c.method === 'sendMediaGroup'));
+  assert.ok(lastTo(stranger).text.includes('rasm yo‘q'));
+
+  // Connected: the order screen says so, and the tracking page stops offering the bot.
+  assert.deepEqual(await ok(await request('/orders/' + order.id + '/telegram', { token: svc.token })), { connected: true, bot: 'platform' });
+  assert.equal((await ok(await request('/public/track/' + trackToken))).telegram, null);
+});

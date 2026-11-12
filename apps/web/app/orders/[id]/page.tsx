@@ -10,6 +10,7 @@ import { errorText } from '../../../lib/errors';
 import { date, dateTime, daysSince, deviceName, fullName, idempotencyKey, money, phone, PAYMENT_METHODS, som, initials } from '../../../lib/format';
 import { LATE_AFTER, Ruler, rulerKind, type RulerKind } from '../../../components/ui/ruler';
 import { OrderPhotos } from '../../../components/order-photos';
+import { CustomerTelegram } from '../../../components/customer-telegram';
 import { can, post, useDefaults, useMe, useOrder, useOrderMutation, usePaymentMethods, type Me, type OrderDetail, type Payment } from '../../../lib/queries';
 import { cn } from '../../../lib/utils';
 import { useCurrentBranch } from '../../../lib/branches';
@@ -100,6 +101,7 @@ function OrderPage() {
           {canStatus && isOpen && <Button variant="ghost" size="sm" className="text-red-600" onClick={() => toggle('cancel')}><Ban className="h-4 w-4" /> Bekor qilish</Button>}
         </div>
 
+        {order.status !== 'CANCELLED' && <CustomerTelegram orderId={id} canShow={canEdit && order.status !== 'DELIVERED'} />}
         <Payments order={order} canRefund={can(me, 'payments.refund')} />
         <OrderParts orderId={id} canAdd={canEdit && isOpen} canEdit={canEdit} owner={owner} />
         {photosFailed > 0 && <ErrorBox>{`${photosFailed} ta rasm yuklanmadi. Pastdagi «Qabul paytidagi holati» bo'limidan qayta qo'shing.`}</ErrorBox>}
@@ -472,9 +474,11 @@ function ShareLink({ orderId }: { orderId: string }) {
   async function share() {
     setState('');
     try {
-      // Tracking page for everyone; the bot link also connects the customer to Telegram (one tap on Start).
+      // One link: the bot connects the customer (one tap on Start) and shows the status, photos and the page.
       const { tracking, telegram } = await api<{ tracking: string; telegram: string | null }>(`/orders/${orderId}/links`, { method: 'POST' });
-      const text = `Qurilmangiz holati: ${tracking}` + (telegram ? `\nTelegramda xabar olish: ${telegram}` : '');
+      const text = telegram
+        ? `Qurilmangiz holati va rasmlari Telegramda. Havolani oching va «Start» ni bosing — tayyor bo‘lganda shu yerga xabar keladi:\n${telegram}`
+        : `Qurilmangiz holati: ${tracking}`;
       if (navigator.share) { await navigator.share({ title: 'Buyurtma holati', text }).catch(() => undefined); return; }
       await navigator.clipboard.writeText(text);
       setState('Nusxalandi');
