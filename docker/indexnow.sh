@@ -7,7 +7,8 @@ set -e
 KEY=43a812c94a5730805a8eb1b22b969e3d
 SITE=https://myserviceuz.uz
 BODY="{\"host\":\"myserviceuz.uz\",\"key\":\"$KEY\",\"keyLocation\":\"$SITE/$KEY.txt\",\"urlList\":[\"$SITE/\",\"$SITE/ru\",\"$SITE/signup\",\"$SITE/install\",\"$SITE/llms.txt\"]}"
-for ENGINE in api.indexnow.org yandex.com; do
+# api.indexnow.org passes the notice on to every IndexNow engine (Bing, Yandex, Seznam, Naver…).
+for ENGINE in api.indexnow.org; do
   CODE=$(curl -s -o /dev/null -w '%{http_code}' -m 20 -X POST "https://$ENGINE/indexnow" -H 'Content-Type: application/json; charset=utf-8' -d "$BODY" || echo 000)
   case "$CODE" in 200|202) echo "$ENGINE: qabul qilindi ($CODE)";; *) echo "$ENGINE: javob $CODE";; esac
 done
