@@ -57,6 +57,7 @@ const PATH = ['RECEIVED', 'IN_REPAIR', 'READY', 'DELIVERED'];
     // Never expires, never sends SMS (the customers below are made up).
     await tx.subscription.update({ where: { organizationId: org.id }, data: { status: 'ACTIVE', expiresAt: new Date(Date.now() + 3650 * DAY), graceUntil: new Date(Date.now() + 3660 * DAY) } });
     await tx.organization.update({ where: { id: org.id }, data: { smsEnabled: false, platformNote: 'Do\'kon ko\'rib chiquvchilari uchun demo (scripts/demo-account.cjs)' } });
+    await tx.organizationSetting.create({ data: { organizationId: org.id, key: 'setup', value: { dismissed: true } } });
     await tx.organizationSetting.create({ data: { organizationId: org.id, key: 'general', value: { name: 'Demo Servis', phone: '+998 90 000 00 00', address: 'Toshkent, Chilonzor 1' } } });
     const branch = await tx.branch.findFirstOrThrow({ where: { organizationId: org.id } });
     for (let i = 0; i < ORDERS.length; i++) {

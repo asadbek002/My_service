@@ -11,6 +11,9 @@ Tayyor narsalar (repo ichida):
 | Hisobni o'chirish veb-havolasi (Google) | `https://myserviceuz.uz/delete-account` |
 | Maxfiylik siyosati | `https://myserviceuz.uz/privacy` |
 | Foydalanish shartlari | `https://myserviceuz.uz/terms` |
+| Yordam (Support URL) | `https://myserviceuz.uz/contact` — kirmasdan ochiladi |
+| Skrinshotlar | `store/screenshots/play-phone` (1080×1920), `ios-6.7` (1290×2796), `ios-6.5` (1242×2688) |
+| Google Play banneri | `store/play-feature-graphic.png` (1024×500) |
 | Ko'rib chiquvchi uchun demo hisob | `apps/api/scripts/demo-account.cjs` |
 | Ikonkalar | `store/app-store-1024.png`, `store/play-store-512.png` |
 | Digital Asset Links (Google) | `/.well-known/assetlinks.json` (.env: `ANDROID_PACKAGE`, `ANDROID_SHA256`) |
@@ -68,7 +71,8 @@ npx cap sync ios
 npx cap open ios      # Xcode: Signing & Capabilities → Team; App Icon ← store/app-store-1024.png
 ```
 Muhim:
-- Ilova `MyServiceApp-iOS` belgisi bilan ochiladi: tarif tanlash va to'lov matnlari unda ko'rinmaydi
+- Ilova `MyServiceApp-iOS` belgisi bilan ochiladi: tarif tanlash va to'lov matnlari unda ko'rinmaydi,
+  bosh sahifa (narxlar) o'rniga kirish sahifasi ochiladi
   (Apple 3.1.1/3.1.3(b): obuna saytda boshqariladi). Ilovada «saytda to'lang» kabi havola **qo'shmang**.
 - Apple 4.2 qoidasi: faqat sayt o'ramini ko'pincha rad etadi. Rad etilsa, native imkoniyat qo'shamiz
   (push-bildirishnomalar «qurilma tayyor», native kamera) — bu keyingi ish.

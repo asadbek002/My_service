@@ -12,3 +12,12 @@ export function useIosApp() {
   useEffect(() => { setIos(navigator.userAgent.includes(IOS_APP_UA)); }, []);
   return ios;
 }
+
+/**
+ * In the App Store app the home page (prices, "1 month free") is not shown: Apple counts a sales page inside
+ * the app as steering to outside purchases. The app goes straight to signing in instead.
+ */
+export function IosAppLeavesHome() {
+  useEffect(() => { if (navigator.userAgent.includes(IOS_APP_UA)) location.replace('/login'); }, []);
+  return null;
+}

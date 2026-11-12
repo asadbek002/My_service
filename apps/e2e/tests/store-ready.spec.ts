@@ -29,3 +29,18 @@ test('asset links for the Google Play app are served (empty until the app is set
   expect(r.status()).toBe(200);
   expect(Array.isArray(await r.json())).toBe(true);
 });
+
+test('the support page is open without signing in (the stores ask for its address)', async ({ page }) => {
+  await page.goto('/contact');
+  await expect(page.getByRole('heading', { name: 'Yordam va aloqa' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^@/ })).toHaveAttribute('href', /^https:\/\/t\.me\//);
+  await expect(page.getByRole('link', { name: "Hisobni o'chirish" })).toBeVisible();
+});
+
+test('inside the App Store app the sales page is skipped for signing in', async ({ browser }) => {
+  const ctx = await browser.newContext({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MyServiceApp-iOS' });
+  const page = await ctx.newPage();
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/login$/);
+  await ctx.close();
+});

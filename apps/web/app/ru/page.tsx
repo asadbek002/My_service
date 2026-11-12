@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { IosAppLeavesHome } from '../../lib/native';
 import { HomePage } from '../../components/landing/home-page';
 import { serverOffer } from '../../lib/site';
 
@@ -17,5 +18,5 @@ export const metadata: Metadata = {
 };
 
 export default async function HomeRu() {
-  return <HomePage lang="ru" offer={await serverOffer()} />;
+  return <><IosAppLeavesHome /><HomePage lang="ru" offer={await serverOffer()} /></>;
 }

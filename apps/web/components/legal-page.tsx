@@ -28,6 +28,7 @@ export function LegalPage({ title, updated, children }: { title: string; updated
       <p className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm text-mute">
         <Link href="/terms" className="underline">Ommaviy oferta</Link>
         <Link href="/privacy" className="underline">Maxfiylik siyosati</Link>
+        <Link href="/contact" className="underline">Yordam va aloqa</Link>
         <Link href="/signup" className="underline">Ro&apos;yxatdan o&apos;tish</Link>
       </p>
     </main>
