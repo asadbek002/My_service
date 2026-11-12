@@ -55,6 +55,8 @@ class TrackingController {
 
   /** An intake photo on the tracking page; the link itself is the key (no rate guard: the page loads several). */
   @Get('track/:token/photos/:photoId') @Public() @Header('Cache-Control','private, max-age=3600') @Header('Referrer-Policy','no-referrer')
+  // The page may be served from another origin than the API (helmet sends same-origin by default).
+  @Header('Cross-Origin-Resource-Policy','cross-origin')
   async photo(@Param('token') token: string, @Param('photoId') photoId: string) {
     const link = await this.link(token);
     const photo = await this.db.orderPhoto.findFirst({ where: { id: photoId, organizationId: link.organizationId, orderId: link.orderId } });

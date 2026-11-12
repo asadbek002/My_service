@@ -36,7 +36,7 @@ test('search engines see the home page but not the app or the platform console',
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
 });
 
-test('a receipt shared as a picture carries the tracking page and the bot, not a bare "Chek"', async ({ page }) => {
+test('a receipt shared as a picture carries the order bot link, not a bare "Chek"', async ({ page }) => {
   const o = await newOrder(await tokenFor(OWNER.login, OWNER.password));
   await signIn(page, OWNER.login, OWNER.password);
   // Stand in for the phone's share sheet and keep what it was given.
@@ -49,6 +49,7 @@ test('a receipt shared as a picture carries the tracking page and the bot, not a
   await page.getByRole('button', { name: 'Rasm sifatida ulashish' }).click();
   const shared = await page.waitForFunction(() => (window as unknown as { shared?: { text?: string; files?: File[] } }).shared).then(h => h.jsonValue() as Promise<{ text: string; files: unknown[] }>);
   expect(shared.text).toContain(o.number);
-  expect(shared.text).toMatch(/Qurilmangiz holatini shu sahifada kuzatib boring:\nhttps?:\/\/\S+\/track\/\S+/);
+  // One link: the bot (status, photos, free messages) when a bot is set up.
+  expect(shared.text).toMatch(/Havolani bosing va «Start» ni bosing[^\n]*:\nhttps:\/\/t\.me\/myservice_e2e_bot\?start=[A-Za-z0-9_-]{43}$/);
   expect(shared.text).not.toMatch(/^Chek$/);
 });
