@@ -160,9 +160,10 @@ test('bot: customers, staff, admins, alerts and receipt photo', async () => {
   const dev = await db.device.create({ data: { organizationId: orgA.organizationId, customerId: other.id, category: 'Telefon', brand: 'X', model: 'Y' } });
   const plain = await db.order.create({ data: { organizationId: orgA.organizationId, branchId: orgA.branchId, customerId: other.id, deviceId: dev.id, number: 'T-' + id, complaint: 'x', accessories: [], condition: [] } });
   const quiet = await db.outboxEvent.create({ data: { organizationId: orgA.organizationId, type: 'ORDER_RECEIVED', entityId: plain.id, payload: {} } });
-  await worker.deliver(quiet.id);
+  // Not in Telegram: "received" would be one SMS with the bot link; this plan has no SMS, so it is not sent.
+  await worker.deliver(quiet.id).catch(() => undefined);
   const skipped = await db.notification.findUnique({ where: { eventId: quiet.id } });
-  assert.equal(skipped.status, 'SKIPPED'); assert.equal(skipped.errorCode, 'NO_TELEGRAM');
+  assert.notEqual(skipped.status, 'SENT'); assert.equal(skipped.channel, 'SMS');
   assert.equal((await request('/orders/' + plain.id + '/receipt/telegram', { token: bosses[0], method: 'POST', body: { image: png } })).status, 409);
 
   // Settings → order alerts: an extra chat joins by one-time link; people and events can be switched off.

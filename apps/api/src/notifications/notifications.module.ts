@@ -13,7 +13,7 @@ import { createLink } from './links.module';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { orderScope } from '../orders/orders.module';
-import { gsm7, readySms, SMS } from './sms-text';
+import { gsm7, readySms, receivedSms, SMS } from './sms-text';
 
 class SmsSettingsDto {
   @IsIn(['platform', 'own']) mode!: 'platform' | 'own';
@@ -24,13 +24,14 @@ class SmsSettingsDto {
 }
 
 function render(template:string,values:Record<string,string>){return template.replace(/{{([a-z_]+)}}/g,(_,key:string)=>values[key]??'');}
-// Customer messages. "Ready" goes by Telegram, else SMS; the others are Telegram-only (SMS costs money).
+// Customer messages. "Received" and "ready" go by Telegram, else SMS ("received" carries the bot link, so
+// one SMS at intake turns the rest into free Telegram messages); "delivered" is Telegram-only.
 const labels: Record<string,string> = {
   ORDER_RECEIVED: 'Qurilmangiz qabul qilindi.',
   ORDER_READY: 'Qurilmangiz tayyor, olib ketishingiz mumkin.',
   ORDER_DELIVERED: 'Qurilma sizga topshirildi. Rahmat!',
 };
-const TELEGRAM_ONLY = ['ORDER_RECEIVED', 'ORDER_DELIVERED'];
+const TELEGRAM_ONLY = ['ORDER_DELIVERED'];
 // Events the service's own staff hear about in the bot.
 const STAFF_ALERTS = ['ORDER_RECEIVED', 'ORDER_READY'];
 // Statuses in which the event is still worth sending (skip stale events after an outage).
@@ -95,6 +96,11 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
     if (!sms.ok) throw new Error('SMS_PROVIDER_REJECTED');
     return String(((await sms.json()) as { id?: string }).id ?? '');
   }
+  /** The order's bot link (the service's own bot when it has one) for the "received" SMS; null without a bot. */
+  private async botLink(orgId: string, orderId: string) {
+    const username = (await this.own?.client(orgId))?.username ?? process.env.TELEGRAM_BOT_USERNAME?.trim().replace(/^@/, '');
+    return username ? 'https://t.me/' + username + '?start=' + await createLink(this.db, orgId, orderId, 'TELEGRAM') : null;
+  }
   async deliver(eventId: string) {
     const event = await this.db.outboxEvent.findUniqueOrThrow({ where: { id: eventId } });
     const notification = await this.db.notification.upsert({ where: { eventId }, create: { eventId, organizationId: event.organizationId, orderId: event.entityId, type: event.type }, update: {} });
@@ -123,7 +129,8 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
     // SMS is paid per part: GSM letters only, and the default "ready" text fits in one.
     // A service's own SMS text goes only through its own Eskiz account (moderated there); the
     // platform's account sends only the fixed texts approved for it.
-    const smsMessage = (own: boolean) => { const template=templates.find(t=>t.channel==='SMS');
+    const smsMessage = async (own: boolean) => { const template=templates.find(t=>t.channel==='SMS');
+      if (event.type==='ORDER_RECEIVED') return receivedSms(order.organization.name, order.device.brand+' '+order.device.model, await this.botLink(order.organizationId, order.id) ?? link);
       if (template && own) return gsm7(render(template.body,variables));
       return event.type==='ORDER_READY' ? readySms(order.organization.name, order.device.brand+' '+order.device.model, due.greaterThan(0) ? sum(due).replace(/ so.m$/, '') : null, link) : gsm7(defaultText); };
     let channel = 'SMS';
@@ -148,7 +155,7 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
       const ownSms = await this.sms.own(order.organizationId);
       let smsProviderId = '';
       if (ownSms) {
-        smsProviderId = (await ownSms.send(order.customer.phone, smsMessage(true))).id;
+        smsProviderId = (await ownSms.send(order.customer.phone, await smsMessage(true))).id;
       } else {
         if (!flags?.sms || !platformSmsConfigured()) throw new Error('SMS_NOT_CONFIGURED');
         // The platform's switch and monthly cap for this service: a refused SMS is skipped, not retried.
@@ -160,7 +167,7 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
           }
           return;
         }
-        smsProviderId = await this.platformSms(order.customer.phone, smsMessage(false), event.id);
+        smsProviderId = await this.platformSms(order.customer.phone, await smsMessage(false), event.id);
         await this.sms.count(order.organizationId, order.organization.subscription?.plan.smsPerMonth ?? null);
       }
       await this.db.notification.update({ where: { id: notification.id }, data: { status: 'SENT', channel, providerId: smsProviderId, sentAt: new Date(), errorCode: null } });

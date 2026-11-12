@@ -1,13 +1,13 @@
 // Sends every SMS the platform can send to ONE phone (yours), through the real Eskiz account,
 // and reports for each: the text, parts, Eskiz status and the money it took from the balance.
-// Costs real money: about 6 SMS. Run on the server:
+// Costs real money: about 8 SMS. Run on the server:
 //   docker compose -f docker-compose.prod.yml exec api node apps/api/scripts/sms-check.cjs +998901234567
 //   ... add --dry to only print the texts without sending.
 const path = require('node:path');
 const { randomBytes } = require('node:crypto');
 const dist = p => require(path.join(__dirname, '..', 'dist', 'notifications', p));
 const { EskizClient } = dist('eskiz.client');
-const { SMS, SITE, readySms, smsParts, isGsm7 } = dist('sms-text');
+const { SMS, SITE, readySms, receivedSms, smsParts, isGsm7 } = dist('sms-text');
 
 const args = process.argv.slice(2);
 const dry = args.includes('--dry');
@@ -18,7 +18,11 @@ if (process.env.ESKIZ_TEST_MODE === 'true') console.warn('Diqqat: ESKIZ_TEST_MOD
 
 // A link of the real length; it opens nothing (this order does not exist).
 const link = `https://${SITE}/track/${randomBytes(32).toString('base64url')}`;
+// The bot link of the "received" SMS: the bot's name from .env and a token of the real length.
+const bot = `https://t.me/${(process.env.TELEGRAM_BOT_USERNAME || 'myserviceuz_bot').trim().replace(/^@/, '')}?start=${randomBytes(32).toString('base64url')}`;
 const CASES = [
+  ['Qabul qilindi (bot havolasi)', receivedSms('Mobile Fix servis', 'Samsung Galaxy A60', bot)],
+  ['Qabul qilindi, juda uzun nomlar', receivedSms("Chilonzor ta'mirlash servis markazi Mobile Fix", 'Lenovo IdeaPad Gaming 3 15ACH6 82K2027QRK', bot)],
   ['Ro\'yxatdan o\'tish kodi', SMS.signupCode('123456')],
   ['Parolni tiklash kodi', SMS.resetCode('123456')],
   ['Sozlamalardagi test SMS', SMS.test()],
