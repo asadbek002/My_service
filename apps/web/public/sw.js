@@ -20,6 +20,7 @@ self.addEventListener('fetch',e=>{
   const u=new URL(e.request.url);
   if(e.request.method!=='GET'||u.pathname.startsWith('/api/')||u.origin!==self.location.origin)return;
   if(e.request.mode==='navigate')e.respondWith(fetch(e.request).catch(()=>caches.match('/offline')));
-  else if(u.pathname.startsWith('/_next/static/'))e.respondWith(fromStatic(e.request));
+  // Fonts too: same files every visit (~50 KB). Their names do not change: bump STATIC if a font file is replaced.
+  else if(u.pathname.startsWith('/_next/static/')||u.pathname.startsWith('/fonts/'))e.respondWith(fromStatic(e.request));
   else if(u.pathname==='/icon.svg')e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)));
 });
