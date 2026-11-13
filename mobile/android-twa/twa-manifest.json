@@ -17,7 +17,7 @@
   "isChromeOSOnly": false,
   "appVersionName": "1.0.0",
   "appVersionCode": 1,
-  "minSdkVersion": 21,
+  "minSdkVersion": 24,
   "signingKey": {
     "path": "./android.keystore",
     "alias": "myservice"
