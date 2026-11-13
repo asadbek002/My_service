@@ -30,27 +30,28 @@ Tayyor narsalar (repo ichida):
    ```
    Chiqqan login va parolni saqlang. Qayta ishga tushirsangiz, demo tozalanib qaytadan yaratiladi.
 
-## 1. Google Play (TWA — Bubblewrap)
+## 1. Google Play (TWA — GitHub Actions'da build)
 
-Kerak: Google Play Developer hisobi ($25, bir martalik), kompyuterda Node.js va Java 17.
+Kerak: Google Play Developer hisobi — **Organization** (korxona nomidan, D-U-N-S bilan; ($25, bir martalik).
+Korxona hisobi uchun «12 tester / 14 kun» yopiq test talabi yo'q.
 
-```sh
-npm i -g @bubblewrap/cli
-cd mobile/android-twa
-bubblewrap init --manifest https://myserviceuz.uz/manifest.webmanifest   # twa-manifest.json tayyor, savollarga Enter
-bubblewrap build                                                         # app-release-bundle.aab
-```
-- `android.keystore` va uning parolini **hech qayerda yo'qotmang va git'ga qo'ymang** (u .gitignore'da).
-- Play Console → yangi ilova → `app-release-bundle.aab` ni yuklang.
-- Play Console → *Test and release → App integrity → App signing* dagi **SHA-256** ni serverdagi `.env` ga yozing:
-  ```
-  ANDROID_PACKAGE=uz.myserviceuz.app
-  ANDROID_SHA256=AA:BB:...:FF
-  ```
-  keyin `docker compose -f docker-compose.prod.yml up -d web`. Tekshirish:
-  `curl -s https://myserviceuz.uz/.well-known/assetlinks.json` — ichida paket nomi chiqishi kerak.
-  Bu bo'lmasa ilova tepasida brauzer manzil qatori ko'rinadi.
-- Yangi shaxsiy developer hisoblar uchun Google chiqarishdan oldin **12 ta testerda 14 kunlik yopiq test** talab qiladi.
+1. GitHub → **Actions → «Android (Google Play)» → Run workflow** (versiya nomi ixtiyoriy). ~2 daqiqada tayyor.
+   Natija «myservice-android» artefaktida: `app-release-bundle.aab` (Play Console uchun) va `app-release-signed.apk` (telefonda sinash).
+2. **Birinchi marta** imzo kaliti yaratiladi — «upload-key» artefakti (3 kun turadi). Ichidagi `secrets.txt` dagi uch qiymatni
+   GitHub → Settings → Secrets and variables → Actions ga qo'shing: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+   `ANDROID_KEY_PASSWORD`. Kalit va parolning nusxasini oflayn saqlang, keyin artefaktni o'chiring.
+   Keyingi build'lar shu kalit bilan imzolanadi (har safar yangi kalit chiqmasligi uchun secrets shart).
+3. Play Console → yangi ilova → `.aab` ni yuklang (Play App Signing yoqiladi).
+4. Play Console → *Test and release → App integrity → App signing* dagi **App signing key SHA-256** ni va build sahifasidagi
+   **Upload key SHA-256** ni serverdagi `.env` ga yozing:
+   ```
+   ANDROID_PACKAGE=uz.myserviceuz.app
+   ANDROID_SHA256=<app signing SHA-256>,<upload SHA-256>
+   ```
+   keyin `docker compose -f docker-compose.prod.yml up -d web`. Tekshirish: `curl -s https://myserviceuz.uz/.well-known/assetlinks.json`.
+   Bu bo'lmasa ilova tepasida brauzer manzil qatori ko'rinadi.
+5. Yangi versiya kerak bo'lganda (nom, ikonka o'zgarsa) — 1-qadamni qayta bosing; versiya raqami o'zi oshadi.
+   Saytdagi o'zgarishlar uchun build kerak emas — ilova saytni ochadi.
 
 Play Console shakllari:
 - **App access**: «All or some functionality is restricted» → demo login/parol.
