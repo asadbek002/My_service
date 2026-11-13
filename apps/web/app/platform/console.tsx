@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { PerformanceTab } from './performance';
+import { CountryList } from './country';
 import { platformApi } from './lib';
 import { PlansTab, type Plan } from './plans-editor';
 import { SignupsTab } from './signups';
@@ -11,7 +12,7 @@ import { AnnouncementsTab, LegalCard, MonitorCard, OrgDetail, OrgList, TicketsTa
 
 type Org = { id: string; name: string; slug: string; createdAt: string; _count: { users: number; branches: number; orders: number }; subscription: { status: string; expiresAt: string; plan: Plan } | null };
 type Analytics = { totalOrganizations: number; activeOrganizations: number; activeSubscriptions: number; trials: number; newOrganizations: number; churned: number; churnRate: number; mrr: string; visits?: Visits | null };
-type Visits = { perDay: { day: string; views: number; visitors: number }[]; today?: { views: number; visitors: number }; week: { views: number; visitors: number }; month: { views: number; visitors: number }; pages: { key: string; n: number }[]; sources: { key: string; n: number }[] };
+type Visits = { perDay: { day: string; views: number; visitors: number }[]; today?: { views: number; visitors: number }; week: { views: number; visitors: number }; month: { views: number; visitors: number }; pages: { key: string; n: number }[]; sources: { key: string; n: number }[]; countries?: { key: string; n: number }[] };
 type System = { database: string; organizations: number; activeSubscriptions: number; pendingOutbox: number; failedNotifications: number };
 type Invoice = { id: string; organizationId: string; amount: string; status: string; issuedAt: string };
 type Usage = { id: string; organizationId: string; metric: string; quantity: number; period: string };
@@ -241,7 +242,8 @@ function VisitsCard({ v }: { v: Visits }) {
       <div className="mt-4 flex h-24 items-end gap-[3px]" role="img" aria-label="30 kunlik noyob tashrif buyuruvchilar">
         {v.perDay.map(d => <div key={d.day} title={`${d.day}: ${d.visitors} kishi, ${d.views} ko'rish`} className="flex-1 rounded-t bg-ink/80" style={{ height: `${Math.max(2, d.visitors / max * 100)}%` }} />)}
       </div>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 text-sm">
+      <div className="mt-4 grid gap-4 sm:grid-cols-3 text-sm">
+        <div><p className="eyebrow">Davlatlar</p><CountryList items={v.countries ?? []} unit="ko'rish" /></div>
         <div><p className="eyebrow">Sahifalar</p>{v.pages.length ? v.pages.map(p => <p key={p.key} className="mt-1 flex justify-between"><span>{p.key}</span><span className="num font-mono">{p.n}</span></p>) : <p className="mt-1 text-mute">Hali yo&apos;q</p>}</div>
         <div><p className="eyebrow">Qayerdan</p>{v.sources.length ? v.sources.map(p => <p key={p.key} className="mt-1 flex justify-between"><span>{p.key === 'direct' ? "To'g'ridan-to'g'ri" : p.key}</span><span className="num font-mono">{p.n}</span></p>) : <p className="mt-1 text-mute">Hali yo&apos;q</p>}</div>
       </div>

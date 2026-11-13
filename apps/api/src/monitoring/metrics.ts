@@ -2,6 +2,7 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import os from 'node:os';
 import Redis from 'ioredis';
 import type { Database } from '../database';
+import { countryOf } from './country';
 
 const HOUR_KEEP = 8 * 86400, DAY_KEEP = 100 * 86400;
 // Hours and days in Tashkent time, as the rest of the product counts them.
@@ -21,7 +22,7 @@ export class Metrics implements OnModuleDestroy {
   async onModuleDestroy() { await this.redis?.quit().catch(() => undefined); }
 
   /** One answered request: its route pattern (not the URL), status and time; who, when signed in. */
-  record(route: string, status: number, ms: number, actor?: { userId?: string; organizationId?: string }) {
+  record(route: string, status: number, ms: number, actor?: { userId?: string; organizationId?: string }, ip?: string) {
     if (!this.redis) return;
     const h = hourOf(), d = dayOf();
     const bucket = BUCKETS.find(([, max]) => ms < max)![0];
@@ -32,6 +33,9 @@ export class Metrics implements OnModuleDestroy {
     if (status >= 500) m.hincrby('perf:h:' + h, 'err', 1);
     if (actor?.userId && actor.organizationId) {
       m.pfadd('act:u:' + d, actor.userId).pfadd('act:o:' + d, actor.organizationId).expire('act:u:' + d, DAY_KEEP).expire('act:o:' + d, DAY_KEEP);
+      // Where the app is used from: users per country per day (the countries seen that day are listed in a set).
+      const cc = countryOf(ip) ?? 'XX';
+      m.sadd('act:cs:' + d, cc).expire('act:cs:' + d, DAY_KEEP).pfadd(`act:uc:${d}:${cc}`, actor.userId).expire(`act:uc:${d}:${cc}`, DAY_KEEP);
     }
     void m.exec().catch(() => undefined);
   }
@@ -67,6 +71,17 @@ export class Metrics implements OnModuleDestroy {
     const activePerDay = days.map((day, i) => ({ day, users: num(i * 2), services: num(i * 2 + 1) }));
     const base = days.length * 2;
 
+    // Users per country over the 30 days (a union per country across the days).
+    const seen = new Set<string>();
+    const cp = this.redis.pipeline();
+    for (const d of days) cp.smembers('act:cs:' + d);
+    for (const r of (await cp.exec().catch(() => null)) ?? []) for (const c of (r?.[1] ?? []) as string[]) seen.add(c);
+    const cq = this.redis.pipeline();
+    const codes = [...seen];
+    for (const c of codes) cq.pfcount(...days.map(d => `act:uc:${d}:${c}`));
+    const cr = (await cq.exec().catch(() => null)) ?? [];
+    const countries = codes.map((key, i) => ({ key, n: Number(cr[i]?.[1] ?? 0) })).filter(c => c.n > 0).sort((a, b) => b.n - a.n).slice(0, 15);
+
     const size = (await db.$queryRaw<{ size: bigint }[]>`SELECT pg_database_size(current_database()) AS size`)[0]?.size ?? 0n;
     const mem = process.memoryUsage();
     return {
@@ -75,7 +90,7 @@ export class Metrics implements OnModuleDestroy {
         perMinute: Math.round(total.n / (hours * 60) * 10) / 10, under50: share('b50'), under200: share('b50') + share('b200'), under1000: share('b50') + share('b200') + share('b1000'), over1000: share('bmax') },
       slowest: routeList.filter(r => r.n >= 3).sort((a, b) => b.avg - a.avg).slice(0, 8),
       busiest: [...routeList].sort((a, b) => b.n - a.n).slice(0, 8),
-      active: { today: activePerDay.at(-1), week: { users: num(base), services: num(base + 1) }, month: { users: num(base + 2), services: num(base + 3) }, perDay: activePerDay },
+      active: { countries, today: activePerDay.at(-1), week: { users: num(base), services: num(base + 1) }, month: { users: num(base + 2), services: num(base + 3) }, perDay: activePerDay },
       server: {
         cpus: os.cpus().length, load: os.loadavg().map(l => Math.round(l * 100) / 100),
         memory: { totalMb: Math.round(os.totalmem() / 1048576), freeMb: Math.round(os.freemem() / 1048576), apiMb: Math.round(mem.rss / 1048576) },

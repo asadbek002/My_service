@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import Redis from 'ioredis';
 import { Public } from '../auth/security';
 import { tashkentDay } from '../bot/telegram.client';
+import { countryOf } from './country';
 
 /**
  * Visits to the public site (home, sign-up, install…), for the platform owner: page views, unique
@@ -36,6 +37,7 @@ export class Visits implements OnModuleDestroy {
       .hincrby('vis:d:' + day, path, 1).expire('vis:d:' + day, KEEP)
       .pfadd('vis:u:' + day, visitor).expire('vis:u:' + day, KEEP)
       .hincrby('vis:r:' + day, from, 1).expire('vis:r:' + day, KEEP)
+      .hincrby('vis:c:' + day, countryOf(ip) ?? 'XX', 1).expire('vis:c:' + day, KEEP)
       .exec().catch(() => undefined);
   }
 
@@ -44,18 +46,19 @@ export class Visits implements OnModuleDestroy {
     if (!this.redis) return null;
     const list = Array.from({ length: days }, (_, i) => tashkentDay(new Date(Date.now() - (days - 1 - i) * 86400000)));
     const pipe = this.redis.pipeline();
-    for (const d of list) pipe.hgetall('vis:d:' + d).pfcount('vis:u:' + d).hgetall('vis:r:' + d);
+    for (const d of list) pipe.hgetall('vis:d:' + d).pfcount('vis:u:' + d).hgetall('vis:r:' + d).hgetall('vis:c:' + d);
     const res = (await pipe.exec().catch(() => null)) ?? [];
-    const pages: Record<string, number> = {}, sources: Record<string, number> = {};
+    const pages: Record<string, number> = {}, sources: Record<string, number> = {}, countries: Record<string, number> = {};
     const perDay = list.map((day, i) => {
-      const views = (res[i * 3]?.[1] ?? {}) as Record<string, string>, refs = (res[i * 3 + 2]?.[1] ?? {}) as Record<string, string>;
+      const views = (res[i * 4]?.[1] ?? {}) as Record<string, string>, refs = (res[i * 4 + 2]?.[1] ?? {}) as Record<string, string>;
+      for (const [k, v] of Object.entries((res[i * 4 + 3]?.[1] ?? {}) as Record<string, string>)) countries[k] = (countries[k] ?? 0) + Number(v);
       for (const [k, v] of Object.entries(views)) pages[k] = (pages[k] ?? 0) + Number(v);
       for (const [k, v] of Object.entries(refs)) sources[k] = (sources[k] ?? 0) + Number(v);
-      return { day, views: Object.values(views).reduce((s, v) => s + Number(v), 0), visitors: Number(res[i * 3 + 1]?.[1] ?? 0) };
+      return { day, views: Object.values(views).reduce((s, v) => s + Number(v), 0), visitors: Number(res[i * 4 + 1]?.[1] ?? 0) };
     });
     const top = (o: Record<string, number>) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([key, n]) => ({ key, n }));
     const sum = (n: number, k: 'views' | 'visitors') => perDay.slice(-n).reduce((s, d) => s + d[k], 0);
-    return { perDay, today: perDay.at(-1), week: { views: sum(7, 'views'), visitors: sum(7, 'visitors') }, month: { views: sum(days, 'views'), visitors: sum(days, 'visitors') }, pages: top(pages), sources: top(sources) };
+    return { perDay, today: perDay.at(-1), week: { views: sum(7, 'views'), visitors: sum(7, 'visitors') }, month: { views: sum(days, 'views'), visitors: sum(days, 'visitors') }, pages: top(pages), sources: top(sources), countries: top(countries) };
   }
 }
 

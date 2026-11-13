@@ -12,6 +12,7 @@
     "seed:platform": "node scripts/platform-seed.cjs"
   },
   "dependencies": {
+    "@ip-location-db/dbip-country-mmdb": "2.3.2026060120",
     "@myservice/types": "workspace:*",
     "@myservice/validation": "workspace:*",
     "@nestjs/common": "^11.0.0",
@@ -29,6 +30,7 @@
     "dotenv": "^16.4.7",
     "helmet": "^8.0.0",
     "ioredis": "^5.6.0",
+    "mmdb-lib": "3.0.5",
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0"

@@ -34,7 +34,7 @@ async function bootstrap() {
     res.on('finish', () => {
       const route = (req as Request & { route?: { path?: string } }).route?.path;
       const actor = (req as Request & { actor?: { userId?: string; organizationId?: string; support?: boolean } }).actor;
-      metrics.record(route ? `${req.method} ${route}` : 'other', res.statusCode, Date.now() - started, actor?.support ? undefined : actor);
+      metrics.record(route ? `${req.method} ${route}` : 'other', res.statusCode, Date.now() - started, actor?.support ? undefined : actor, req.ip);
     });
     res.on('finish', () => console.log(JSON.stringify({ level: res.statusCode >= 500 ? 'error' : 'info', event: 'http_request', requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - started, ip: req.ip, timestamp: new Date().toISOString() })));
     next();

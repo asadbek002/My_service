@@ -135,3 +135,10 @@ test('Yuklama page: requests, speed, active users and the server are shown', asy
   await page.getByRole('button', { name: '7 kun' }).click();
   await expect(page.getByRole('button', { name: '7 kun' })).toHaveAttribute('aria-pressed', 'true');
 });
+
+test('countries: site visits and app users are shown by country with the DB-IP credit', async ({ page }) => {
+  await platformSignIn(page, PLATFORM.login, PLATFORM.password);
+  await page.goto('/platform/performance');
+  await expect(page.getByText('Qaysi davlatdan ishlashyapti (30 kun)')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'DB-IP' }).first()).toHaveAttribute('href', 'https://db-ip.com');
+});

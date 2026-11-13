@@ -512,6 +512,13 @@ test('monitoring: a browser error reaches the platform owner once an hour; site 
   assert.ok(perf.active.today.users >= 1 && perf.active.today.services >= 1);
   assert.ok(perf.server.cpus > 0 && perf.server.databaseMb > 0);
   assert.equal((await request('/platform/performance', { token: svc.token })).status, 401, 'platform only');
+
+  // Countries: looked up on this server (DB-IP Lite); local addresses are "XX", never an error.
+  const { countryOf } = require('../dist/monitoring/country.js');
+  assert.equal(countryOf('213.230.64.1'), 'UZ'); assert.equal(countryOf('::ffff:118.36.233.224'), 'KR');
+  assert.equal(countryOf('127.0.0.1'), null); assert.equal(countryOf('not an ip'), null);
+  assert.ok(perf.active.countries.some(c => c.key === 'XX' && c.n >= 1), JSON.stringify(perf.active.countries));
+  assert.ok((await ok(await request('/platform/analytics', { token: platform }))).visits.countries.some(c => c.key === 'XX'));
 });
 
 test('orders: urgent first and red, walk-in or by courier, sent back by courier; new services start with SMS off', async () => {

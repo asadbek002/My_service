@@ -2,13 +2,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { platformApi } from './lib';
 import { card } from './parts';
+import { CountryList } from './country';
 
 type Perf = {
   hours: { hour: string; n: number; err: number; avg: number }[];
   total: { requests: number; errors: number; errorRate: number; avgMs: number; perMinute: number; under50: number; under200: number; under1000: number; over1000: number };
   slowest: { route: string; n: number; avg: number }[];
   busiest: { route: string; n: number; avg: number }[];
-  active: { today?: { users: number; services: number }; week: { users: number; services: number }; month: { users: number; services: number }; perDay: { day: string; users: number; services: number }[] };
+  active: { countries?: { key: string; n: number }[]; today?: { users: number; services: number }; week: { users: number; services: number }; month: { users: number; services: number }; perDay: { day: string; users: number; services: number }[] };
   server: { cpus: number; load: number[]; memory: { totalMb: number; freeMb: number; apiMb: number }; uptimeHours: number; databaseMb: number };
 };
 
@@ -66,6 +67,8 @@ export function PerformanceTab({ onError }: { onError: (e: unknown) => void }) {
         <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="font-semibold">Ilovadan faol foydalanish</h2>
           <p className="text-sm text-mute">bugun {d.active.today?.users ?? 0} kishi / {d.active.today?.services ?? 0} servis · 7 kun {d.active.week.users} / {d.active.week.services} · 30 kun {d.active.month.users} / {d.active.month.services}</p></div>
         <Bars title="Kunlik faol foydalanuvchilar" tone="bg-brand" values={d.active.perDay.map(x => ({ label: x.day, v: x.users, hint: `${x.day}: ${x.users} kishi, ${x.services} servis` }))} />
+        <p className="eyebrow mt-4">Qaysi davlatdan ishlashyapti (30 kun)</p>
+        <CountryList items={d.active.countries ?? []} unit="kishi" />
       </section>
 
       <section className={card}>
