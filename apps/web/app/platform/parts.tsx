@@ -396,7 +396,7 @@ export function MonitorCard({ onError }: { onError: (e: unknown) => void }) {
 
 const LEGAL: [string, string, string][] = [
   ['company', 'Kompaniya nomi', 'MChJ "MyService"'], ['inn', 'STIR', '123456789'], ['address', 'Yuridik manzil', 'Toshkent sh., …'],
-  ['phone', 'Telefon', '+998 90 000 00 00'], ['email', 'Email', 'info@myserviceuz.uz'], ['dataLocation', 'Serverlar joylashuvi', "Toshkent, O'zbekiston"],
+  ['phone', 'Telefon', '+998 90 000 00 00'], ['email', 'Email', 'info@myserviceuz.uz'], ['dataLocation', 'Serverlar joylashuvi', 'Janubiy Koreya'],
 ];
 export function LegalCard({ onError }: { onError: (e: unknown) => void }) {
   const [v, setV] = useState<Record<string, string> | null>(null);

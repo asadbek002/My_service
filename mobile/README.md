@@ -22,7 +22,7 @@ Tayyor narsalar (repo ichida):
 ## 0. Ikkalasidan oldin
 
 1. Platforma panelida yuridik ma'lumotlarni to'ldiring (kompaniya, INN, manzil, email) — **«Serverlar joylashuvi»
-   haqiqiy joyni yozsin** (hozir server Koreyada). Do'kon shakllari maxfiylik siyosatiga mos bo'lishi shart.
+   haqiqiy joyni yozsin** — «Janubiy Koreya». Do'kon shakllari maxfiylik siyosatiga mos bo'lishi shart.
    O'zbekiston fuqarolarining shaxsiy ma'lumotlari mamlakat ichida saqlanishi haqidagi talabni yurist bilan aniqlang.
 2. Demo hisob yarating (serverda):
    ```sh
