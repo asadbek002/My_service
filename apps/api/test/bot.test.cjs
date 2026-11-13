@@ -498,6 +498,20 @@ test('monitoring: a browser error reaches the platform owner once an hour; site 
   assert.ok(!after.pages.some(p => p.key === '/dashboard'), 'app pages are not counted');
   assert.ok(after.sources.some(s => s.key === 'instagram.com'));
   assert.equal(after.perDay.length, 30);
+
+  // Load: requests are counted by route pattern (never the URL), and signed-in users count as active.
+  const svc = await serviceOn({ telegram: true });
+  const { order } = await orderFor(svc.token, '+99890' + String(Math.floor(Math.random() * 1e7)).padStart(7, '0'));
+  await ok(await request('/orders/' + order.id, { token: svc.token }));
+  await new Promise(r => setTimeout(r, 300));
+  const perf = await ok(await request('/platform/performance?hours=2', { token: platform }));
+  assert.ok(perf.total.requests > 0 && perf.hours.length === 2);
+  assert.ok(perf.busiest.length > 0 && perf.busiest.every(r => /^(GET|POST|PUT|PATCH|DELETE) \/api\//.test(r.route) || r.route === 'other'), JSON.stringify(perf.busiest));
+  assert.ok(perf.busiest.every(r => !/[a-z0-9]{20,}/.test(r.route)), 'route patterns, not URLs');
+  assert.ok(!JSON.stringify(perf).includes(order.id), 'no ids in the statistics');
+  assert.ok(perf.active.today.users >= 1 && perf.active.today.services >= 1);
+  assert.ok(perf.server.cpus > 0 && perf.server.databaseMb > 0);
+  assert.equal((await request('/platform/performance', { token: svc.token })).status, 401, 'platform only');
 });
 
 test('orders: urgent first and red, walk-in or by courier, sent back by courier; new services start with SMS off', async () => {

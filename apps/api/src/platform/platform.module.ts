@@ -1,4 +1,6 @@
 import { Visits, VisitsModule } from '../monitoring/visits';
+import { Metrics } from '../monitoring/metrics';
+import { MonitoringModule } from '../monitoring/error-alerts';
 import { Body, CanActivate, Controller, Delete, ExecutionContext, Get, Header, Injectable, Module, Param, Patch, Post, Put, Query, Req, Res, UseGuards, UnauthorizedException, ForbiddenException, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { IsString, Length, Matches, IsInt, Min, Max, IsOptional, IsObject, IsIn, IsISO8601, IsBoolean, MaxLength } from 'class-validator';
 import { createHash, randomBytes } from 'node:crypto';
@@ -233,7 +235,7 @@ class PlatformAuthController {
 }
 @Controller('platform') @Public() @UseGuards(PlatformGuard)
 class PlatformController {
-  constructor(private readonly db: Database, private readonly subCache: SubscriptionCache, private readonly jwt: JwtService, private readonly bot: BotService, private readonly monitor: Monitor, private readonly visits: Visits) {}
+  constructor(private readonly db: Database, private readonly subCache: SubscriptionCache, private readonly jwt: JwtService, private readonly bot: BotService, private readonly monitor: Monitor, private readonly visits: Visits, private readonly metrics: Metrics) {}
   /** Services, newest first; `q` matches name, slug, owner login or phone; `state` filters. */
   @Get('organizations')
   async organizations(@Query('q') q?: string, @Query('state') state?: string) {
@@ -621,6 +623,12 @@ class PlatformController {
     const visits=await this.visits.stats(30).catch(()=>null);
     return {totalOrganizations,activeOrganizations:activeSubscriptions+trials,activeSubscriptions,trials,newOrganizations,churned,churnRate:totalOrganizations?Number((churned/totalOrganizations*100).toFixed(2)):0,mrr,visits};
   }
+  /** Load and speed of the API, active users and services, server memory: the platform's 'Yuklama' page. */
+  @Get('performance')
+  async performance(@Query('hours') hours?: string) {
+    const h = Math.min(168, Math.max(1, Number(hours) || 24));
+    return this.metrics.summary(this.db, h);
+  }
   @Get('invoices')
   invoices(){return this.db.subscriptionInvoice.findMany({orderBy:{issuedAt:'desc'},take:100})}
   @Get('usage')
@@ -631,5 +639,5 @@ class PlatformController {
   @Get('system')
   async system() { await this.db.$queryRaw`SELECT 1`; return {database:'ok',organizations:await this.db.organization.count(),activeSubscriptions:await this.db.subscription.count({where:{status:'ACTIVE',expiresAt:{gt:new Date()}}}),pendingOutbox:await this.db.outboxEvent.count({where:{publishedAt:null}}),failedNotifications:await this.db.notification.count({where:{status:'FAILED'}})}; }
 }
-@Module({imports:[BotModule,MonitorModule,VisitsModule,JwtModule.registerAsync({useFactory:()=>({secret:process.env.JWT_ACCESS_SECRET!})})],controllers:[PlatformAuthController,PlatformController,LegalController,PublicPlansController,InstallQrController],providers:[PlatformGuard,LoginRateGuard,SubscriptionCache]})
+@Module({imports:[BotModule,MonitorModule,VisitsModule,MonitoringModule,JwtModule.registerAsync({useFactory:()=>({secret:process.env.JWT_ACCESS_SECRET!})})],controllers:[PlatformAuthController,PlatformController,LegalController,PublicPlansController,InstallQrController],providers:[PlatformGuard,LoginRateGuard,SubscriptionCache]})
 export class PlatformModule {}

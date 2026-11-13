@@ -9,6 +9,7 @@ import { Public } from '../auth/security';
 import { BotModule } from '../bot/bot.module';
 import { BotService } from '../bot/bot.service';
 import { esc } from '../bot/telegram.client';
+import { Metrics } from './metrics';
 
 const sha = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 32);
 
@@ -76,5 +77,5 @@ class ClientErrorController {
   }
 }
 
-@Module({ imports: [BotModule], controllers: [ClientErrorController], providers: [ErrorAlerts], exports: [ErrorAlerts] })
+@Module({ imports: [BotModule], controllers: [ClientErrorController], providers: [ErrorAlerts, Metrics], exports: [ErrorAlerts, Metrics] })
 export class MonitoringModule {}

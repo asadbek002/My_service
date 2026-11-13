@@ -125,3 +125,13 @@ test('SMS page: a new service starts with SMS off; the platform and the owner sw
   await page.getByLabel("Servis bo'yicha qidirish").fill(svc.name);
   await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
 });
+
+test('Yuklama page: requests, speed, active users and the server are shown', async ({ page }) => {
+  await platformSignIn(page, PLATFORM.login, PLATFORM.password);
+  await page.goto('/platform/performance');
+  await expect(page.getByRole('heading', { name: "Soatlik so'rovlar" })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ilovadan faol foydalanish' })).toBeVisible();
+  await expect(page.getByText('Ma\'lumotlar bazasi')).toBeVisible();
+  await page.getByRole('button', { name: '7 kun' }).click();
+  await expect(page.getByRole('button', { name: '7 kun' })).toHaveAttribute('aria-pressed', 'true');
+});

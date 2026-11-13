@@ -11,6 +11,7 @@ import { setDefaultResultOrder } from 'node:dns';
 import { AppModule } from './app.module';
 import { allowedOrigins } from './auth/security';
 import { ErrorAlerts, ReportingFilter } from './monitoring/error-alerts';
+import { Metrics } from './monitoring/metrics';
 
 // Docker networks often have no IPv6 route; resolving IPv4 first avoids outbound calls
 // (Telegram, SMS) hanging on an unreachable IPv6 address.
@@ -26,8 +27,15 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.use(helmet());
   app.use(cookieParser());
+  const metrics = app.get(Metrics);
   app.use((req: Request, res: Response, next: NextFunction) => {
     const requestId = randomUUID(); const started = Date.now(); res.setHeader('X-Request-Id', requestId);
+    // The route pattern (/api/orders/:id), never the URL: ids and tokens stay out of the statistics.
+    res.on('finish', () => {
+      const route = (req as Request & { route?: { path?: string } }).route?.path;
+      const actor = (req as Request & { actor?: { userId?: string; organizationId?: string; support?: boolean } }).actor;
+      metrics.record(route ? `${req.method} ${route}` : 'other', res.statusCode, Date.now() - started, actor?.support ? undefined : actor);
+    });
     res.on('finish', () => console.log(JSON.stringify({ level: res.statusCode >= 500 ? 'error' : 'info', event: 'http_request', requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - started, ip: req.ip, timestamp: new Date().toISOString() })));
     next();
   });
