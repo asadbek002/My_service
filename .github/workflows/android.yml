@@ -14,6 +14,10 @@ on:
         description: "Versiya nomi (masalan 1.0.1). Bo'sh qolsa: 1.0.<run raqami>"
         required: false
         default: ''
+      smoke_test:
+        description: "Emulyatorda ochib tekshirish (log va skrinshot)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -103,3 +107,41 @@ jobs:
           name: upload-key
           path: upload-key/
           retention-days: 3
+
+  # Optional check: install the APK on an Android emulator, open it and keep the log and a screenshot.
+  smoke:
+    needs: build
+    if: ${{ inputs.smoke_test }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: myservice-android, path: apk }
+      - name: KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: |
+            adb install -r apk/app-release-signed.apk
+            adb logcat -c
+            adb shell monkey -p uz.myserviceuz.app -c android.intent.category.LAUNCHER 1
+            sleep 25
+            adb exec-out screencap -p > screen.png
+            adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" > activity.txt || true
+            adb logcat -d > logcat.txt
+            grep -E "FATAL|AndroidRuntime|uz.myserviceuz|TwaLauncher|LauncherActivity|ActivityTaskManager" logcat.txt | tail -80 > logcat-short.txt || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-test
+          path: |
+            screen.png
+            activity.txt
+            logcat-short.txt
+            logcat.txt
