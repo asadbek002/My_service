@@ -1,0 +1,102 @@
+# Google Play app (Trusted Web Activity of myserviceuz.uz), built by Bubblewrap.
+# Run it from GitHub: Actions → "Android (Google Play)" → Run workflow. The .aab to upload to Play Console
+# is in the run's artifacts. The site itself is updated by the usual deploy; this is needed only when the
+# app's name, icon or version changes.
+#
+# Signing (upload key): repository secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_PASSWORD.
+# Without them the first run makes a new key and leaves it in the "upload-key" artifact (kept 3 days):
+# download it, put its three values into the secrets, keep a copy offline, then delete the artifact.
+name: Android (Google Play)
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: "Versiya nomi (masalan 1.0.1). Bo'sh qolsa: 1.0.<run raqami>"
+        required: false
+        default: ''
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile/android-twa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Bubblewrap
+        run: npm install -g @bubblewrap/cli@1.27.0
+
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > android.keystore
+            echo "NEW_KEY=0" >> "$GITHUB_ENV"
+          else
+            # First run: a new upload key with random passwords (the store and the key share one).
+            pass="$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-24)"
+            keytool -genkeypair -v -keystore android.keystore -alias myservice -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$pass" -keypass "$pass" -dname "CN=MyService, O=MyService, C=UZ"
+            KEYSTORE_PASSWORD="$pass"; KEY_PASSWORD="$pass"
+            mkdir -p ../../upload-key
+            cp android.keystore ../../upload-key/android.keystore
+            { echo "ANDROID_KEYSTORE_BASE64:"; base64 -w0 android.keystore; echo; echo; echo "ANDROID_KEYSTORE_PASSWORD: $pass"; echo "ANDROID_KEY_PASSWORD: $pass"; echo "alias: myservice"; } > ../../upload-key/secrets.txt
+            echo "NEW_KEY=1" >> "$GITHUB_ENV"
+          fi
+          echo "::add-mask::$KEYSTORE_PASSWORD"; echo "::add-mask::$KEY_PASSWORD"
+          echo "BUBBLEWRAP_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "BUBBLEWRAP_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Version, icons and the Android project
+        run: |
+          code=$(( ${{ github.run_number }} ))
+          name="${{ inputs.version_name }}"; [ -n "$name" ] || name="1.0.${{ github.run_number }}"
+          # Icons come from this commit (served locally), not from the live site.
+          (cd ../../apps/web/public && python3 -m http.server 8765 >/dev/null 2>&1 &)
+          sleep 2
+          jq --argjson c "$code" --arg n "$name" '.appVersionCode=$c | .appVersionName=$n
+            | .iconUrl="http://127.0.0.1:8765/icon-512.png" | .maskableIconUrl="http://127.0.0.1:8765/icon-maskable-512.png"' \
+            twa-manifest.json > t.json && mv t.json twa-manifest.json
+          mkdir -p ~/.bubblewrap
+          echo "{\"jdkPath\":\"$JAVA_HOME\",\"androidSdkPath\":\"$ANDROID_HOME\"}" > ~/.bubblewrap/config.json
+          echo "Versiya: $name ($code)" >> "$GITHUB_STEP_SUMMARY"
+          # Generate the Android project now, while the icon server is up.
+          bubblewrap update --skipVersionUpgrade
+      - name: Build
+        run: yes | bubblewrap build --skipPwaValidation
+
+      - name: Fingerprint
+        run: |
+          sha=$(keytool -list -v -keystore android.keystore -storepass "$BUBBLEWRAP_KEYSTORE_PASSWORD" | grep -m1 'SHA256:' | sed 's/.*SHA256: //')
+          {
+            echo "### Upload key SHA-256"; echo '`'"$sha"'`'
+            echo "Play Console → Test and release → App integrity → App signing dagi **App signing key** SHA-256 ni"
+            echo "serverdagi .env ga yozing: \`ANDROID_SHA256=<o'sha>,$sha\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$NEW_KEY" = 1 ]; then
+            echo "### ⚠️ Yangi imzo kaliti yaratildi" >> "$GITHUB_STEP_SUMMARY"
+            echo "\"upload-key\" artefaktini yuklab oling, ichidagi 3 qiymatni Settings → Secrets → Actions ga qo'shing, nusxasini xavfsiz joyda saqlang va artefaktni o'chiring." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: myservice-android
+          path: |
+            mobile/android-twa/app-release-bundle.aab
+            mobile/android-twa/app-release-signed.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: env.NEW_KEY == '1'
+        with:
+          name: upload-key
+          path: upload-key/
+          retention-days: 3

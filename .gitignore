@@ -27,3 +27,7 @@ uploads/
 # Mobile app signing keys: never in git
 mobile/**/*.keystore
 mobile/**/*.jks
+
+# Android project that Bubblewrap generates from mobile/android-twa/twa-manifest.json
+mobile/android-twa/*
+!mobile/android-twa/twa-manifest.json

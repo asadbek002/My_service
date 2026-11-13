@@ -7,18 +7,37 @@
   "orientation": "portrait",
   "themeColor": "#FFFFFF",
   "navigationColor": "#FFFFFF",
-  "backgroundColor": "#FFFFFF",
+  "backgroundColor": "#EEF2F1",
   "enableNotifications": false,
   "startUrl": "/dashboard",
   "iconUrl": "https://myserviceuz.uz/icon-512.png",
   "maskableIconUrl": "https://myserviceuz.uz/icon-maskable-512.png",
-  "webManifestUrl": "https://myserviceuz.uz/manifest.webmanifest",
   "fallbackType": "customtabs",
   "enableSiteSettingsShortcut": false,
   "isChromeOSOnly": false,
   "appVersionName": "1.0.0",
   "appVersionCode": 1,
   "minSdkVersion": 21,
-  "signingKey": { "path": "./android.keystore", "alias": "myservice" },
-  "features": {}
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "myservice"
+  },
+  "features": {},
+  "themeColorDark": "#0C1615",
+  "navigationColorDark": "#0C1615",
+  "navigationDividerColor": "#FFFFFF",
+  "navigationDividerColorDark": "#0C1615",
+  "splashScreenFadeOutDuration": 300,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "protocolHandlers": [],
+  "fileHandlers": [],
+  "fingerprints": [],
+  "fullScopeUrl": "https://myserviceuz.uz/",
+  "isMetaQuest": false,
+  "alphaDependencies": {
+    "enabled": false
+  }
 }
