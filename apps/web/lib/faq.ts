@@ -1,6 +1,6 @@
 /** Common questions: in the app's Help and on the public /contact page (the store's support address). */
 export const FAQ: [string, string][] = [
-  ['Qurilmani qanday qabul qilaman?', "Pastdagi to'q sariq «+ Qabul» tugmasi. Telefon raqamini yozing — oldin kelgan mijoz o'zi topiladi. Qurilma, nosozlik va narxni yozib «Qabul qilish» ni bosing, chek chiqadi."],
+  ['Qurilmani qanday qabul qilaman?', "Pastdagi ko'k «+ Qabul» tugmasi. Telefon raqamini yozing — oldin kelgan mijoz o'zi topiladi. Qurilma, nosozlik va narxni yozib «Qabul qilish» ni bosing, chek chiqadi."],
   ['Mijozga «qurilmangiz tayyor» xabari qanday boradi?', "Buyurtmani «Tayyor» qilganingizda: mijoz Telegram botga ulangan bo'lsa — Telegramga, bo'lmasa SMS ga. Mijoz botga telefon raqamini yuborib yoki buyurtma sahifasidagi «Mijozga havola» tugmasi bilan yuborilgan Telegram havolasi orqali ulanadi."],
   ["Chek printeri noto'g'ri chiqaryapti", "Sozlamalar → «Servis va chek» da qog'oz enini (58 yoki 80 mm) tanlang. Qog'oz rulonining enini o'lchab ko'ring."],
   ["Xodim qo'shsam bo'ladimi?", "Ha: Menyu → Xodimlar → «Yangi xodim». Xodim o'z login va parolida kiradi, nimalarni qila olishini Sozlamalar → «Rollar va ruxsatlar» da belgilaysiz."],

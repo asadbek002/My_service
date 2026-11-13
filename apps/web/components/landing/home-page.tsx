@@ -32,7 +32,7 @@ export function HomePage({ lang, offer }: { lang: 'uz' | 'ru'; offer: Offer | nu
             <LangSwitch dark />
             <a href="#narxlar" className="hidden rounded-md px-3 py-2 text-white/70 hover:text-white sm:block">{t("Narxlar")}</a>
             <Link href="/login" className="rounded-md px-3 py-2 font-semibold hover:bg-white/10">{t("Kirish")}</Link>
-            <Link href="/signup" className="hidden h-10 items-center rounded-md bg-brand px-4 font-semibold text-ink hover:bg-brand-strong sm:flex">{t("Demo versiya")}</Link>
+            <Link href="/signup" className="hidden h-10 items-center rounded-md bg-brand px-4 font-semibold text-white hover:bg-brand-strong sm:flex">{t("Demo versiya")}</Link>
           </nav>
         </header>
 
@@ -40,18 +40,18 @@ export function HomePage({ lang, offer }: { lang: 'uz' | 'ru'; offer: Offer | nu
           <div>
             <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/60">{t("Telefon, noutbuk va maishiy texnika ta'miri uchun")}</p>
             <h1 className="mt-4 text-[2.4rem] font-bold leading-[1.02] tracking-tight sm:text-5xl lg:text-[3.6rem]">
-              {lang === 'ru' ? <>Удобная программа <span className="text-brand">для ремонтной мастерской</span></> : <>Ta&apos;mirlash ustaxonasi uchun <span className="text-brand">qulay dastur</span></>}
+              {lang === 'ru' ? <>Удобная программа <span className="text-brand-light">для ремонтной мастерской</span></> : <>Ta&apos;mirlash ustaxonasi uchun <span className="text-brand-light">qulay dastur</span></>}
             </h1>
             <p className="mt-5 max-w-xl text-base leading-relaxed text-white/75 lg:text-lg">
               {t("Qurilmalarni qabul qiling, ta'mir jarayonini kuzating, to'lov va qarzlarni hisobga oling. Qurilma tayyor bo'lganda mijozga avtomatik SMS yoki Telegram xabar yuboriladi.")}
             </p>
             <ul className="mt-6 grid gap-2 text-[15px] text-white/85 sm:grid-cols-3 sm:gap-4">
               {["O'zbek tilida", 'Telefon va kompyuterda', 'Bepul sinab ko‘ring'].map(x => (
-                <li key={x} className="flex items-center gap-2"><Check className="h-4 w-4 shrink-0 text-brand" strokeWidth={3} />{t(x)}</li>
+                <li key={x} className="flex items-center gap-2"><Check className="h-4 w-4 shrink-0 text-brand-light" strokeWidth={3} />{t(x)}</li>
               ))}
             </ul>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Link href="/signup" className="flex h-12 items-center justify-center gap-2 rounded-lg bg-brand px-6 text-base font-semibold text-ink hover:bg-brand-strong">{t("Demo versiya")} <ArrowRight className="h-4 w-4" /></Link>
+              <Link href="/signup" className="flex h-12 items-center justify-center gap-2 rounded-lg bg-brand px-6 text-base font-semibold text-white hover:bg-brand-strong">{t("Demo versiya")} <ArrowRight className="h-4 w-4" /></Link>
               <Link href="/login" className="flex h-12 items-center justify-center rounded-lg border border-white/25 px-6 text-base font-semibold hover:bg-white/10">{t("Kirish")}</Link>
             </div>
             <p className="mt-4 text-[13px] text-white/55">{t("Bank kartasi talab qilinmaydi. Ro'yxatdan o'tish bir daqiqa davom etadi.")}</p>
@@ -117,7 +117,7 @@ export function HomePage({ lang, offer }: { lang: 'uz' | 'ru'; offer: Offer | nu
           <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-14 lg:flex-row lg:items-center lg:justify-between lg:px-8">
             <p className="max-w-xl text-2xl font-bold leading-tight tracking-tight lg:text-3xl">{t("Bugunoq bepul sinab ko'ring.")}</p>
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Link href="/signup" className="flex h-12 items-center justify-center rounded-lg bg-brand px-6 font-semibold text-ink hover:bg-brand-strong">{t("Demo versiya")}</Link>
+              <Link href="/signup" className="flex h-12 items-center justify-center rounded-lg bg-brand px-6 font-semibold text-white hover:bg-brand-strong">{t("Demo versiya")}</Link>
               <a href={supportUrl("Salom! MyService haqida savolim bor.")} target="_blank" rel="noopener noreferrer" className="flex h-12 items-center justify-center gap-2 rounded-lg border border-white/25 px-6 font-semibold hover:bg-white/10"><Send className="h-4 w-4" /> {t("Savol berish")}</a>
             </div>
           </div>

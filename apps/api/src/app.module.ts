@@ -17,10 +17,11 @@ import { VerificationModule } from './auth/verification';
 import { AccountModule } from './management/account.module';
 import { BranchesModule } from './management/branches.module';
 import { OrderPhotosModule } from './orders/photos.module';
+import { MonitoringModule } from './monitoring/error-alerts';
 import { MonitorModule } from './platform/monitor';
 
 @Module({
-  imports: [
+  imports: [MonitoringModule, 
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env', '../../.env'],

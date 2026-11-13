@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { setDefaultResultOrder } from 'node:dns';
 import { AppModule } from './app.module';
 import { allowedOrigins } from './auth/security';
+import { ErrorAlerts, ReportingFilter } from './monitoring/error-alerts';
 
 // Docker networks often have no IPv6 route; resolving IPv4 first avoids outbound calls
 // (Telegram, SMS) hanging on an unreachable IPv6 address.
@@ -31,6 +32,7 @@ async function bootstrap() {
     next();
   });
   app.enableCors({ origin: allowedOrigins(), credentials: true });
+  app.useGlobalFilters(new ReportingFilter(app.getHttpAdapter(), app.get(ErrorAlerts)));
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   const spec = new DocumentBuilder().setTitle('MyService API').setVersion('0.2').addBearerAuth().build();
   if (process.env.NODE_ENV !== 'production') SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, spec));

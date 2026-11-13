@@ -1,7 +1,7 @@
 import type { Config } from 'tailwindcss';
 
 // "Verstak" (workbench): ink on cool paper, the repair-bench mat for the loud surfaces,
-// one signal orange (`brand`) for the single main action. Status colours always sit next to a word.
+// one signal blue (`brand`, from the logo; `brand-light` on dark surfaces) for the single main action. Status colours always sit next to a word.
 const config: Config = {
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
@@ -9,7 +9,7 @@ const config: Config = {
       colors: {
         ink: { DEFAULT: '#0C1615', soft: '#2B3836' },
         mat: { DEFAULT: '#0F2E2C', soft: '#173D3A' },
-        brand: { DEFAULT: '#FF6A2B', strong: '#F25418', soft: '#FFF0E8' },
+        brand: { DEFAULT: '#1A6FE0', strong: '#1458B8', soft: '#E8F1FE', light: '#5AA2FF' },
         paper: '#EEF2F1',
         line: '#DCE3E1',
         mute: '#5A6866',
@@ -18,7 +18,7 @@ const config: Config = {
         tick: '#D5DDDB',
         st: {
           qabul: '#7A8A87', 'qabul-ink': '#4E5D5B',
-          tamir: '#2F62F5', 'tamir-ink': '#2350D6',
+          tamir: '#7B5CF0', 'tamir-ink': '#5B3FD1',
           tayyor: '#13A15B', 'tayyor-ink': '#0C7A43',
           kutish: '#F08C00', 'kutish-ink': '#9A5300',
         },

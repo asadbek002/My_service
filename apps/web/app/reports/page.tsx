@@ -173,7 +173,7 @@ export default function Reports() {
                 <Split labor={Number(data.labor)} parts={Number(data.parts)} />
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-white/80">
                   <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-brand" />Usta haqi <b className="num font-mono font-semibold text-white">{money(data.labor)}</b></span>
-                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#6E93FF]" />Zapchast <b className="num font-mono font-semibold text-white">{money(data.parts)}</b></span>
+                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#A78BFA]" />Zapchast <b className="num font-mono font-semibold text-white">{money(data.parts)}</b></span>
                 </div>
               </div>
               <div className="talon-cut" />
@@ -265,7 +265,7 @@ function Split({ labor, parts }: { labor: number; parts: number }) {
     <div className="mt-4 flex h-2.5 gap-[3px]" role="img" aria-label={sum ? `Usta haqi ${Math.round(labor / sum * 100)}%, zapchast ${Math.round(parts / sum * 100)}%` : 'Tushum yo‘q'}>
       {sum === 0 ? <span className="flex-1 rounded-full bg-white/15" /> : <>
         {labor > 0 && <span className="rounded-full bg-brand" style={{ flexGrow: labor }} />}
-        {parts > 0 && <span className="rounded-full bg-[#6E93FF]" style={{ flexGrow: parts }} />}
+        {parts > 0 && <span className="rounded-full bg-[#A78BFA]" style={{ flexGrow: parts }} />}
       </>}
     </div>
   );

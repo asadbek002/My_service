@@ -54,7 +54,7 @@ function ChangePassword() {
 
 const QUEUE = [
   ['RECEIVED', 'Qabulda', 'Navbatda turibdi', 'bg-[#A9B8B5]'],
-  ['IN_REPAIR', "Ta'mirda", 'Ustada', 'bg-[#6E93FF]'],
+  ['IN_REPAIR', "Ta'mirda", 'Ustada', 'bg-[#A78BFA]'],
   ['READY', 'Tayyor', 'Olib ketiladi', 'bg-[#33C47A]'],
 ] as const;
 

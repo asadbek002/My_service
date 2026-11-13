@@ -466,3 +466,33 @@ test('account deletion: a staff member removes only themselves; the owner remove
   assert.ok(!fs.existsSync(path.resolve(__dirname, '..', 'uploads', svc.orgId)), 'photo files are removed');
   assert.equal((await request('/auth/me', { token: svc.token })).status, 401);
 });
+
+test('monitoring: a browser error reaches the platform owner once an hour; site visits are counted without personal data', async () => {
+  const id = randomUUID().slice(0, 8);
+  const adminChat = 700000000 + Math.floor(Math.random() * 1e6);
+  await db.platformAdmin.create({ data: { login: 'mon-' + id, passwordHash: await argon2.hash('Platform-Pass-123'), telegramChatId: String(adminChat) } });
+  const message = 'TypeError: x is undefined ' + id;
+  const report = () => fetch(base + '/public/client-error', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000', 'User-Agent': 'Mozilla/5.0 test' }, body: JSON.stringify({ message, stack: 'at Dashboard (page.js:1:2)', url: 'https://myserviceuz.uz/orders/cmw693zck00047deso7c30fl9' }) });
+  assert.equal((await report()).status, 204);
+  await new Promise(r => setTimeout(r, 300));
+  const alerts = () => calls.filter(c => c.method === 'sendMessage' && String(c.body.chat_id) === String(adminChat) && c.body.text.includes(id));
+  assert.equal(alerts().length, 1);
+  assert.ok(alerts()[0].body.text.includes('/orders/:id'), 'ids are hidden: ' + alerts()[0].body.text);
+  assert.equal((await report()).status, 204);
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(alerts().length, 1, 'the same error is not sent again within the hour');
+
+  // Visits: public pages only, bots ignored, the platform sees counts and sources.
+  const visit = (path, ua = 'Mozilla/5.0 (Linux; Android 14) Chrome/130', ref) => fetch(base + '/public/visit', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000', 'User-Agent': ua }, body: JSON.stringify({ path, ...(ref ? { ref } : {}) }) });
+  const platform = (await ok(await request('/platform/auth/login', { method: 'POST', body: { login: 'mon-' + id, password: 'Platform-Pass-123' } }), 201)).accessToken;
+  const before = (await ok(await request('/platform/analytics', { token: platform }))).visits;
+  const seen = k => before.pages.find(p => p.key === k)?.n ?? 0;
+  assert.equal((await visit('/signup', undefined, 'https://www.instagram.com/p/xyz')).status, 204);
+  await visit('/signup', 'Googlebot/2.1');
+  await visit('/dashboard');
+  const after = (await ok(await request('/platform/analytics', { token: platform }))).visits;
+  assert.equal(after.pages.find(p => p.key === '/signup').n, seen('/signup') + 1, 'one human visit; the bot is not counted');
+  assert.ok(!after.pages.some(p => p.key === '/dashboard'), 'app pages are not counted');
+  assert.ok(after.sources.some(s => s.key === 'instagram.com'));
+  assert.equal(after.perDay.length, 30);
+});

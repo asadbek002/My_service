@@ -52,7 +52,7 @@ export function Pricing({ initial }: { initial?: Offer | null }) {
                 {planLines(p).map(t => <li key={t} className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-st-tayyor" />{t}</li>)}
               </ul>
               {offer.signupOpen && (
-                <Link href="/signup" className={cn('mt-5 flex h-11 items-center justify-center rounded-lg text-sm font-semibold transition-colors', trial ? 'bg-brand text-ink hover:bg-brand-strong' : 'border hover:border-ink/40')}>Demo versiya</Link>
+                <Link href="/signup" className={cn('mt-5 flex h-11 items-center justify-center rounded-lg text-sm font-semibold transition-colors', trial ? 'bg-brand text-white hover:bg-brand-strong' : 'border hover:border-ink/40')}>Demo versiya</Link>
               )}
             </div>
           );

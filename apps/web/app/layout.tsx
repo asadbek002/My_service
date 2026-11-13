@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
-import { NoZoom, ServiceWorkerRegister, Translator } from './sw-register';
+import { NoZoom, ServiceWorkerRegister, TrackVisit, Translator } from './sw-register';
 import { earlyScript } from '../lib/i18n/early';
 import { QueryProvider } from '../components/query-provider';
 import { SITE_URL } from '../lib/site';
@@ -37,6 +37,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       <body>
         <QueryProvider>{children}</QueryProvider>
         <ServiceWorkerRegister />
+        <TrackVisit />
         <NoZoom />
         <Translator />
       </body>

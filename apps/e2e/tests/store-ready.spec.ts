@@ -44,3 +44,12 @@ test('inside the App Store app the sales page is skipped for signing in', async 
   await expect(page).toHaveURL(/\/login$/);
   await ctx.close();
 });
+
+test('pages are sent with security headers (no framing, no sniffing, camera only for this site)', async ({ request }) => {
+  const r = await request.get('/login');
+  const h = r.headers();
+  expect(h['x-frame-options']).toBe('DENY');
+  expect(h['x-content-type-options']).toBe('nosniff');
+  expect(h['content-security-policy']).toContain("frame-ancestors 'none'");
+  expect(h['permissions-policy']).toContain('camera=(self)');
+});

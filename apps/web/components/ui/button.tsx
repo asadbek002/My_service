@@ -10,7 +10,7 @@ const buttonVariants = cva(
       variant: {
         default: 'bg-ink text-white hover:bg-ink-soft active:bg-black',
         /** The one main action of a screen (Yangi qabul, Qabul qilish, To'lov). Ink on orange. */
-        brand: 'bg-brand text-ink hover:bg-brand-strong active:bg-brand-strong',
+        brand: 'bg-brand text-white hover:bg-brand-strong active:bg-brand-strong',
         secondary: 'border border-line bg-white text-ink hover:border-ink/40 active:bg-paper',
         outline: 'border border-line bg-white text-ink hover:border-ink/40 active:bg-paper',
         ghost: 'text-ink hover:bg-black/[0.04] active:bg-black/[0.07]',

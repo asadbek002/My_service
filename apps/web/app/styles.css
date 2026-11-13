@@ -27,8 +27,8 @@
   /* Numbers line up in columns: order numbers, amounts, phones. */
   .num { font-variant-numeric: tabular-nums; }
   :focus-visible { outline: 2px solid #0C1615; outline-offset: 2px; }
-  /* On ink surfaces (sidebar, hero) the ring switches to the brand orange (6.6:1 on ink). */
-  .on-ink :focus-visible { outline-color: #FF6A2B; }
+  /* On ink surfaces (sidebar, hero) the ring switches to the light brand blue. */
+  .on-ink :focus-visible { outline-color: #5AA2FF; }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }

@@ -15,7 +15,7 @@ export function BranchSwitcher({ dark, className }: { dark?: boolean; className?
   if (!multi || me?.support) return null;
   return (
     <label className={cn('relative flex min-w-0 items-center gap-1.5 rounded-full border text-sm font-medium', dark ? 'border-white/15 bg-white/[0.06] text-white' : 'border-line bg-white text-ink', className)}>
-      <MapPin className={cn('pointer-events-none absolute left-2.5 h-4 w-4 shrink-0', dark ? 'text-brand' : 'text-mute')} aria-hidden="true" />
+      <MapPin className={cn('pointer-events-none absolute left-2.5 h-4 w-4 shrink-0', dark ? 'text-brand-light' : 'text-mute')} aria-hidden="true" />
       <select value={branch} onChange={e => set(e.target.value)} aria-label="Filial"
         className={cn('h-9 w-full min-w-0 cursor-pointer appearance-none truncate rounded-full bg-transparent pl-8 pr-7 focus:outline-none', dark && '[&>option]:text-ink')}>
         <option value="">Barcha filiallar</option>

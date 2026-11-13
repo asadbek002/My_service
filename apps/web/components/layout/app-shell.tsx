@@ -109,7 +109,7 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
         <div className="px-3 pt-1 empty:hidden"><BranchSwitcher dark /></div>
         {canCreate && (
           <div className="px-3 pb-2 pt-2">
-            <Link href="/orders/new" className="flex h-11 items-center justify-center gap-2 rounded-md bg-brand text-sm font-semibold text-ink transition-colors hover:bg-brand-strong">
+            <Link href="/orders/new" className="flex h-11 items-center justify-center gap-2 rounded-md bg-brand text-sm font-semibold text-white transition-colors hover:bg-brand-strong">
               <Plus className="h-4 w-4" strokeWidth={2.5} /> Yangi qabul
             </Link>
           </div>
@@ -120,7 +120,7 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
             return (
               <Link key={item.href} href={item.href} aria-current={active ? 'page' : undefined}
                 className={cn('group flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors', active ? 'bg-white/10 font-semibold text-white' : 'text-white/60 hover:bg-white/[0.05] hover:text-white')}>
-                <item.icon className={cn('h-4 w-4 shrink-0', active && 'text-brand')} />
+                <item.icon className={cn('h-4 w-4 shrink-0', active && 'text-brand-light')} />
                 <span className="flex-1">{item.label}</span>
                 {active && <span className="h-1.5 w-1.5 rounded-full bg-brand" aria-hidden="true" />}
               </Link>
@@ -178,7 +178,7 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
             <Tab href="/orders" label="Buyurtma" icon={ClipboardList} active={isActive(pathname, '/orders')} />
             {canCreate ? (
               <Link href="/orders/new" className="flex flex-col items-center justify-end gap-0.5 pb-1.5" aria-label="Yangi qabul">
-                <span className="-mt-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand text-ink shadow-[0_6px_16px_-6px_rgba(255,106,43,0.7)] ring-4 ring-white transition-transform active:scale-95"><Plus className="h-6 w-6" strokeWidth={2.5} /></span>
+                <span className="-mt-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand text-white shadow-[0_6px_16px_-6px_rgba(26,111,224,0.6)] ring-4 ring-white transition-transform active:scale-95"><Plus className="h-6 w-6" strokeWidth={2.5} /></span>
                 <span className="text-[11px] font-semibold">Qabul</span>
               </Link>
             ) : <span />}
@@ -212,7 +212,7 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
                 return (
                   <Link key={item.href} href={item.href} aria-current={active ? 'page' : undefined}
                     className={cn('flex min-h-[5.25rem] flex-col items-center justify-center gap-2 rounded-2xl border px-1 text-center text-xs font-medium transition-colors', active ? 'border-ink bg-ink text-white' : 'bg-white text-ink active:bg-black/[0.04]')}>
-                    <span className={cn('flex h-9 w-9 items-center justify-center rounded-xl', active ? 'bg-white/10' : 'bg-paper')}><item.icon className={cn('h-[18px] w-[18px]', active && 'text-brand')} /></span>{item.label}
+                    <span className={cn('flex h-9 w-9 items-center justify-center rounded-xl', active ? 'bg-white/10' : 'bg-paper')}><item.icon className={cn('h-[18px] w-[18px]', active && 'text-brand-light')} /></span>{item.label}
                   </Link>
                 );
               })}
@@ -290,7 +290,7 @@ function Blocked({ reason }: { reason: string | null }) {
       {reason && <p className="mt-1 text-sm text-mute">Sabab: {reason}</p>}
       <p className="mt-2 text-sm text-mute">Ma&apos;lumotlaringiz saqlangan. Qayta ochish uchun yordam bo&apos;limiga yozing.</p>
       <div className="mt-5 grid gap-2">
-        <Link href="/help" className="flex h-12 items-center justify-center rounded-xl bg-brand text-sm font-semibold text-ink">Yordam bo&apos;limiga yozish</Link>
+        <Link href="/help" className="flex h-12 items-center justify-center rounded-xl bg-brand text-sm font-semibold text-white">Yordam bo&apos;limiga yozish</Link>
         <Link href="/account" className="flex h-12 items-center justify-center rounded-xl border text-sm font-semibold">Hisobim</Link>
       </div>
     </div>
