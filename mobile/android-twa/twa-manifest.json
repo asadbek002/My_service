@@ -13,7 +13,7 @@
   "iconUrl": "https://myserviceuz.uz/icon-512.png",
   "maskableIconUrl": "https://myserviceuz.uz/icon-maskable-512.png",
   "fallbackType": "customtabs",
-  "enableSiteSettingsShortcut": false,
+  "enableSiteSettingsShortcut": true,
   "isChromeOSOnly": false,
   "appVersionName": "1.0.0",
   "appVersionCode": 1,
