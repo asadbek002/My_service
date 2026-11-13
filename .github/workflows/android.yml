@@ -66,6 +66,9 @@ jobs:
           jq --argjson c "$code" --arg n "$name" '.appVersionCode=$c | .appVersionName=$n
             | .iconUrl="http://127.0.0.1:8765/icon-512.png" | .maskableIconUrl="http://127.0.0.1:8765/icon-maskable-512.png"' \
             twa-manifest.json > t.json && mv t.json twa-manifest.json
+          # Bubblewrap looks for <sdk>/bin/sdkmanager; the runner's SDK keeps it in cmdline-tools/latest/bin.
+          sudo ln -sfn "$ANDROID_HOME/cmdline-tools/latest/bin" "$ANDROID_HOME/bin"
+          yes | sudo "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "build-tools;36.1.0" >/dev/null
           mkdir -p ~/.bubblewrap
           echo "{\"jdkPath\":\"$JAVA_HOME\",\"androidSdkPath\":\"$ANDROID_HOME\"}" > ~/.bubblewrap/config.json
           echo "Versiya: $name ($code)" >> "$GITHUB_STEP_SUMMARY"
