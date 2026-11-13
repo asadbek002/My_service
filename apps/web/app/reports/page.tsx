@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Download, FileDown } from 'lucide-react';
 import { api, apiBlob } from '../../lib/api';
 import { errorText } from '../../lib/errors';
-import { dateTime, date, EXPENSE_CATEGORIES, money, PAYMENT_METHODS, phone } from '../../lib/format';
+import { COURIERS, dateTime, date, EXPENSE_CATEGORIES, money, PAYMENT_METHODS, phone } from '../../lib/format';
 import { can, useMe, usePaymentMethods } from '../../lib/queries';
 import { periodLabel, periodQuery, preset, type Period, type PeriodKey } from '../../lib/period';
 import { downloadPdf, type PdfSection } from '../../lib/pdf';
@@ -23,7 +23,8 @@ import { PeriodPicker } from '../../components/period-picker';
 type Debtor = { id: string; number: string; status: string; createdAt: string; customer: { firstName: string; lastName?: string | null; phone: string }; device: { brand: string; model: string }; total: string; paid: string; balance: string };
 type Expense = { id: string; category: string; amount: string; note: string; createdAt: string };
 type Finance = {
-  received: number; delivered: number; revenue: string; labor: string; parts: string; averageCheck: string;
+  received: number; delivered: number;
+  intake?: { walkIn: number; post: number; urgent: number; couriers: { courier: string; count: number }[] }; revenue: string; labor: string; parts: string; averageCheck: string;
   cashIn: string; refunds: string; netCash: string; expenses: { category: string; amount: string }[]; operatingExpenses: string; profit: string;
   debt: string; shopDebt: string; debtors: Debtor[]; expenseItems: Expense[]; basis: string;
   deliveredItems: { id: string; number: string; deliveredAt: string | null; customer: { firstName: string; phone: string }; device: { brand: string; model: string }; labor: string; parts: string; total: string; paid: string }[];
@@ -183,6 +184,22 @@ export default function Reports() {
               </div>
             </section>
             <p className="-mt-2 px-1 text-xs text-mute">Tushum — shu davrda mijozga berilgan qurilmalar summasi. Foyda = usta haqi − xarajatlar (zapchast xaridi mijoz to&apos;lagan zapchast pulidan qoplanadi).</p>
+
+            {data.intake && data.received > 0 && (
+              <section className="rounded-2xl border bg-white p-4 sm:p-5">
+                <h2 className="font-bold">Qabul turi <span className="text-xs font-normal text-mute">shu davrda qabul qilinganlar</span></h2>
+                <div className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-paper" aria-hidden="true">
+                  <span className="bg-ink" style={{ width: `${data.intake.walkIn / data.received * 100}%` }} />
+                  <span className="bg-sky-500" style={{ width: `${data.intake.post / data.received * 100}%` }} />
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                  <div><p className="text-xs text-mute">Ustaxonaga keldi</p><p className="num mt-0.5 font-mono font-semibold">{data.intake.walkIn} <span className="text-xs font-normal text-mute">({Math.round(data.intake.walkIn / data.received * 100)}%)</span></p></div>
+                  <div><p className="text-xs text-mute">Pochta orqali</p><p className="num mt-0.5 font-mono font-semibold">{data.intake.post} <span className="text-xs font-normal text-mute">({Math.round(data.intake.post / data.received * 100)}%)</span></p></div>
+                  <div><p className="text-xs text-mute">Shoshilinch</p><p className="num mt-0.5 font-mono font-semibold text-red-600">{data.intake.urgent}</p></div>
+                </div>
+                {data.intake.couriers.length > 0 && <p className="mt-2 text-xs text-mute">{data.intake.couriers.map(c => `${COURIERS[c.courier] ?? c.courier}: ${c.count}`).join(' · ')}</p>}
+              </section>
+            )}
 
             <section className="rounded-2xl border bg-white p-4 sm:p-5">
               <div className="flex items-center justify-between gap-3"><h2 className="font-bold">Kassa <span className="text-xs font-normal text-mute">qo&apos;lga tushgan pul</span></h2>{pdfButton('cash')}</div>

@@ -519,6 +519,18 @@ test('orders: urgent first and red, walk-in or by courier, sent back by courier;
   // Open lists put urgent orders first; history stays newest first.
   const open = await ok(await request('/orders?status=open', { token: svc.token }));
   assert.equal(open[0].id, posted.id);
+  // Filters: open urgent work, and everything that came by courier; the period report counts both.
+  assert.deepEqual((await ok(await request('/orders?status=URGENT', { token: svc.token }))).map(o => o.id), [posted.id]);
+  assert.deepEqual((await ok(await request('/orders?status=POST', { token: svc.token }))).map(o => o.id), [posted.id]);
+  const report = await ok(await request('/reports/finance', { token: svc.token }));
+  assert.equal(report.intake.post, 1); assert.equal(report.intake.walkIn, 2); assert.equal(report.intake.urgent, 1);
+  assert.deepEqual(report.intake.couriers, [{ courier: 'BTS', count: 1 }]);
+  // Courier details can be corrected; switching to walk-in clears them.
+  assert.deepEqual(await ok(await request('/orders/' + plain.id + '/shipping', { token: svc.token, method: 'PATCH', body: { intake: 'POST', courier: 'UZPOST', inboundTracking: 'RR1', shipAddress: 'Nukus' } })),
+    { intake: 'POST', courier: 'UZPOST', inboundTracking: 'RR1', shipAddress: 'Nukus' });
+  assert.deepEqual(await ok(await request('/orders/' + plain.id + '/shipping', { token: svc.token, method: 'PATCH', body: { intake: 'WALK_IN', courier: 'BTS' } })),
+    { intake: 'WALK_IN', courier: null, inboundTracking: null, shipAddress: null });
+  assert.ok(await db.auditLog.findFirst({ where: { entityId: plain.id, action: 'ORDER_SHIPPING_CHANGED' } }));
   // The urgent mark can be switched off and on while the order is open; it is audited.
   assert.deepEqual(await ok(await request('/orders/' + posted.id + '/urgent', { token: svc.token, method: 'PATCH', body: { urgent: false } })), { urgent: false });
   assert.equal((await ok(await request('/orders?status=open', { token: svc.token })))[0].urgent, false);

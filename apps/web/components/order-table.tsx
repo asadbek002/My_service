@@ -1,5 +1,9 @@
 import Link from 'next/link';
-import { dateTime, daysSince, deviceName, fullName, money } from '../lib/format';
+import { Flame, Truck } from 'lucide-react';
+import { COURIERS, dateTime, daysSince, deviceName, fullName, money } from '../lib/format';
+import type { Order as OrderRow } from '../lib/queries';
+
+const urgentOpen = (o: OrderRow) => !!o.urgent && ['RECEIVED', 'IN_REPAIR', 'READY'].includes(o.status);
 import { paidOf, type Order } from '../lib/queries';
 import { cn } from '../lib/utils';
 import { useCurrentBranch } from '../lib/branches';
@@ -28,10 +32,14 @@ export function OrderTable({ orders }: { orders: Order[] }) {
           const late = kind === 'tayyor' && days > LATE_AFTER;
           return (
             <li key={o.id} className="border-b border-paper last:border-0">
-              <Link href={`/orders/${o.id}`} className={cn('grid min-h-[3.75rem] items-center transition-colors hover:bg-[#F3F7F6]', COLS)}>
+              <Link href={`/orders/${o.id}`} className={cn('grid min-h-[3.75rem] items-center transition-colors', urgentOpen(o) ? 'border-l-4 border-l-red-600 bg-red-50 hover:bg-red-100/70' : 'hover:bg-[#F3F7F6]', COLS)}>
                 <span className="num px-4 font-mono text-xs">{o.number}</span>
                 <span className="min-w-0 px-3">
-                  <span className="block truncate text-sm font-semibold">{deviceName(o.device)}</span>
+                  <span className="flex items-center gap-1.5 truncate text-sm font-semibold">
+                    {urgentOpen(o) && <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-red-600 px-1 py-px text-[10px] font-bold uppercase text-white"><Flame className="h-3 w-3" />Shoshilinch</span>}
+                    {o.intake === 'POST' && <span className="inline-flex shrink-0 items-center gap-0.5 rounded border px-1 py-px text-[10px] font-semibold text-ink/80" title={o.courier ? COURIERS[o.courier] : 'Pochta'}><Truck className="h-3 w-3" />Pochta</span>}
+                    <span className="truncate">{deviceName(o.device)}</span>
+                  </span>
                   <span className="block truncate text-xs text-mute">{fullName(o.customer)} · {o.complaint}{showBranch && o.branch ? ' · ' + o.branch.name : ''}</span>
                 </span>
                 <span className="flex items-end gap-2 px-3">

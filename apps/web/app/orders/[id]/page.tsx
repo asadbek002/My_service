@@ -80,7 +80,7 @@ function OrderPage() {
         )}
 
         <Ticket order={order} canEditPrice={canEditPrice} onEditPrice={() => toggle('price')} canEditComplaint={canEditComplaint} onEditComplaint={() => toggle('complaint')} />
-        <OrderFlags order={order} canEdit={isOpen} />
+        <OrderFlags order={order} canEdit={isOpen} canEditShipping={canEdit && order.status !== 'CANCELLED'} />
 
         {panel === 'complaint' && <ComplaintForm order={order} onDone={() => { setPanel(null); setNotice('Nosozlik yangilandi'); }} />}
         {panel === 'price' && <PriceForm order={order} onDone={() => { setPanel(null); setNotice('Narx yangilandi'); }} />}
@@ -588,12 +588,13 @@ function OrderParts({ orderId, canAdd, canEdit, owner }: { orderId: string; canA
 }
 
 /** Urgent switch and, for a device that came by courier, where it came from and where it goes back. */
-function OrderFlags({ order, canEdit }: { order: OrderDetail; canEdit: boolean }) {
+function OrderFlags({ order, canEdit, canEditShipping }: { order: OrderDetail; canEdit: boolean; canEditShipping: boolean }) {
   const [error, setError] = useState('');
+  const [editing, setEditing] = useState(false);
   const toggle = useOrderMutation((urgent: boolean) => post(`/orders/${order.id}/urgent`, { urgent }, 'PATCH'));
   const urgent = !!order.urgent;
   const post_ = order.intake === 'POST';
-  if (!canEdit && !urgent && !post_) return null;
+  if (!canEdit && !urgent && !post_ && !canEditShipping) return null;
   return (
     <div className="space-y-2">
       {(canEdit || urgent) && (
@@ -607,18 +608,53 @@ function OrderFlags({ order, canEdit }: { order: OrderDetail; canEdit: boolean }
           </span>}
         </button>
       )}
-      {post_ && (
+      {editing ? <ShippingForm order={order} onDone={() => setEditing(false)} /> : post_ ? (
         <section className="flex gap-3 rounded-lg border bg-white p-4 text-sm">
           <Truck className="mt-0.5 h-5 w-5 shrink-0 text-mute" />
-          <div className="min-w-0 space-y-0.5">
+          <div className="min-w-0 flex-1 space-y-0.5">
             <p className="font-semibold">Pochta orqali keldi{order.courier ? ' · ' + (COURIERS[order.courier] ?? order.courier) : ''}</p>
             {order.inboundTracking && <p className="text-mute">Trek raqami: <span className="num font-mono text-ink">{order.inboundTracking}</span></p>}
             {order.shipAddress && <p className="text-mute">Qaytarish manzili: <span className="text-ink">{order.shipAddress}</span></p>}
             {order.returnCourier && <p className="text-mute">Jo&apos;natildi: <span className="text-ink">{COURIERS[order.returnCourier] ?? order.returnCourier}{order.returnTracking ? ' · ' + order.returnTracking : ''}</span></p>}
           </div>
+          {canEditShipping && <button type="button" aria-label="Qabul turini o'zgartirish" onClick={() => setEditing(true)} className="flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium text-mute hover:bg-paper hover:text-ink"><Pencil className="h-3.5 w-3.5" /> O&apos;zgartirish</button>}
         </section>
+      ) : canEditShipping && (
+        <button type="button" onClick={() => setEditing(true)} className="flex items-center gap-1.5 text-xs text-mute underline"><Truck className="h-3.5 w-3.5" /> Pochta orqali kelgan deb belgilash</button>
       )}
       <ErrorBox>{error}</ErrorBox>
     </div>
+  );
+}
+
+/** Corrects how the device came in: walk-in or by courier, which courier, tracking number, return address. */
+function ShippingForm({ order, onDone }: { order: OrderDetail; onDone: () => void }) {
+  const [intake, setIntake] = useState<'WALK_IN' | 'POST'>(order.intake === 'POST' ? 'POST' : 'WALK_IN');
+  const [courier, setCourier] = useState(order.courier ?? 'BTS');
+  const [tracking, setTracking] = useState(order.inboundTracking ?? '');
+  const [address, setAddress] = useState(order.shipAddress ?? '');
+  const [error, setError] = useState('');
+  const save = useOrderMutation(() => post(`/orders/${order.id}/shipping`, { intake, ...(intake === 'POST' ? { courier, inboundTracking: tracking.trim(), shipAddress: address.trim() } : {}) }, 'PATCH'));
+  return (
+    <Panel title="Qabul turi">
+      <form className="space-y-3" onSubmit={e => { e.preventDefault(); setError(''); save.mutate(undefined, { onSuccess: onDone, onError: err => setError(errorText(err)) }); }}>
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Qabul turi">
+          <button type="button" className="chip" aria-pressed={intake === 'WALK_IN'} onClick={() => setIntake('WALK_IN')}><Store className="h-3.5 w-3.5" />Ustaxonaga keldi</button>
+          <button type="button" className="chip" aria-pressed={intake === 'POST'} onClick={() => setIntake('POST')}><Truck className="h-3.5 w-3.5" />Pochta orqali</button>
+        </div>
+        {intake === 'POST' && <>
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Pochta xizmati">
+            {Object.entries(COURIERS).map(([k, l]) => <button key={k} type="button" className="chip" aria-pressed={courier === k} onClick={() => setCourier(k)}>{l}</button>)}
+          </div>
+          <Input value={tracking} onChange={e => setTracking(e.target.value)} placeholder="Trek raqami" aria-label="Trek raqami" maxLength={60} />
+          <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="Qaytarish manzili" aria-label="Qaytarish manzili" maxLength={300} />
+        </>}
+        <ErrorBox>{error}</ErrorBox>
+        <div className="flex gap-2">
+          <Button type="button" variant="secondary" onClick={onDone}>Bekor qilish</Button>
+          <Button type="submit" disabled={save.isPending}>{save.isPending ? 'Saqlanmoqda…' : 'Saqlash'}</Button>
+        </div>
+      </form>
+    </Panel>
   );
 }

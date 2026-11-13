@@ -184,9 +184,13 @@ class OrdersController {
       const ids = await debtorIds(this.db, scope, { only: 'DELIVERED' }, 200);
       return this.db.order.findMany({ where: { ...scope, id: { in: ids } }, include, orderBy: { createdAt: 'desc' } });
     }
-    const filter = status === 'open' ? { status: { in: OPEN_STATUSES } } : status && /^[A-Z_]{3,30}$/.test(status) ? { status } : {};
+    // URGENT: open work marked urgent. POST: devices that came by courier (open first, then the rest).
+    const filter = status === 'open' ? { status: { in: OPEN_STATUSES } }
+      : status === 'URGENT' ? { status: { in: OPEN_STATUSES }, urgent: true }
+      : status === 'POST' ? { intake: 'POST' }
+      : status && /^[A-Z_]{3,30}$/.test(status) ? { status } : {};
     // Open work: urgent orders first, so staff start them first; history stays newest first.
-    const urgentFirst = status === 'open' || OPEN_STATUSES.includes(status ?? '');
+    const urgentFirst = status === 'open' || status === 'POST' || OPEN_STATUSES.includes(status ?? '');
     return this.db.order.findMany({ where: { ...orderScope(actor, branch), ...filter }, include, orderBy: urgentFirst ? [{ urgent: 'desc' }, { createdAt: 'desc' }] : { createdAt: 'desc' }, take: 200 });
   }
   @Get(':id') @Permissions('orders.view')

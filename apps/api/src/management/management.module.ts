@@ -81,7 +81,7 @@ class ReportsController {
     const expenseBranch = branch ? { branchId: branch } : {};
     return this.db.$transaction(async tx => {
       const scope = orderScope(a, branch);
-      const [delivered, payments, expenses, received, debtors, shopDebt, expenseItems, paymentItems] = await Promise.all([
+      const [delivered, payments, expenses, received, debtors, shopDebt, expenseItems, paymentItems, byIntake, byCourier, urgentCount] = await Promise.all([
         // The orders behind the revenue, so a report can list them and not only their sum.
         tx.order.findMany({ where: { ...scope, status: 'DELIVERED', history: { some: { toStatus: 'DELIVERED', createdAt: period } } }, orderBy: { updatedAt: 'desc' },
           select: { id: true, number: true, labor: true, partsTotal: true, total: true, customer: { select: { firstName: true, phone: true } }, device: { select: { brand: true, model: true } },
@@ -96,6 +96,10 @@ class ReportsController {
         // Every payment and refund of the period: the cash section lists them by method.
         tx.payment.findMany({ where: { organizationId: a.organizationId, createdAt: period, order: scope }, orderBy: { createdAt: 'desc' }, take: 2000,
           select: { id: true, kind: true, method: true, amount: true, createdAt: true, order: { select: { number: true, customer: { select: { firstName: true } } } } } }),
+        // How the period's devices came in: brought to the counter or by courier (and which), and how many were urgent.
+        tx.order.groupBy({ by: ['intake'], where: { ...scope, createdAt: period }, _count: true }),
+        tx.order.groupBy({ by: ['courier'], where: { ...scope, createdAt: period, intake: 'POST' }, _count: true }),
+        tx.order.count({ where: { ...scope, createdAt: period, urgent: true } }),
       ]);
       const sum = (xs: Prisma.Decimal[]) => xs.reduce((s, x) => s.plus(x), new Prisma.Decimal(0));
       const revenue = sum(delivered.map(o => o.total)), labor = sum(delivered.map(o => o.labor)), parts = sum(delivered.map(o => o.partsTotal));
@@ -108,6 +112,10 @@ class ReportsController {
       return {
         from: period.gte, to: period.lte,
         received, delivered: delivered.length,
+        intake: {
+          walkIn: byIntake.find(g => g.intake === 'WALK_IN')?._count ?? 0, post: byIntake.find(g => g.intake === 'POST')?._count ?? 0, urgent: urgentCount,
+          couriers: byCourier.map(g => ({ courier: g.courier ?? 'OTHER', count: g._count })).sort((x, y) => y.count - x.count),
+        },
         revenue, labor, parts, averageCheck: delivered.length ? revenue.div(delivered.length).toDecimalPlaces(0) : new Prisma.Decimal(0),
         cashIn, refunds, netCash: cashIn.minus(refunds),
         expenses: expenses.map(e => ({ category: e.category, amount: e._sum.amount ?? 0 })), operatingExpenses: operating,

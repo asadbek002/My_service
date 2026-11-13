@@ -18,6 +18,8 @@ import { OrderTable } from '../../components/order-table';
 // amber debt. Inactive chips show a coloured dot; the chosen one is filled with its colour.
 const FILTERS = [
   ['open', 'Ochiq', 'bg-ink', 'aria-pressed:border-ink aria-pressed:bg-ink'],
+  ['URGENT', 'Shoshilinch', 'bg-red-600', 'aria-pressed:border-red-600 aria-pressed:bg-red-600'],
+  ['POST', 'Pochta', 'bg-sky-500', 'aria-pressed:border-sky-600 aria-pressed:bg-sky-600'],
   ['RECEIVED', 'Qabulda', 'bg-st-qabul', 'aria-pressed:border-st-qabul-ink aria-pressed:bg-st-qabul-ink'],
   ['IN_REPAIR', "Ta'mirda", 'bg-st-tamir', 'aria-pressed:border-st-tamir aria-pressed:bg-st-tamir'],
   ['READY', 'Tayyor', 'bg-st-tayyor', 'aria-pressed:border-st-tayyor-ink aria-pressed:bg-st-tayyor-ink'],
@@ -40,7 +42,7 @@ function Orders() {
   // Chip counts for the devices in the shop come from the open list (shared cache with the dashboard).
   const { data: open } = useOrders('open');
   const { data: debt } = useOrders('DEBT');
-  const count = (key: string) => key === 'open' ? open?.length : key === 'DEBT' ? debt?.length : ['RECEIVED', 'IN_REPAIR', 'READY'].includes(key) ? open?.filter(o => o.status === key).length : undefined;
+  const count = (key: string) => key === 'open' ? open?.length : key === 'DEBT' ? debt?.length : key === 'URGENT' ? open?.filter(o => o.urgent).length : key === 'POST' ? open?.filter(o => o.intake === 'POST').length : ['RECEIVED', 'IN_REPAIR', 'READY'].includes(key) ? open?.filter(o => o.status === key).length : undefined;
   const [q, setQ] = useState('');
   const shown = useMemo(() => {
     const text = q.trim().toLowerCase();

@@ -31,4 +31,21 @@ test('an urgent order that came by courier stands out and is first among open or
   await expect(first).toContainText('Shoshilinch');
   await expect(first).toContainText('Pochta · Fargo');
   await expect(page.locator('a[href^="/orders/c"]').first()).toContainText('Redmi 12');
+
+  // Filters: only urgent open work; only devices that came by courier.
+  await page.getByRole('button', { name: /^Shoshilinch/ }).click();
+  await expect(page).toHaveURL(/status=URGENT/);
+  await expect(page.locator('a[href^="/orders/c"]').filter({ visible: true })).toHaveCount(1);
+  await page.getByRole('button', { name: /^Pochta/ }).click();
+  await expect(page).toHaveURL(/status=POST/);
+  await expect(page.locator('a[href^="/orders/c"]').filter({ visible: true })).toHaveCount(1);
+
+  // The courier details are corrected on the order.
+  await page.locator('a[href^="/orders/c"]').filter({ visible: true }).first().click();
+  await page.getByRole('button', { name: "Qabul turini o'zgartirish" }).click();
+  await page.getByRole('button', { name: 'BTS' }).click();
+  await page.getByLabel('Trek raqami').fill('BTS-1122');
+  await page.getByRole('button', { name: 'Saqlash' }).click();
+  await expect(page.getByText('Pochta orqali keldi · BTS')).toBeVisible();
+  await expect(page.getByText('BTS-1122')).toBeVisible();
 });
