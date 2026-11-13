@@ -3,11 +3,11 @@
 import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
-import { Printer, Phone, Pencil, Share2, Undo2, Ban, ShieldCheck } from 'lucide-react';
+import { Printer, Phone, Pencil, Share2, Undo2, Ban, ShieldCheck, Flame, Store, Truck } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 import { errorText } from '../../../lib/errors';
-import { date, dateTime, daysSince, deviceName, fullName, idempotencyKey, money, phone, PAYMENT_METHODS, som, initials } from '../../../lib/format';
+import { COURIERS, date, dateTime, daysSince, deviceName, fullName, idempotencyKey, money, phone, PAYMENT_METHODS, som, initials } from '../../../lib/format';
 import { LATE_AFTER, Ruler, rulerKind, type RulerKind } from '../../../components/ui/ruler';
 import { OrderPhotos } from '../../../components/order-photos';
 import { can, post, useDefaults, useMe, useOrder, useOrderMutation, usePaymentMethods, type Me, type OrderDetail, type Payment } from '../../../lib/queries';
@@ -80,6 +80,7 @@ function OrderPage() {
         )}
 
         <Ticket order={order} canEditPrice={canEditPrice} onEditPrice={() => toggle('price')} canEditComplaint={canEditComplaint} onEditComplaint={() => toggle('complaint')} />
+        <OrderFlags order={order} canEdit={isOpen} />
 
         {panel === 'complaint' && <ComplaintForm order={order} onDone={() => { setPanel(null); setNotice('Nosozlik yangilandi'); }} />}
         {panel === 'price' && <PriceForm order={order} onDone={() => { setPanel(null); setNotice('Narx yangilandi'); }} />}
@@ -328,14 +329,34 @@ function DeliverForm({ order, allowDebt, onDone }: { order: OrderDetail; allowDe
   const warrantyDays = custom ? Math.min(1095, Number(custom)) : days;
   const paying = balance > 0 && payNow ? payAmount(amount, balance) : 0;
   const left = Math.round((balance - paying) * 100) / 100;
+  // A device that came by courier usually goes back by courier: which one and the tracking number.
+  const [byPost, setByPost] = useState(order.intake === 'POST');
+  const [returnCourier, setReturnCourier] = useState(order.courier ?? 'BTS');
+  const [returnTracking, setReturnTracking] = useState('');
   const deliver = useOrderMutation(async () => {
     // Taking the money (all or part of it) and handing over are one step at the counter.
     if (paying > 0) await post(`/orders/${order.id}/payments`, { amount: String(paying), method, idempotencyKey: key });
-    return post(`/orders/${order.id}/deliver`, { warrantyDays, ...(left > 0 ? { allowDebt: true } : {}) });
+    return post(`/orders/${order.id}/deliver`, { warrantyDays, ...(left > 0 ? { allowDebt: true } : {}), ...(byPost ? { returnCourier, returnTracking: returnTracking.trim() } : {}) });
   });
   return (
     <Panel title="Mijozga berish">
       <div className="space-y-4">
+        <div>
+          <p className="mb-2 text-sm font-medium">Qanday beriladi?</p>
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Qanday beriladi">
+            <button type="button" className="chip" aria-pressed={!byPost} onClick={() => setByPost(false)}><Store className="h-3.5 w-3.5" />O&apos;zi olib ketdi</button>
+            <button type="button" className="chip" aria-pressed={byPost} onClick={() => setByPost(true)}><Truck className="h-3.5 w-3.5" />Pochta orqali jo&apos;natildi</button>
+          </div>
+          {byPost && (
+            <div className="mt-3 space-y-2">
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Pochta xizmati">
+                {Object.entries(COURIERS).map(([k, l]) => <button key={k} type="button" className="chip" aria-pressed={returnCourier === k} onClick={() => setReturnCourier(k)}>{l}</button>)}
+              </div>
+              <Input value={returnTracking} onChange={e => setReturnTracking(e.target.value)} placeholder="Trek raqami (ixtiyoriy)" aria-label="Jo'natma trek raqami" maxLength={60} />
+              {order.shipAddress && <p className="text-xs text-mute">Manzil: {order.shipAddress}</p>}
+            </div>
+          )}
+        </div>
         <div>
           <p className="mb-2 text-sm font-medium">Kafolat necha kun?</p>
           <div className="flex flex-wrap gap-2">
@@ -563,5 +584,41 @@ function OrderParts({ orderId, canAdd, canEdit, owner }: { orderId: string; canA
       {items.length ? <ul className="divide-y">{items.map(p => <PartRow key={p.id} part={p} canEdit={canEdit} canFix={owner && canEdit} compact />)}</ul>
         : <p className="px-4 py-4 text-sm text-mute">Do&apos;kondan zapchast olinsa, shu yerda ko&apos;rinadi.</p>}
     </section>
+  );
+}
+
+/** Urgent switch and, for a device that came by courier, where it came from and where it goes back. */
+function OrderFlags({ order, canEdit }: { order: OrderDetail; canEdit: boolean }) {
+  const [error, setError] = useState('');
+  const toggle = useOrderMutation((urgent: boolean) => post(`/orders/${order.id}/urgent`, { urgent }, 'PATCH'));
+  const urgent = !!order.urgent;
+  const post_ = order.intake === 'POST';
+  if (!canEdit && !urgent && !post_) return null;
+  return (
+    <div className="space-y-2">
+      {(canEdit || urgent) && (
+        <button type="button" role="switch" aria-checked={urgent} disabled={!canEdit || toggle.isPending}
+          onClick={() => { setError(''); toggle.mutate(!urgent, { onError: e => setError(errorText(e)) }); }}
+          className={cn('flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left text-sm', urgent ? 'border-red-500 bg-red-50' : 'bg-white')}>
+          <Flame className={cn('h-4 w-4 shrink-0', urgent ? 'text-red-600' : 'text-mute')} />
+          <span className={cn('flex-1 font-semibold', urgent && 'text-red-700')}>{urgent ? 'Shoshilinch buyurtma' : 'Shoshilinch deb belgilash'}</span>
+          {canEdit && <span className={cn('relative inline-flex h-6 w-10 shrink-0 rounded-full transition-colors', urgent ? 'bg-red-600' : 'bg-tick')}>
+            <span className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform', urgent ? 'translate-x-[18px]' : 'translate-x-0.5')} />
+          </span>}
+        </button>
+      )}
+      {post_ && (
+        <section className="flex gap-3 rounded-lg border bg-white p-4 text-sm">
+          <Truck className="mt-0.5 h-5 w-5 shrink-0 text-mute" />
+          <div className="min-w-0 space-y-0.5">
+            <p className="font-semibold">Pochta orqali keldi{order.courier ? ' · ' + (COURIERS[order.courier] ?? order.courier) : ''}</p>
+            {order.inboundTracking && <p className="text-mute">Trek raqami: <span className="num font-mono text-ink">{order.inboundTracking}</span></p>}
+            {order.shipAddress && <p className="text-mute">Qaytarish manzili: <span className="text-ink">{order.shipAddress}</span></p>}
+            {order.returnCourier && <p className="text-mute">Jo&apos;natildi: <span className="text-ink">{COURIERS[order.returnCourier] ?? order.returnCourier}{order.returnTracking ? ' · ' + order.returnTracking : ''}</span></p>}
+          </div>
+        </section>
+      )}
+      <ErrorBox>{error}</ErrorBox>
+    </div>
   );
 }

@@ -4,7 +4,7 @@ import { BotService } from '../bot/bot.service';
 import { OwnBots } from '../bot/own-bot';
 import { esc, fmtDate, som as fmtSom, TelegramClient } from '../bot/telegram.client';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsOptional, IsString, Length, Matches } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, Length, Matches } from 'class-validator';
 import { EskizClient } from './eskiz.client';
 import { platformSmsConfigured, SmsAccounts } from './sms-accounts';
 import { Queue, Worker } from 'bullmq';
@@ -12,7 +12,7 @@ import { Database } from '../database';
 import { createLink } from './links.module';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
-import { orderScope } from '../orders/orders.module';
+import { COURIER_LABEL, orderScope } from '../orders/orders.module';
 import { gsm7, readySms, SMS } from './sms-text';
 
 class SmsSettingsDto {
@@ -79,9 +79,11 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
     const actorId = typeof (event.payload as Record<string, unknown> | null)?.actorId === 'string' ? String((event.payload as Record<string, unknown>).actorId) : undefined;
     const actor = actorId ? await this.db.user.findFirst({ where: { id: actorId, organizationId: event.organizationId }, select: { firstName: true } }) : null;
     const web = process.env.WEB_URL ? '\n' + process.env.WEB_URL + '/orders/' + order.id : '';
-    const text = event.type === 'ORDER_RECEIVED'
+    // Urgent orders stand out in the staff chat; courier orders say so.
+    const flags = (order.urgent ? '🔴 <b>SHOSHILINCH</b>\n' : '') + (order.intake === 'POST' ? `📦 Pochta orqali${order.courier ? ' (' + esc(COURIER_LABEL[order.courier] ?? order.courier) + ')' : ''}\n` : '');
+    const text = flags + (event.type === 'ORDER_RECEIVED'
       ? `📥 <b>Yangi qabul</b> ${esc(order.number)}\n${esc(order.device.brand + ' ' + order.device.model)} · ${esc(order.customer.firstName)}\n${esc(order.complaint)}\nNarx: ${fmtSom(order.total)}${actor ? '\nQabul qildi: ' + esc(actor.firstName) : ''}${web}`
-      : `✅ <b>Tayyor</b> ${esc(order.number)}\n${esc(order.device.brand + ' ' + order.device.model)}\n${esc(order.customer.firstName)} ${esc(order.customer.phone)}${actor ? '\nUsta: ' + esc(actor.firstName) : ''}${web}`;
+      : `✅ <b>Tayyor</b> ${esc(order.number)}\n${esc(order.device.brand + ' ' + order.device.model)}\n${esc(order.customer.firstName)} ${esc(order.customer.phone)}${actor ? '\nUsta: ' + esc(actor.firstName) : ''}${order.intake === 'POST' && order.shipAddress ? '\nJo\'natish: ' + esc(order.shipAddress) : ''}${web}`);
     await this.bot.notifyStaff(event.organizationId, text, actorId, event.type === 'ORDER_RECEIVED' ? 'newOrder' : 'ready');
   }
   /** Send through the platform's provider (Eskiz, or a generic HTTPS webhook). Returns the provider id. */
@@ -113,7 +115,9 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
     const due = order.total.minus(paid);
     const sum = (v: { toString(): string }) => Number(v.toString()).toLocaleString('ru-RU').replace(/\u00a0/g, ' ') + ' so‘m';
     // The service's own name: each organization sends messages under its brand.
-    const defaultText = order.organization.name + ' · ' + order.number + '\n' + labels[event.type] + '\n' + order.device.brand + ' ' + order.device.model
+    // A device that came by courier goes back by courier: "ready" says it will be sent, not "come and pick it up".
+    const label = event.type === 'ORDER_READY' && order.intake === 'POST' ? "Qurilmangiz tayyor, pochta orqali jo'natamiz." : labels[event.type];
+    const defaultText = order.organization.name + ' · ' + order.number + '\n' + label + '\n' + order.device.brand + ' ' + order.device.model
       + (event.type === 'ORDER_RECEIVED' ? '\nNosozlik: ' + order.complaint + '\nNarx: ' + sum(order.total) : '')
       + (event.type === 'ORDER_DELIVERED' && order.warranty ? '\nKafolat: ' + fmtDate(order.warranty.endDate) + ' gacha' : '')
       + (event.type !== 'ORDER_RECEIVED' && due.greaterThan(0) ? '\nTo‘lov: ' + sum(due) : '') + '\n' + link;
@@ -144,6 +148,10 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
         // Courtesy messages are never worth an SMS.
         await this.db.notification.update({ where: { id: notification.id }, data: { status: 'SKIPPED', errorCode: order.customer.telegramChatId ? 'TELEGRAM_REJECTED' : 'NO_TELEGRAM' } }); return;
       }
+      // The service's SMS switch (Settings, or the platform): off means Telegram only, by either route.
+      if (!order.organization.smsEnabled) {
+        await this.db.notification.update({ where: { id: notification.id }, data: { status: 'SKIPPED', channel, errorCode: 'SMS_DISABLED' } }); return;
+      }
       // The service's own Eskiz account (its balance, no limit), else the platform's (plan allowance, then extra).
       const ownSms = await this.sms.own(order.organizationId);
       let smsProviderId = '';
@@ -171,6 +179,7 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
     }
   }
 }
+class SmsSwitchDto { @IsBoolean() enabled!: boolean; }
 @ApiTags('notifications') @ApiBearerAuth()
 @Controller('notifications')
 class NotificationsController {
@@ -201,6 +210,13 @@ class NotificationsController {
         // What the platform set for this service: SMS switched off, or a hard monthly cap.
         enabled: org.smsEnabled, cap: org.smsMonthlyCap },
     };
+  }
+  /** Customer SMS on or off for this service (new services start with them off). The platform can switch it too. */
+  @Put('sms/enabled') @Permissions('settings.manage')
+  async smsSwitch(@CurrentActor() a: Actor, @Body() d: SmsSwitchDto) {
+    const org = await this.db.organization.update({ where: { id: a.organizationId }, data: { smsEnabled: d.enabled }, select: { smsEnabled: true } });
+    await this.db.auditLog.create({ data: { organizationId: a.organizationId, actorId: a.userId, action: 'SETTING_CHANGED', entityId: 'sms_enabled', newValue: { enabled: org.smsEnabled } } });
+    return { enabled: org.smsEnabled };
   }
   @Put('sms') @Permissions('settings.manage')
   async saveSms(@CurrentActor() a: Actor, @Body() d: SmsSettingsDto) {

@@ -46,6 +46,8 @@ class ReceiptController {
         number: order.number, status: order.status, createdAt: order.createdAt, complaint: order.complaint, accessories: order.accessories,
         labor: order.labor.toString(), partsTotal: order.partsTotal.toString(), total: order.total.toString(),
         paid: paid.toString(), balance: order.total.minus(paid).toString(),
+        intake: order.intake, courier: order.courier, inboundTracking: order.inboundTracking, shipAddress: order.shipAddress,
+        returnCourier: order.returnCourier, returnTracking: order.returnTracking,
       },
       customer: { name: [order.customer.firstName, order.customer.lastName].filter(Boolean).join(' '), phone: order.customer.phone },
       device: { category: order.device.category, brand: order.device.brand, model: order.device.model },

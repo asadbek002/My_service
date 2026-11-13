@@ -288,7 +288,10 @@ async function serviceOn(features, extra = {}) {
   const platform = (await ok(await request('/platform/auth/login', { method: 'POST', body: { login: 'own-admin-' + id, password: 'Platform-Pass-123' } }), 201)).accessToken;
   const plan = await ok(await request('/platform/plans', { token: platform, method: 'POST', body: { name: 'OWN-' + id, monthlyPrice: '349000', features, ...extra } }), 201);
   const org = await ok(await request('/platform/organizations', { token: platform, method: 'POST', body: { name: 'Usta ' + id, slug: 'own-' + id, planId: plan.id, login: 'own' + id, temporaryPassword: 'Temporary-Pass-123', ownerName: 'Boss', phone: '+998901119900' } }), 201);
-  return { token: await signIn('own' + id, 'Temporary-Pass-123', 'Boss-Password-123'), orgId: org.id, planId: plan.id, platform };
+  const token = await signIn('own' + id, 'Temporary-Pass-123', 'Boss-Password-123');
+  // New services start with customer SMS off; an SMS plan's tests switch them on the way an owner does.
+  if (features.sms) assert.deepEqual(await ok(await request('/notifications/sms/enabled', { token, method: 'PUT', body: { enabled: true } })), { enabled: true });
+  return { token, orgId: org.id, planId: plan.id, platform };
 }
 async function orderFor(token, phone) {
   const customer = await ok(await request('/customers', { token, method: 'POST', body: { firstName: 'Dilshod', phone } }), 201);
@@ -495,4 +498,44 @@ test('monitoring: a browser error reaches the platform owner once an hour; site 
   assert.ok(!after.pages.some(p => p.key === '/dashboard'), 'app pages are not counted');
   assert.ok(after.sources.some(s => s.key === 'instagram.com'));
   assert.equal(after.perDay.length, 30);
+});
+
+test('orders: urgent first and red, walk-in or by courier, sent back by courier; new services start with SMS off', async () => {
+  const svc = await serviceOn({ telegram: true, sms: false });
+  assert.equal((await db.organization.findUnique({ where: { id: svc.orgId } })).smsEnabled, false, 'a new service has customer SMS off');
+  const phone = '+99899' + String(Math.floor(Math.random() * 1e7)).padStart(7, '0');
+  const customer = await ok(await request('/customers', { token: svc.token, method: 'POST', body: { firstName: 'Kamola', phone } }), 201);
+  const device = await ok(await request('/devices', { token: svc.token, method: 'POST', body: { customerId: customer.id, category: 'Telefon', brand: 'Apple', model: 'iPhone 14' } }), 201);
+  const base = { customerId: customer.id, deviceId: device.id, complaint: 'Ekran', accessories: [], labor: '100000', partsTotal: '0' };
+  const plain = await ok(await request('/orders', { token: svc.token, method: 'POST', body: base }), 201);
+  const posted = await ok(await request('/orders', { token: svc.token, method: 'POST', body: { ...base, urgent: true, intake: 'POST', courier: 'BTS', inboundTracking: ' 123456 ', shipAddress: 'Samarqand, BTS filiali' } }), 201);
+  assert.equal(plain.urgent, false); assert.equal(plain.intake, 'WALK_IN'); assert.equal(plain.courier, null);
+  assert.equal(posted.urgent, true); assert.equal(posted.intake, 'POST'); assert.equal(posted.courier, 'BTS'); assert.equal(posted.inboundTracking, '123456');
+  // A walk-in order keeps no courier details even if some were sent.
+  const walk = await ok(await request('/orders', { token: svc.token, method: 'POST', body: { ...base, intake: 'WALK_IN', courier: 'BTS', inboundTracking: 'x' } }), 201);
+  assert.equal(walk.courier, null); assert.equal(walk.inboundTracking, null);
+  assert.equal((await request('/orders', { token: svc.token, method: 'POST', body: { ...base, intake: 'DRONE' } })).status, 400);
+
+  // Open lists put urgent orders first; history stays newest first.
+  const open = await ok(await request('/orders?status=open', { token: svc.token }));
+  assert.equal(open[0].id, posted.id);
+  // The urgent mark can be switched off and on while the order is open; it is audited.
+  assert.deepEqual(await ok(await request('/orders/' + posted.id + '/urgent', { token: svc.token, method: 'PATCH', body: { urgent: false } })), { urgent: false });
+  assert.equal((await ok(await request('/orders?status=open', { token: svc.token })))[0].urgent, false);
+  assert.ok(await db.auditLog.findFirst({ where: { entityId: posted.id, action: 'ORDER_URGENT_CHANGED' } }));
+
+  // Handed back by courier: the order keeps the courier and number, the history says so.
+  await db.order.update({ where: { id: posted.id }, data: { status: 'READY' } });
+  await ok(await request('/orders/' + posted.id + '/payments', { token: svc.token, method: 'POST', body: { amount: '100000', method: 'CASH', idempotencyKey: randomUUID() } }), 201);
+  await ok(await request('/orders/' + posted.id + '/deliver', { token: svc.token, method: 'POST', body: { warrantyDays: 0, returnCourier: 'BTS', returnTracking: '987654' } }), 201);
+  const done = await ok(await request('/orders/' + posted.id, { token: svc.token }));
+  assert.equal(done.returnCourier, 'BTS'); assert.equal(done.returnTracking, '987654');
+  assert.ok(done.history.some(h => h.toStatus === 'DELIVERED' && /BTS orqali jo'natildi · 987654/.test(h.comment ?? '')));
+  assert.equal((await request('/orders/' + posted.id + '/urgent', { token: svc.token, method: 'PATCH', body: { urgent: true } })).status, 409, 'closed orders keep their mark');
+
+  // SMS off: "ready" for a customer without Telegram is skipped, not sent; the owner can switch SMS on.
+  const n = await deliverReady(plain.id, svc.orgId);
+  assert.equal(n.status, 'SKIPPED'); assert.equal(n.errorCode, 'SMS_DISABLED');
+  assert.deepEqual(await ok(await request('/notifications/sms/enabled', { token: svc.token, method: 'PUT', body: { enabled: true } })), { enabled: true });
+  assert.equal((await ok(await request('/notifications/sms', { token: svc.token }))).platform.enabled, true);
 });

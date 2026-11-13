@@ -253,6 +253,18 @@ function Channels() {
           )}
         </>}
         {s && <>
+          <div className="flex items-start justify-between gap-3 rounded-lg border p-3">
+            <div className="min-w-0 text-sm">
+              <p className="font-semibold">Mijozlarga SMS yuborish</p>
+              <p className="text-xs text-mute">{s.platform.enabled ? "Telegramga ulanmagan mijozga qurilma tayyor bo'lganda SMS boradi." : "O'chiq: mijozlarga faqat Telegram xabarlari boradi, SMS yuborilmaydi."}</p>
+            </div>
+            <button type="button" role="switch" aria-checked={s.platform.enabled} aria-label="Mijozlarga SMS yuborish" disabled={busy}
+              onClick={() => run(() => api('/notifications/sms/enabled', { method: 'PUT', body: JSON.stringify({ enabled: !s.platform.enabled }) }), s.platform.enabled ? "SMS o'chirildi" : 'SMS yoqildi')}
+              className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-50 ${s.platform.enabled ? 'bg-st-tayyor' : 'bg-tick'}`}>
+              <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${s.platform.enabled ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+          {s.platform.enabled && <>
           <div className="flex gap-2" role="radiogroup" aria-label="SMS yuborish usuli">
             {([['platform', 'MyService orqali'], ['own', "O'z Eskiz akkauntim"]] as const).map(([k, l]) => (
               <button key={k} type="button" role="radio" aria-checked={shownMode === k} onClick={() => setMode(k)} className="chip">{l}</button>
@@ -263,7 +275,6 @@ function Channels() {
               {s.platform.available
                 ? <p>Shu oy: <b className="num font-mono">{s.platform.sent}</b>{s.platform.limit !== null ? <> / {s.platform.limit} SMS tarifda</> : ' SMS (cheksiz)'}{s.platform.extra > 0 && <span className="text-amber-700"> · {s.platform.extra} ta ortiqcha</span>}</p>
                 : <p className="text-mute">Tarifingizda SMS yo&apos;q yoki platforma SMS hali ulanmagan. O&apos;z Eskiz akkauntingizni ulashingiz mumkin.</p>}
-              {!s.platform.enabled && <p className="rounded-md bg-red-50 px-3 py-2 text-[13px] text-red-800">MyService orqali SMS yuborish siz uchun o&apos;chirilgan. Mijozlarga faqat Telegram xabarlari boradi. Yoqish uchun yordam bo&apos;limiga yozing.</p>}
               {s.platform.enabled && s.platform.cap !== null && <p className={`text-[13px] ${s.platform.sent >= s.platform.cap ? 'rounded-md bg-amber-50 px-3 py-2 text-amber-900' : 'text-mute'}`}>{s.platform.sent >= s.platform.cap ? `Oylik SMS limiti (${s.platform.cap} ta) tugadi: oy oxirigacha SMS yuborilmaydi, Telegram xabarlari ketaveradi.` : `Oylik SMS limiti: ${s.platform.cap} ta.`}</p>}
               {s.platform.testMode && <p className="text-xs text-amber-700">Platforma SMS hozir test rejimida.</p>}
               {s.mode === 'own' && <Button variant="secondary" className="mt-2 w-fit" disabled={busy} onClick={() => run(() => api('/notifications/sms', { method: 'PUT', body: JSON.stringify({ mode: 'platform' }) }), 'SMS endi MyService orqali ketadi')}>MyService orqali yuborish</Button>}
@@ -280,6 +291,7 @@ function Channels() {
               <Button disabled={busy} className="sm:w-fit">{busy ? 'Tekshirilmoqda…' : s.mode === 'own' ? 'Saqlash' : 'Ulash'}</Button>
             </form>
           )}
+          </>}
           <div className="flex flex-wrap items-center gap-2 border-t pt-3">
             <Button variant="secondary" disabled={busy} onClick={() => run(async () => { const r = await api<{ phone: string }>('/notifications/sms/test', { method: 'POST' }); setState({ ok: `Test SMS ${r.phone} raqamiga yuborildi` }); }, 'Test SMS yuborildi')}>Menga test SMS</Button>
             <span className="text-xs text-mute">O&apos;z telefoningizga keladi (kuniga 5 tagacha).</span>

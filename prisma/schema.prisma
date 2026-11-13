@@ -298,6 +298,17 @@ model Order {
   partsTotal Decimal @default(0) @db.Decimal(18, 2)
   total Decimal @default(0) @db.Decimal(18, 2)
   finalTest Json?
+  /// Urgent: shown in red and first among open orders, so staff start it first. Optional.
+  urgent Boolean @default(false)
+  /// How the device came in: WALK_IN (brought to the counter) or POST (sent by courier / post).
+  intake String @default("WALK_IN")
+  /// POST orders: the courier (BTS, FARGO, STAREX, UZPOST, YANDEX, OTHER), its tracking number, where to send it back.
+  courier String?
+  inboundTracking String?
+  shipAddress String?
+  /// Sent back by courier at hand-over: which one and its tracking number.
+  returnCourier String?
+  returnTracking String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)

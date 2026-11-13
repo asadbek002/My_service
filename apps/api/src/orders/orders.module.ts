@@ -6,10 +6,16 @@ import { Database } from '../database';
 import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { debtorIds } from './debt';
-import { CustomerDto, DeviceDto, OrderDto, PriceDto, ComplaintDto, StatusDto, PaymentDto, RefundDto, DeliverDto, FixDeliveryDto, CustomerUpdateDto } from './orders.dto';
+import { CustomerDto, DeviceDto, OrderDto, PriceDto, UrgentDto, ShippingDto, ComplaintDto, StatusDto, PaymentDto, RefundDto, DeliverDto, FixDeliveryDto, CustomerUpdateDto } from './orders.dto';
 
 // Simplified flow: RECEIVED → IN_REPAIR → READY → DELIVERED, CANCELLED from any open state.
 export const OPEN_STATUSES = ['RECEIVED', 'IN_REPAIR', 'READY'];
+export const COURIER_LABEL: Record<string, string> = { BTS: 'BTS', FARGO: 'Fargo', STAREX: 'Starex', UZPOST: "O'zbekiston pochtasi", YANDEX: 'Yandex Dostavka', OTHER: 'Kuryer' };
+/** Walk-in orders carry no courier details; a courier order keeps what was given (all optional). */
+function shipping(d: { intake?: string; courier?: string; inboundTracking?: string; shipAddress?: string }) {
+  if (d.intake !== 'POST') return { intake: 'WALK_IN', courier: null, inboundTracking: null, shipAddress: null };
+  return { intake: 'POST', courier: d.courier ?? null, inboundTracking: d.inboundTracking?.trim() || null, shipAddress: d.shipAddress?.trim() || null };
+}
 const TRANSITIONS: Record<string, string[]> = {
   RECEIVED: ['IN_REPAIR', 'READY', 'CANCELLED'],
   IN_REPAIR: ['READY', 'RECEIVED', 'CANCELLED'],
@@ -179,7 +185,9 @@ class OrdersController {
       return this.db.order.findMany({ where: { ...scope, id: { in: ids } }, include, orderBy: { createdAt: 'desc' } });
     }
     const filter = status === 'open' ? { status: { in: OPEN_STATUSES } } : status && /^[A-Z_]{3,30}$/.test(status) ? { status } : {};
-    return this.db.order.findMany({ where: { ...orderScope(actor, branch), ...filter }, include, orderBy: { createdAt: 'desc' }, take: 200 });
+    // Open work: urgent orders first, so staff start them first; history stays newest first.
+    const urgentFirst = status === 'open' || OPEN_STATUSES.includes(status ?? '');
+    return this.db.order.findMany({ where: { ...orderScope(actor, branch), ...filter }, include, orderBy: urgentFirst ? [{ urgent: 'desc' }, { createdAt: 'desc' }] : { createdAt: 'desc' }, take: 200 });
   }
   @Get(':id') @Permissions('orders.view')
   async get(@CurrentActor() actor: Actor, @Param('id') id: string) {
@@ -214,9 +222,32 @@ class OrdersController {
       const order = await tx.order.create({ data: {
         organizationId: actor.organizationId, branchId: branch.id, customerId: dto.customerId, deviceId: dto.deviceId, number,
         complaint: dto.complaint, accessories: dto.accessories, condition: [], labor, partsTotal, total: labor.plus(partsTotal),
+        urgent: dto.urgent === true, ...shipping(dto),
       } });
       await tx.orderHistory.create({ data: { organizationId: actor.organizationId, orderId: order.id, toStatus: 'RECEIVED', actorId: actor.userId } });
       await record(tx, actor, order.id, 'ORDER_RECEIVED'); return order;
+    });
+  }
+  @Patch(':id/urgent') @Permissions('orders.view')
+  async urgent(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: UrgentDto) {
+    return this.db.$transaction(async tx => {
+      const order = await lockedOrder(tx, actor, id);
+      if (!OPEN_STATUSES.includes(order.status)) throw new ConflictException('Order closed');
+      await tx.order.update({ where: { id }, data: { urgent: dto.urgent } });
+      await tx.auditLog.create({ data: { organizationId: actor.organizationId, actorId: actor.userId, action: 'ORDER_URGENT_CHANGED', entityId: id, oldValue: { urgent: order.urgent }, newValue: { urgent: dto.urgent } } });
+      return { urgent: dto.urgent };
+    });
+  }
+  /** Corrects how the device came in (walk-in or by courier) and the courier details. */
+  @Patch(':id/shipping') @Permissions('orders.edit')
+  async shippingInfo(@CurrentActor() actor: Actor, @Param('id') id: string, @Body() dto: ShippingDto) {
+    return this.db.$transaction(async tx => {
+      const order = await lockedOrder(tx, actor, id);
+      if (order.status === 'CANCELLED') throw new ConflictException('Order closed');
+      const data = shipping(dto);
+      await tx.order.update({ where: { id }, data });
+      await tx.auditLog.create({ data: { organizationId: actor.organizationId, actorId: actor.userId, action: 'ORDER_SHIPPING_CHANGED', entityId: id, oldValue: { intake: order.intake, courier: order.courier, inboundTracking: order.inboundTracking, shipAddress: order.shipAddress }, newValue: data } });
+      return data;
     });
   }
   @Patch(':id/price') @Permissions('orders.edit')
@@ -291,7 +322,11 @@ class OrdersController {
         const startDate = new Date();
         warranty = await tx.warranty.create({ data: { organizationId: actor.organizationId, orderId: id, startDate, endDate: new Date(startDate.getTime() + dto.warrantyDays * 86400000), terms } });
       }
-      await transition(tx, actor, order, 'DELIVERED', balance.greaterThan(0) ? 'Qarz bilan topshirildi' : undefined);
+      // Sent back by courier instead of picked up: kept on the order and said in its history.
+      const sent = dto.returnCourier ? { returnCourier: dto.returnCourier, returnTracking: dto.returnTracking?.trim() || null } : null;
+      if (sent) await tx.order.update({ where: { id }, data: sent });
+      const notes = [balance.greaterThan(0) ? 'Qarz bilan topshirildi' : '', sent ? `${COURIER_LABEL[sent.returnCourier] ?? sent.returnCourier} orqali jo'natildi${sent.returnTracking ? ' · ' + sent.returnTracking : ''}` : ''].filter(Boolean);
+      await transition(tx, actor, order, 'DELIVERED', notes.length ? notes.join('; ') : undefined);
       return { ok: true, warranty };
     });
   }

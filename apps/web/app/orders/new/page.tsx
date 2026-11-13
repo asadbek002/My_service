@@ -3,12 +3,12 @@
 import { Suspense, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Check, Laptop, Monitor, Package, Plus, Smartphone, Tablet, Tv, Watch, X, type LucideIcon } from 'lucide-react';
+import { Check, Flame, Laptop, Store, Truck, Monitor, Package, Plus, Smartphone, Tablet, Tv, Watch, X, type LucideIcon } from 'lucide-react';
 import { api } from '../../../lib/api';
 import { useCurrentBranch } from '../../../lib/branches';
 import { BranchPicker } from '../../../components/branch-picker';
 import { errorText } from '../../../lib/errors';
-import { fullName, normalizePhone, phone as fmtPhone, som } from '../../../lib/format';
+import { COURIERS, fullName, normalizePhone, phone as fmtPhone, som } from '../../../lib/format';
 import { useDefaults, useOrderMutation, type Customer, type Device } from '../../../lib/queries';
 import { PhotoPicker, uploadPhotos } from '../../../components/order-photos';
 import { AppShell, ActionBar } from '../../../components/layout/app-shell';
@@ -17,6 +17,8 @@ import { Input } from '../../../components/ui/input';
 import { Textarea } from '../../../components/ui/textarea';
 import { MoneyInput } from '../../../components/ui/money-input';
 import { ErrorBox } from '../../../components/ui/feedback';
+import { cn } from '../../../lib/utils';
+import { FormField } from '../../../components/ui/form-field';
 
 const CATEGORIES: [string, LucideIcon][] = [['Telefon', Smartphone], ['Planshet', Tablet], ['Noutbuk', Laptop], ['Kompyuter', Monitor], ['Televizor', Tv], ['Soat', Watch], ['Boshqa', Package]];
 const BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Redmi', 'Honor', 'Huawei', 'Vivo', 'Oppo', 'Realme', 'Tecno', 'Infinix', 'Google', 'Nokia', 'Lenovo', 'HP', 'Asus', 'Acer', 'Dell', 'LG'];
@@ -42,6 +44,12 @@ function NewOrder() {
   const [accessories, setAccessories] = useState<string[]>([]);
   const [extraAccessory, setExtraAccessory] = useState('');
   const [complaint, setComplaint] = useState('');
+  // How the device came in: brought to the counter, or sent by courier (BTS…); and whether it is urgent.
+  const [intake, setIntake] = useState<'WALK_IN' | 'POST'>('WALK_IN');
+  const [courier, setCourier] = useState('BTS');
+  const [tracking, setTracking] = useState('');
+  const [shipAddress, setShipAddress] = useState('');
+  const [urgent, setUrgent] = useState(false);
   const [labor, setLabor] = useState('');
   const [parts, setParts] = useState('');
   const [error, setError] = useState('');
@@ -99,7 +107,8 @@ function NewOrder() {
       setCustomer({ ...c, devices: [...(c.devices ?? []), device] });
       setDeviceId(device.id);
     }
-    return api<{ id: string }>('/orders', { method: 'POST', body: JSON.stringify({ customerId: c.id, deviceId: dId, complaint: complaint.trim(), accessories, labor: labor || '0', partsTotal: parts || '0', ...(branchId ? { branchId } : {}) }) });
+    return api<{ id: string }>('/orders', { method: 'POST', body: JSON.stringify({ customerId: c.id, deviceId: dId, complaint: complaint.trim(), accessories, labor: labor || '0', partsTotal: parts || '0', ...(branchId ? { branchId } : {}),
+      urgent, intake, ...(intake === 'POST' ? { courier, inboundTracking: tracking.trim(), shipAddress: shipAddress.trim() } : {}) }) });
   });
 
   const missing = useMemo(() => {
@@ -218,6 +227,36 @@ function NewOrder() {
         <Section title="Nosozlik">
           <Textarea value={complaint} onChange={e => setComplaint(e.target.value)} placeholder="Masalan: ekran singan, zaryad olmaydi" rows={3} />
         </Section>
+
+        <Section title="Qabul turi" hint="Mijoz o'zi olib keldimi yoki pochta orqali yubordimi">
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Qabul turi">
+            <Chip active={intake === 'WALK_IN'} onClick={() => setIntake('WALK_IN')}><Store className="h-3.5 w-3.5" />Ustaxonaga keldi</Chip>
+            <Chip active={intake === 'POST'} onClick={() => setIntake('POST')}><Truck className="h-3.5 w-3.5" />Pochta orqali</Chip>
+          </div>
+          {intake === 'POST' && (
+            <div className="mt-4 grid gap-3">
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Pochta xizmati">
+                {Object.entries(COURIERS).map(([k, l]) => <Chip key={k} active={courier === k} onClick={() => setCourier(k)}>{l}</Chip>)}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <FormField label="Trek raqami" description="Ixtiyoriy: yuborilgan jo'natma raqami"><Input value={tracking} onChange={e => setTracking(e.target.value)} placeholder="Masalan: 1234567890" maxLength={60} /></FormField>
+                <FormField label="Qaytarish manzili" description="Tayyor bo'lgach qayerga jo'natiladi"><Input value={shipAddress} onChange={e => setShipAddress(e.target.value)} placeholder="Shahar, tuman, BTS filiali" maxLength={300} /></FormField>
+              </div>
+            </div>
+          )}
+        </Section>
+
+        <button type="button" role="switch" aria-checked={urgent} onClick={() => setUrgent(!urgent)}
+          className={cn('flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-colors sm:p-5', urgent ? 'border-red-500 bg-red-50' : 'bg-white')}>
+          <Flame className={cn('h-5 w-5 shrink-0', urgent ? 'text-red-600' : 'text-mute')} />
+          <span className="min-w-0 flex-1">
+            <span className={cn('block font-bold', urgent && 'text-red-700')}>Shoshilinch buyurtma</span>
+            <span className="block text-xs text-mute">Majburiy emas. Belgilansa, ro&apos;yxatda qizil bo&apos;lib eng tepada turadi — xodimlar birinchi shuni boshlaydi.</span>
+          </span>
+          <span className={cn('relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors', urgent ? 'bg-red-600' : 'bg-tick')}>
+            <span className={cn('absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform', urgent ? 'translate-x-[22px]' : 'translate-x-0.5')} />
+          </span>
+        </button>
 
         {defaults?.intakePhotos && (
           <Section title="Qurilma holati" hint="Tirnalgan, singan joylarini rasmga oling">

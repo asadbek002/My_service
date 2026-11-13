@@ -8,14 +8,15 @@ import { ChevronLeft, Printer, Send, Share2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { api, ApiError } from '../../../../lib/api';
 import { errorText } from '../../../../lib/errors';
-import { date, dateTime, money, phone } from '../../../../lib/format';
+import { COURIERS, date, dateTime, money, phone } from '../../../../lib/format';
 import { statusLabel } from '../../../../components/ui/status-badge';
 import { cn } from '../../../../lib/utils';
 
 type Receipt = {
   type: 'receipt' | 'delivery'; width: 58 | 80;
   service: { name: string; branch?: string | null; phone: string; address: string; footer: string; telegram: string; instagram: string; logo?: string | null };
-  order: { number: string; status: string; createdAt: string; complaint: string; accessories: string[]; labor: string; partsTotal: string; total: string; paid: string; balance: string };
+  order: { number: string; status: string; createdAt: string; complaint: string; accessories: string[]; labor: string; partsTotal: string; total: string; paid: string; balance: string;
+    intake?: string; courier?: string | null; inboundTracking?: string | null; shipAddress?: string | null; returnCourier?: string | null; returnTracking?: string | null };
   customer: { name: string; phone: string };
   device: { category: string; brand: string; model: string };
   warranty: { endDate: string; terms: string | null } | null;
@@ -160,6 +161,9 @@ function ReceiptBody({ r, paper }: { r: Receipt; paper: 58 | 80 }) {
       <Pair k="Mijoz:" v={r.customer.name} />
       <Pair k="Tel:" v={phone(r.customer.phone)} />
       <Pair k="Qurilma:" v={`${r.device.brand} ${r.device.model}`} />
+      {r.order.intake === 'POST' && <Pair k="Qabul:" v={`Pochta${r.order.courier ? ' (' + (COURIERS[r.order.courier] ?? r.order.courier) + ')' : ''}${r.order.inboundTracking ? ' ' + r.order.inboundTracking : ''}`} />}
+      {r.type === 'delivery' && r.order.returnCourier && <Pair k="Jo'natildi:" v={`${COURIERS[r.order.returnCourier] ?? r.order.returnCourier}${r.order.returnTracking ? ' ' + r.order.returnTracking : ''}`} />}
+      {r.order.intake === 'POST' && r.order.shipAddress && <p className="[overflow-wrap:anywhere]">Manzil: {r.order.shipAddress}</p>}
       <p className="mt-1 [overflow-wrap:anywhere]">Nosozlik: {r.order.complaint}</p>
       {r.order.accessories.length > 0 && <p className="[overflow-wrap:anywhere]">Komplekt: {r.order.accessories.join(', ')}</p>}
       {line}

@@ -18,7 +18,8 @@ export interface NewOrganization {
 
 /** A service with its main branch, owner, the two roles and a trial subscription. Run inside a transaction. */
 export async function createOrganization(tx: Prisma.TransactionClient, d: NewOrganization, billing: BillingSettings) {
-  const org = await tx.organization.create({ data: { name: d.name, slug: d.slug } });
+  // Customer SMS start switched off: the owner (Settings → Telegram va SMS) or the platform turns them on.
+  const org = await tx.organization.create({ data: { name: d.name, slug: d.slug, smsEnabled: false } });
   const branch = await tx.branch.create({ data: { organizationId: org.id, name: 'Asosiy filial' } });
   const user = await tx.user.create({ data: { organizationId: org.id, login: d.login.toLowerCase(), firstName: d.ownerName, phone: d.phone, passwordHash: d.passwordHash, mustChangePassword: d.mustChangePassword } });
   await tx.userBranch.create({ data: { organizationId: org.id, userId: user.id, branchId: branch.id } });

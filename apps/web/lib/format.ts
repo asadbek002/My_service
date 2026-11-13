@@ -58,3 +58,6 @@ export function daysSince(value: string | Date) {
 
 /** Two letters for an avatar: first name and surname initials. */
 export const initials = (p: { firstName: string; lastName?: string | null }) => ((p.firstName[0] ?? '') + (p.lastName?.[0] ?? '')).toUpperCase() || '·';
+
+/** Couriers a device can come in and go back by (the API's COURIERS). */
+export const COURIERS: Record<string, string> = { BTS: 'BTS', FARGO: 'Fargo', STAREX: 'Starex', UZPOST: "O'zbekiston pochtasi", YANDEX: 'Yandex Dostavka', OTHER: 'Boshqa' };

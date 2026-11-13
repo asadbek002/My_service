@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { dateTime, daysSince, deviceName, fullName, money } from '../lib/format';
+import { Flame, Truck } from 'lucide-react';
+import { COURIERS, dateTime, daysSince, deviceName, fullName, money } from '../lib/format';
 import { paidOf, type Order } from '../lib/queries';
 import { cn } from '../lib/utils';
 import { useCurrentBranch } from '../lib/branches';
@@ -20,8 +21,16 @@ export function OrderCard({ order, flat }: { order: Order; flat?: boolean }) {
   // In "all branches" every card says where the device is.
   const { multi, branch } = useCurrentBranch();
   const where = multi && !branch ? order.branch?.name : null;
+  // Urgent work stands out until the device is handed over.
+  const urgent = !!order.urgent && ['RECEIVED', 'IN_REPAIR', 'READY'].includes(order.status);
   return (
-    <Link href={`/orders/${order.id}`} className={cn('block bg-white px-4 py-3.5 transition-colors active:bg-paper', flat ? 'hover:bg-[#F3F7F6]' : 'rounded-xl border hover:border-ink/30')}>
+    <Link href={`/orders/${order.id}`} className={cn('block px-4 py-3.5 transition-colors active:bg-paper', urgent ? 'border-l-4 border-l-red-600 bg-red-50 hover:bg-red-100/70' : 'bg-white', flat ? (urgent ? '' : 'hover:bg-[#F3F7F6]') : 'rounded-xl border hover:border-ink/30')}>
+      {(urgent || order.intake === 'POST') && (
+        <div className="mb-1.5 flex flex-wrap gap-1.5">
+          {urgent && <span className="inline-flex items-center gap-1 rounded-md bg-red-600 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white"><Flame className="h-3 w-3" />Shoshilinch</span>}
+          {order.intake === 'POST' && <span className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold text-ink/80"><Truck className="h-3 w-3" />Pochta{order.courier ? ' · ' + (COURIERS[order.courier] ?? order.courier) : ''}</span>}
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-semibold">{deviceName(order.device)}</p>

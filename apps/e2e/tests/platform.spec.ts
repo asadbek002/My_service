@@ -95,7 +95,7 @@ test('an announcement shows in every service and can be hidden', async ({ page, 
   await admin.close();
 });
 
-test('SMS page: the platform caps a service and switches its SMS off; the service sees it in Settings', async ({ page, browser }) => {
+test('SMS page: a new service starts with SMS off; the platform and the owner switch the same thing', async ({ page, browser }) => {
   const svc = await newService('SMSli');
   await platformSignIn(page, PLATFORM.login, PLATFORM.password);
   await page.goto('/platform/sms');
@@ -104,16 +104,24 @@ test('SMS page: the platform caps a service and switches its SMS off; the servic
   await row.getByLabel('Oylik SMS limiti').fill('50');
   await row.getByLabel('Oylik SMS limiti').press('Enter');
   await expect(row.getByLabel('Oylik SMS limiti')).toHaveValue('50');
-  await row.getByRole('switch').click();
+  // New services start with customer SMS off; the platform turns them on.
   await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
+  await row.getByRole('switch').click();
+  await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
 
+  // The owner sees the same switch in Settings and turns it off again.
   const owner = await browser.newContext({ ...test.info().project.use });
   const op = await owner.newPage();
   await signIn(op, svc.login, svc.password);
   await op.goto('/settings#sms');
-  await expect(op.getByText("MyService orqali SMS yuborish siz uchun o'chirilgan")).toBeVisible();
+  const own = op.getByRole('switch', { name: 'Mijozlarga SMS yuborish' });
+  await expect(own).toHaveAttribute('aria-checked', 'true');
+  await own.click();
+  await expect(own).toHaveAttribute('aria-checked', 'false');
+  await expect(op.getByText("O'chiq: mijozlarga faqat Telegram xabarlari boradi")).toBeVisible();
   await owner.close();
 
-  await row.getByRole('switch').click();
-  await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
+  await page.reload();
+  await page.getByLabel("Servis bo'yicha qidirish").fill(svc.name);
+  await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
 });

@@ -7,7 +7,7 @@ const TEXT: Record<string, string> = {
   CONFIRM_NAME: "Servis nomini aynan ko'rsatilgandek yozing.",
   SUPPORT_SESSION: "Yordam rejimida hisobni o'chirib bo'lmaydi.",
   SUBSCRIPTION_READ_ONLY: "Obuna muddati tugagan: ma'lumotlarni faqat ko'rish mumkin.",
-  SMS_DISABLED: "MyService orqali SMS yuborish siz uchun o'chirilgan. Yordam bo'limiga yozing.",
+  SMS_DISABLED: "SMS o'chirilgan. Sozlamalar → «Telegram va SMS» da «Mijozlarga SMS yuborish» ni yoqing.",
   SMS_LIMIT_REACHED: "Oylik SMS limiti tugagan.",
   PHOTOS_DISABLED: "Qabulda rasm olish o'chirilgan. Uni Sozlamalarda yoqish mumkin.",
   PHOTO_TOO_LARGE: "Rasm juda katta. Boshqa rasm tanlang.",

@@ -13,6 +13,10 @@ export type Order = {
   payments: Pick<Payment, 'kind' | 'amount'>[];
   parentOrderId?: string | null;
   branchId?: string; branch?: { id?: string; name: string };
+  /** Urgent (red, first in lists); how it came in: WALK_IN or POST (courier) with its details. */
+  urgent?: boolean; intake?: 'WALK_IN' | 'POST';
+  courier?: string | null; inboundTracking?: string | null; shipAddress?: string | null;
+  returnCourier?: string | null; returnTracking?: string | null;
 };
 export type OrderDetail = Omit<Order, 'payments'> & {
   payments: Payment[];

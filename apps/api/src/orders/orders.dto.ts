@@ -4,6 +4,8 @@ import { IsString, IsOptional, Length, Matches, IsArray, ArrayMaxSize, IsIn, IsI
 const MONEY = /^\d{1,12}(\.\d{1,2})?$/;
 
 /** Fix a customer's name or phone (a typo at intake). Only the fields sent change. */
+export const INTAKES = ['WALK_IN', 'POST'];
+export const COURIERS = ['BTS', 'FARGO', 'STAREX', 'UZPOST', 'YANDEX', 'OTHER'];
 export class CustomerUpdateDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 100) firstName?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(0, 100) lastName?: string;
@@ -32,6 +34,20 @@ export class OrderDto {
   @ApiProperty({ example: '350000' }) @IsString() @Matches(MONEY) partsTotal!: string;
   /** The branch the device is taken in at; defaults to the actor's first open branch. */
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 100) branchId?: string;
+  /** Urgent: red and first in the lists. */
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() urgent?: boolean;
+  /** WALK_IN (brought in) or POST (sent by courier); POST may name the courier, tracking number and return address. */
+  @ApiPropertyOptional() @IsOptional() @IsIn(INTAKES) intake?: string;
+  @ApiPropertyOptional() @IsOptional() @IsIn(COURIERS) courier?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(0, 60) inboundTracking?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(0, 300) shipAddress?: string;
+}
+export class UrgentDto { @ApiProperty() @IsBoolean() urgent!: boolean; }
+export class ShippingDto {
+  @ApiProperty() @IsIn(INTAKES) intake!: string;
+  @ApiPropertyOptional() @IsOptional() @IsIn(COURIERS) courier?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(0, 60) inboundTracking?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(0, 300) shipAddress?: string;
 }
 export class PriceDto {
   @ApiProperty({ example: '150000' }) @IsString() @Matches(MONEY) labor!: string;
@@ -65,6 +81,9 @@ export class FixDeliveryDto {
 }
 export class DeliverDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() allowDebt?: boolean;
+  /** Sent back by courier instead of picked up: which courier and its tracking number. */
+  @ApiPropertyOptional() @IsOptional() @IsIn(COURIERS) returnCourier?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(0, 60) returnTracking?: string;
   // 0 = delivered without warranty.
   @ApiProperty() @IsInt() @Min(0) @Max(1095) warrantyDays!: number;
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(0, 4000) warrantyTerms?: string;
