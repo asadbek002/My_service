@@ -78,6 +78,10 @@ jobs:
           echo "Versiya: $name ($code)" >> "$GITHUB_STEP_SUMMARY"
           # Generate the Android project now, while the icon server is up.
           bubblewrap update --skipVersionUpgrade
+          # No code shrinking: R8 renamed androidbrowserhelper's activities and the app crashed on start
+          # ("Component class R.u does not exist"); the app is a few classes, nothing to gain.
+          sed -i 's/minifyEnabled true/minifyEnabled false/' app/build.gradle
+          grep -q 'minifyEnabled false' app/build.gradle
       - name: Build
         run: yes | bubblewrap build --skipPwaValidation
 
@@ -138,6 +142,7 @@ jobs:
             grep -E "FATAL|AndroidRuntime|uz.myserviceuz|TwaLauncher|LauncherActivity|ActivityTaskManager|browserhelper|CustomTabs" logcat.txt | tail -80 > logcat-short.txt || true
             echo "===== ACTIVITY ====="; cat activity.txt
             echo "===== LOGCAT ====="; cat logcat-short.txt
+            if grep -q "FATAL EXCEPTION" logcat-short.txt; then echo "::error::The app crashed on start"; exit 1; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
