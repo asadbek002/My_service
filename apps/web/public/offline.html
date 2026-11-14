@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#ffffff">
+<title>Internet yo'q — MyService</title>
+<!-- Shown by the service worker when a page cannot be loaded. Plain HTML on purpose: it must work after
+     any deploy, so it loads no scripts or styles from a build (those change names with every build). -->
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px;
+    box-sizing: border-box; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #f6f7f9; color: #111827; }
+  main { max-width: 360px; width: 100%; background: #fff; border-radius: 16px; padding: 28px 24px; text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  img { width: 56px; height: 56px; }
+  h1 { font-size: 20px; margin: 12px 0 6px; }
+  p { margin: 0 0 6px; color: #6b7280; font-size: 14px; }
+  button { margin-top: 16px; height: 44px; padding: 0 22px; border: 0; border-radius: 10px; background: #111827; color: #fff;
+    font: inherit; font-weight: 600; cursor: pointer; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0b0f17; color: #e5e7eb; } main { background: #151b26; box-shadow: none; } p { color: #9ca3af; }
+    button { background: #e5e7eb; color: #111827; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <img src="/icon-192.png" alt="">
+  <h1>Internet uzildi</h1>
+  <p>Ulanish tiklangach sahifa o'zi yangilanadi.</p>
+  <p lang="ru">Нет подключения к интернету. Страница обновится сама, когда связь появится.</p>
+  <button type="button" onclick="location.reload()">Qayta urinish · Повторить</button>
+</main>
+<script>addEventListener('online', function () { location.reload(); });</script>
+</body>
+</html>

@@ -1,7 +1,8 @@
-// The installed app: pages always come from the network (fresh data, offline page as fallback); the app's
+// The installed app: pages always come from the network (fresh data; offline.html, plain HTML that no deploy
+// can break, as the fallback); the app's
 // code (/_next/static, named by content hash, never changes) is kept on the phone and served from there,
 // so opening the app does not download ~400 KB of JavaScript again over a slow or distant connection.
-const CACHE='myservice-shell-v6';const STATIC='myservice-static-v1';const SHELL=['/offline','/icon.svg','/icon-192.png'];
+const CACHE='myservice-shell-v7';const STATIC='myservice-static-v1';const SHELL=['/offline.html','/icon.svg','/icon-192.png'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE&&k!==STATIC).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 async function fromStatic(req){
@@ -19,7 +20,7 @@ async function fromStatic(req){
 self.addEventListener('fetch',e=>{
   const u=new URL(e.request.url);
   if(e.request.method!=='GET'||u.pathname.startsWith('/api/')||u.origin!==self.location.origin)return;
-  if(e.request.mode==='navigate')e.respondWith(fetch(e.request).catch(()=>caches.match('/offline')));
+  if(e.request.mode==='navigate')e.respondWith(fetch(e.request).catch(()=>caches.match('/offline.html')));
   // Fonts too: same files every visit (~50 KB). Their names do not change: bump STATIC if a font file is replaced.
   else if(u.pathname.startsWith('/_next/static/')||u.pathname.startsWith('/fonts/'))e.respondWith(fromStatic(e.request));
   else if(u.pathname==='/icon.svg')e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)));

@@ -6,11 +6,26 @@ let sent = 0;
 // the browser hides its details, so there is nothing to act on).
 const IGNORE = /^Error: Script error\.?$|ResizeObserver loop|chrome-extension:|moz-extension:|safari-extension:|AbortError|Load failed|NetworkError|Failed to fetch/i;
 
+// A page opened before a deploy asks for a code file of the old build, which the server no longer has.
+const STALE_BUILD = /ChunkLoadError|Loading (CSS )?chunk [\w-]+ failed|Failed to fetch dynamically imported module|error loading dynamically imported module/i;
+
+/** After a deploy: reload once to get the new build (not more than once a minute, so a real outage cannot loop). */
+function reloadForNewBuild() {
+  try {
+    const last = Number(sessionStorage.getItem('ms_reload') || 0);
+    if (Date.now() - last < 60_000) return false;
+    sessionStorage.setItem('ms_reload', String(Date.now()));
+  } catch { return false; }
+  location.reload();
+  return true;
+}
+
 /** Tells the platform owner (Telegram) that a user hit an error. Only the message, stack and page path go. */
 export function reportError(error: unknown) {
   try {
     const e = error instanceof Error ? error : new Error(typeof error === 'string' ? error : JSON.stringify(error));
     const text = `${e.name}: ${e.message}`;
+    if (STALE_BUILD.test(text) && (!navigator.onLine || reloadForNewBuild())) return;
     if (IGNORE.test(text) || IGNORE.test(e.stack ?? '') || ++sent > 5) return;
     void fetch(API_BASE + '/public/client-error', {
       method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
