@@ -19,6 +19,7 @@ import { BranchesModule } from './management/branches.module';
 import { OrderPhotosModule } from './orders/photos.module';
 import { MonitoringModule } from './monitoring/error-alerts';
 import { MonitorModule } from './platform/monitor';
+import { PushModule } from './push/push.module';
 
 @Module({
   imports: [MonitoringModule, 
@@ -34,7 +35,7 @@ import { MonitorModule } from './platform/monitor';
         return config;
       },
     }),
-    DatabaseModule, VerificationModule, AuthModule, StaffModule, OrdersModule, PartsModule, BotModule, LinksModule, NotificationsModule, ManagementModule, SettingsModule, PlatformModule, DocumentsModule, AccountModule, BranchesModule, OrderPhotosModule, MonitorModule,
+    DatabaseModule, VerificationModule, AuthModule, StaffModule, OrdersModule, PartsModule, BotModule, LinksModule, NotificationsModule, ManagementModule, SettingsModule, PlatformModule, DocumentsModule, AccountModule, BranchesModule, OrderPhotosModule, MonitorModule, PushModule,
   ],
   controllers: [HealthController],
 })

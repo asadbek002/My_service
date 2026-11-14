@@ -1,10 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
 import path from 'node:path';
+import { generateKeyPairSync } from 'node:crypto';
 import { API, DATABASE_URL, REDIS_URL, WEB } from './env';
 
 const root = path.resolve(__dirname, '../..');
 // The sandbox ships its own Chromium; elsewhere Playwright uses the one it installed.
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined;
+// Push notifications switched on with a throwaway key; pushes go nowhere (APNs is not reachable here).
+const apnsKey = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
 
 export default defineConfig({
   testDir: './tests',
@@ -40,6 +43,7 @@ export default defineConfig({
         NODE_ENV: 'test', PORT: '3001', DATABASE_URL, REDIS_URL,
         JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET ?? 'e2e-only-secret-at-least-32-characters-long',
         WEB_URL: WEB, CORS_ORIGINS: WEB,
+        APNS_KEY_ID: 'E2EKEY0001', APNS_TEAM_ID: 'E2ETEAM001', APNS_KEY: apnsKey, APNS_HOST: 'https://127.0.0.1:9',
       },
     },
     {

@@ -4,11 +4,17 @@
   "webDir": "www",
   "server": {
     "url": "https://myserviceuz.uz/dashboard",
-    "allowNavigation": ["myserviceuz.uz", "*.myserviceuz.uz"]
+    "errorPath": "offline.html",
+    "allowNavigation": ["myserviceuz.uz", "www.myserviceuz.uz"]
   },
   "ios": {
     "appendUserAgent": "MyServiceApp-iOS",
-    "contentInset": "automatic",
-    "limitsNavigationsToAppBoundDomains": true
+    "contentInset": "never",
+    "backgroundColor": "#ffffff",
+    "limitsNavigationsToAppBoundDomains": true,
+    "scheme": "MyService"
+  },
+  "plugins": {
+    "PushNotifications": { "presentationOptions": ["badge", "sound", "alert"] }
   }
 }

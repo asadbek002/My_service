@@ -31,5 +31,11 @@ fs.writeFileSync('icon-full.svg', full);
     if (f !== 'icon-192.png' && f !== 'icon-512.png') img = img.flatten({ background: '#ffffff' }).removeAlpha();
     await img.png().toFile(f);
   }
+  // iOS app: icon and launch screen (the mark small in the middle of white; the screen crops the edges).
+  const ios = '../mobile/ios/ios/App/App/Assets.xcassets/';
+  fs.copyFileSync('app-store-1024.png', ios + 'AppIcon.appiconset/AppIcon-512@2x.png');
+  const splash = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2732 2732">${defs}<rect width="2732" height="2732" fill="#fff"/><g transform="translate(1016 1016) scale(1.367)">${mark}</g></svg>`;
+  for (const f of ['splash-2732x2732.png', 'splash-2732x2732-1.png', 'splash-2732x2732-2.png'])
+    await sharp(Buffer.from(splash)).resize(2732, 2732).flatten({ background: '#ffffff' }).removeAlpha().png().toFile(ios + 'Splash.imageset/' + f);
   console.log('ok');
 })();

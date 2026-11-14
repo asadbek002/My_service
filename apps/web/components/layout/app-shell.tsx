@@ -11,7 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMe, can, useBranding, type Me } from '../../lib/queries';
 import { API_BASE, api, logout } from '../../lib/api';
 import { LangSwitch } from '../lang-switch';
-import { useIosApp } from '../../lib/native';
+import { startNativePush, useIosApp } from '../../lib/native';
 import { cn } from '../../lib/utils';
 import { Mark } from './mark';
 import { BranchSwitcher } from './branch-switcher';
@@ -83,6 +83,16 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
   }, [error, router]);
   useEffect(() => { setMenuOpen(false); }, [pathname]);
   useHomeScreenBrand(me?.support ? undefined : me?.organizationId, brand?.logo);
+  // iPhone app: order alerts on the lock screen once signed in (not for a support session).
+  const pushReady = !!me && !me.mustChangePassword && !me.support;
+  useEffect(() => {
+    if (!pushReady) return;
+    void startNativePush(
+      token => api('/push/devices', { method: 'POST', body: JSON.stringify({ token, platform: 'ios' }) }),
+      url => router.push(url),
+      () => api<{ enabled: boolean }>('/push/status').then(s => s.enabled, () => false),
+    );
+  }, [pushReady, router]);
 
   const onLogout = async () => {
     try { await logout(); } finally { router.replace(me?.support ? '/platform' : '/login'); }
@@ -147,7 +157,7 @@ export function AppShell({ children, title, back, action, narrow }: AppShellProp
             <LifeBuoy className="h-3.5 w-3.5 shrink-0" /> Yordam rejimi: siz servisga boshliq nomidan kirdingiz. Amallar jurnalga yoziladi.
           </div>
         )}
-        <header className="sticky top-0 z-20 border-b bg-paper/95 backdrop-blur supports-[backdrop-filter]:bg-paper/80">
+        <header className="sticky top-0 z-20 border-b bg-paper/95 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-paper/80">
           <div className={cn('mx-auto flex h-14 items-center gap-2 px-4 lg:h-16 lg:px-8', narrow ? 'max-w-3xl' : 'max-w-6xl')}>
             {back ? (
               <Link href={back} className="-ml-2 flex h-10 w-10 items-center justify-center rounded-full hover:bg-black/[0.05] active:bg-black/[0.08]" aria-label="Orqaga"><ChevronLeft className="h-6 w-6" /></Link>

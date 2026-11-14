@@ -84,7 +84,9 @@ export async function downloadPdf(report: PdfReport) {
 
   const blob = doc.output('blob');
   const file = new File([blob], report.fileName, { type: 'application/pdf' });
-  // Phones: share straight to Telegram etc.; elsewhere download.
+  // The iPhone app: iOS share sheet (a web view cannot download). Phones: share straight to Telegram etc.; elsewhere download.
+  const { nativeShareFile } = await import('./native');
+  if (await nativeShareFile(file, report.fileName)) return;
   if (typeof navigator !== 'undefined' && navigator.canShare?.({ files: [file] }) && /Android|iPhone|iPad/i.test(navigator.userAgent)) {
     try { await navigator.share({ files: [file], title: report.title }); return; } catch { /* cancelled: fall back to download */ }
   }

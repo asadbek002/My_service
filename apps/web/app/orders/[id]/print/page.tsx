@@ -11,6 +11,7 @@ import { errorText } from '../../../../lib/errors';
 import { COURIERS, date, dateTime, money, phone } from '../../../../lib/format';
 import { statusLabel } from '../../../../components/ui/status-badge';
 import { cn } from '../../../../lib/utils';
+import { nativePrintImage, nativeShareFile, nativeShareText } from '../../../../lib/native';
 
 type Receipt = {
   type: 'receipt' | 'delivery'; width: 58 | 80;
@@ -71,11 +72,21 @@ function PrintReceipt() {
       links?.telegram && `\n🤖 Xabarlarni Telegramda olish uchun botimizga kiring va «Start» ni bosing:\n${links.telegram}`,
     ].filter(Boolean).join('\n');
   }
+  async function shareLink(text: string) {
+    if (await nativeShareText(text).catch(() => false)) return;
+    if (navigator.share) await navigator.share({ text }).catch(() => undefined); else await navigator.clipboard.writeText(text);
+  }
+  /** The printer: the browser's print dialog; in the iPhone app (no window.print there) iOS's own, with the receipt as a picture. */
+  async function printReceipt() {
+    try { if (!await nativePrintImage(await image(), data?.order.number ?? 'Chek')) window.print(); }
+    catch (e) { setSendState({ error: errorText(e) }); }
+  }
   async function shareImage() {
     setSendState({ busy: true });
     try {
       const [url, text] = await Promise.all([image(), caption()]);
       const file = new File([await (await fetch(url)).blob()], `${data?.order.number ?? 'chek'}.png`, { type: 'image/png' });
+      if (await nativeShareFile(file, file.name, text)) { setSendState({}); return; }
       if (navigator.canShare?.({ files: [file], text })) { await navigator.share({ files: [file], text }).catch(() => undefined); setSendState({}); return; }
       // No share sheet (a computer): save the picture and put the text on the clipboard to paste under it.
       Object.assign(document.createElement('a'), { href: url, download: file.name }).click();
@@ -87,7 +98,7 @@ function PrintReceipt() {
   return (
     <div className="min-h-[100dvh] bg-[#EDEDEA] print:bg-white">
       <style>{`@page { size: ${paper}mm auto; margin: 0; } @media print { .no-print { display: none !important; } }`}</style>
-      <div className="no-print sticky top-0 z-10 border-b bg-white">
+      <div className="no-print sticky top-0 z-10 border-b bg-white pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex h-14 max-w-lg items-center gap-2 px-4">
           <Link href={`/orders/${id}`} className="-ml-2 rounded-md p-2 hover:bg-black/[0.04]" aria-label="Orqaga"><ChevronLeft className="h-5 w-5" /></Link>
           <p className="min-w-0 flex-1 truncate font-semibold">{type === 'delivery' ? 'Berish cheki' : 'Qabul cheki'}</p>
@@ -96,7 +107,7 @@ function PrintReceipt() {
               <button key={w} role="radio" aria-checked={paper === w} onClick={() => setWidth(w)} className={cn('rounded px-2 py-1', paper === w && 'bg-ink text-white')}>{w} mm</button>
             ))}
           </div>
-          <button onClick={() => window.print()} disabled={!data} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-ink px-3 text-sm font-semibold text-white disabled:opacity-50">
+          <button onClick={() => void printReceipt()} disabled={!data} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-ink px-3 text-sm font-semibold text-white disabled:opacity-50">
             <Printer className="h-4 w-4" /> Chop etish
           </button>
         </div>
@@ -117,7 +128,7 @@ function PrintReceipt() {
             <div role="alert" className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">
               {sendState.error}
               {sendState.link && (
-                <button className="mt-2 block font-semibold underline" onClick={() => { if (navigator.share) void navigator.share({ text: 'Qurilmangiz holatini Telegramda kuzating: ' + sendState.link }).catch(() => undefined); else void navigator.clipboard.writeText(sendState.link!); }}>
+                <button className="mt-2 block font-semibold underline" onClick={() => void shareLink('Qurilmangiz holatini Telegramda kuzating: ' + sendState.link)}>
                   Bot havolasini yuborish
                 </button>
               )}

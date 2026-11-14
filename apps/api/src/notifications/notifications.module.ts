@@ -14,6 +14,7 @@ import { CurrentActor, Permissions } from '../auth/security';
 import type { Actor } from '../auth/security';
 import { COURIER_LABEL, orderScope } from '../orders/orders.module';
 import { gsm7, readySms, SMS } from './sms-text';
+import { PushModule, PushService } from '../push/push.module';
 
 class SmsSettingsDto {
   @IsIn(['platform', 'own']) mode!: 'platform' | 'own';
@@ -42,7 +43,7 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
   private timer?: ReturnType<typeof setInterval>;
   private dispatching = false;
   private readonly logger = new Logger('Notifications');
-  constructor(private readonly db: Database, private readonly eskiz: EskizClient, private readonly sms: SmsAccounts, @Optional() private readonly bot?: BotService, @Optional() private readonly own?: OwnBots) {}
+  constructor(private readonly db: Database, private readonly eskiz: EskizClient, private readonly sms: SmsAccounts, @Optional() private readonly bot?: BotService, @Optional() private readonly own?: OwnBots, @Optional() private readonly push?: PushService) {}
   async onModuleInit() {
     if (process.env.NOTIFICATIONS_ENABLED !== 'true') return;
     const url = new URL(process.env.REDIS_URL!);
@@ -65,14 +66,14 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
       for (const event of events) {
         const retention = { removeOnComplete: { age: 604800 }, removeOnFail: { age: 2592000 } };
         if (labels[event.type]) await this.queue.add('send', { eventId: event.id }, { jobId: event.id, attempts: 5, backoff: { type: 'exponential', delay: 10000 }, ...retention });
-        if (STAFF_ALERTS.includes(event.type) && this.bot?.telegram.enabled) await this.queue.add('staff', { eventId: event.id, kind: 'staff' }, { jobId: event.id + '-staff', attempts: 2, backoff: { type: 'fixed', delay: 30000 }, ...retention });
+        if (STAFF_ALERTS.includes(event.type) && (this.bot?.telegram.enabled || this.push?.enabled)) await this.queue.add('staff', { eventId: event.id, kind: 'staff' }, { jobId: event.id + '-staff', attempts: 2, backoff: { type: 'fixed', delay: 30000 }, ...retention });
         await this.db.outboxEvent.update({ where: { id: event.id }, data: { publishedAt: new Date() } });
       }
     } finally { this.dispatching = false; }
   }
   /** Alert the service's connected staff about a new or ready order. Best effort, at most once per event. */
   async deliverStaff(eventId: string) {
-    if (!this.bot) return;
+    if (!this.bot && !this.push) return;
     const event = await this.db.outboxEvent.findUniqueOrThrow({ where: { id: eventId } });
     const order = await this.db.order.findFirst({ where: { id: event.entityId, organizationId: event.organizationId }, include: { customer: true, device: true } });
     if (!order) return;
@@ -84,7 +85,13 @@ export class Notifications implements OnModuleInit, OnModuleDestroy {
     const text = flags + (event.type === 'ORDER_RECEIVED'
       ? `📥 <b>Yangi qabul</b> ${esc(order.number)}\n${esc(order.device.brand + ' ' + order.device.model)} · ${esc(order.customer.firstName)}\n${esc(order.complaint)}\nNarx: ${fmtSom(order.total)}${actor ? '\nQabul qildi: ' + esc(actor.firstName) : ''}${web}`
       : `✅ <b>Tayyor</b> ${esc(order.number)}\n${esc(order.device.brand + ' ' + order.device.model)}\n${esc(order.customer.firstName)} ${esc(order.customer.phone)}${actor ? '\nUsta: ' + esc(actor.firstName) : ''}${order.intake === 'POST' && order.shipAddress ? '\nJo\'natish: ' + esc(order.shipAddress) : ''}${web}`);
-    await this.bot.notifyStaff(event.organizationId, text, actorId, event.type === 'ORDER_RECEIVED' ? 'newOrder' : 'ready');
+    const kind = event.type === 'ORDER_RECEIVED' ? 'newOrder' : 'ready';
+    if (this.bot?.telegram.enabled) await this.bot.notifyStaff(event.organizationId, text, actorId, kind);
+    // The same alert on the phones with the App Store app: a short title, the device and the customer.
+    const device = `${order.device.brand} ${order.device.model}`.trim();
+    await this.push?.notifyStaff(event.organizationId, event.type === 'ORDER_RECEIVED'
+      ? { title: `${order.urgent ? '🔴 ' : ''}Yangi qabul ${order.number}`, body: [device, order.customer.firstName, order.complaint].filter(Boolean).join(' · ').slice(0, 180), url: '/orders/' + order.id }
+      : { title: `✅ Tayyor ${order.number}`, body: [device, order.customer.firstName].filter(Boolean).join(' · '), url: '/orders/' + order.id }, actorId, kind);
   }
   /** Send through the platform's provider (Eskiz, or a generic HTTPS webhook). Returns the provider id. */
   async platformSms(phone: string, text: string, reference: string) {
@@ -250,5 +257,5 @@ class NotificationsController {
     return { ok: true, phone: user.phone };
   }
 }
-@Module({ imports: [BotModule], controllers: [NotificationsController], providers: [Notifications, EskizClient, SmsAccounts], exports: [EskizClient, SmsAccounts] })
+@Module({ imports: [BotModule, PushModule], controllers: [NotificationsController], providers: [Notifications, EskizClient, SmsAccounts], exports: [EskizClient, SmsAccounts] })
 export class NotificationsModule {}

@@ -1,11 +1,15 @@
 {
   "name": "myservice-ios",
   "private": true,
-  "description": "App Store wrapper (Capacitor) around https://myserviceuz.uz. Built on a Mac; see ../README.md.",
+  "description": "App Store app (Capacitor) around https://myserviceuz.uz with native camera, printing, sharing and push notifications. Built on GitHub Actions (macOS); see ../README.md.",
   "scripts": { "sync": "cap sync ios", "open": "cap open ios" },
   "dependencies": {
-    "@capacitor/core": "^7.0.0",
-    "@capacitor/ios": "^7.0.0",
-    "@capacitor/cli": "^7.0.0"
+    "@capacitor/camera": "8.2.6",
+    "@capacitor/core": "8.6.0",
+    "@capacitor/ios": "8.6.0",
+    "@capacitor/push-notifications": "8.1.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.0"
   }
 }

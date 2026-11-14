@@ -13,6 +13,7 @@ import { OrderPhotos } from '../../../components/order-photos';
 import { can, post, useDefaults, useMe, useOrder, useOrderMutation, usePaymentMethods, type Me, type OrderDetail, type Payment } from '../../../lib/queries';
 import { cn } from '../../../lib/utils';
 import { useCurrentBranch } from '../../../lib/branches';
+import { nativeShareText } from '../../../lib/native';
 import { AppShell, ActionBar } from '../../../components/layout/app-shell';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -496,6 +497,7 @@ function ShareLink({ orderId }: { orderId: string }) {
       // Tracking page for everyone; the bot link also connects the customer to Telegram (one tap on Start).
       const { tracking, telegram } = await api<{ tracking: string; telegram: string | null }>(`/orders/${orderId}/links`, { method: 'POST' });
       const text = `Qurilmangiz holati: ${tracking}` + (telegram ? `\nTelegramda xabar olish: ${telegram}` : '');
+      if (await nativeShareText(text)) return;
       if (navigator.share) { await navigator.share({ title: 'Buyurtma holati', text }).catch(() => undefined); return; }
       await navigator.clipboard.writeText(text);
       setState('Nusxalandi');

@@ -15,6 +15,7 @@ import { PasswordInput } from '../../components/ui/password-input';
 import { cn } from '../../lib/utils';
 import { FormField } from '../../components/ui/form-field';
 import { ErrorBox, Loading } from '../../components/ui/feedback';
+import { useIosApp } from '../../lib/native';
 
 type Info = { open: boolean; trialDays: number; sms: boolean; telegram: boolean };
 
@@ -28,6 +29,7 @@ export default function Signup() {
   const [infoError, setInfoError] = useState('');
   const [proof, setProof] = useState<{ proof: string; phone: string } | null>(null);
   useEffect(() => { publicGet<Info>('/auth/signup/info').then(setInfo).catch(e => setInfoError(errorText(e))); }, []);
+  const iosApp = useIosApp();
   const onVerified = useCallback((p: string, phone: string) => setProof({ proof: p, phone }), []);
 
   const trial = info ? (info.trialDays % 30 === 0 ? `${info.trialDays / 30} oy` : `${info.trialDays} kun`) : '';
@@ -42,7 +44,8 @@ export default function Signup() {
         <Details proof={proof.proof} phone={proof.phone} onRestart={() => setProof(null)} onDone={() => router.replace('/setup')} />
       ) : (
         <div className="grid gap-4">
-          <p className="rounded-xl bg-brand-soft px-3.5 py-3 text-sm"><b>{trial} tekin.</b> Karta kerak emas. Sinov tugagach tarifni o&apos;zingiz tanlaysiz.</p>
+          {/* The App Store app does not talk about prices or plans (Apple 3.1.1). */}
+          {!iosApp && <p className="rounded-xl bg-brand-soft px-3.5 py-3 text-sm"><b>{trial} tekin.</b> Karta kerak emas. Sinov tugagach tarifni o&apos;zingiz tanlaysiz.</p>}
           <PhoneVerify purpose="signup" sms={info.sms} telegram={info.telegram} onVerified={onVerified} />
         </div>
       )}

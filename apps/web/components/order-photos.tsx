@@ -7,6 +7,7 @@ import { api, apiBlob } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { dateTime } from '../lib/format';
 import { ErrorBox } from './ui/feedback';
+import { inIosApp, nativePhoto } from '../lib/native';
 
 export const MAX_PHOTOS = 10;
 
@@ -23,14 +24,24 @@ export async function shrinkPhoto(file: File): Promise<string> {
   } finally { URL.revokeObjectURL(url); }
 }
 
-/** The camera / gallery button: on a phone it opens the camera straight away. */
+/**
+ * The camera / gallery button: on a phone it opens the camera straight away. In the iPhone app iOS's own
+ * camera sheet opens (take a photo or pick one from the library).
+ */
 function PickButton({ onFiles, disabled, label }: { onFiles: (files: File[]) => void; disabled?: boolean; label: string }) {
   const ref = useRef<HTMLInputElement>(null);
+  async function pick() {
+    if (inIosApp()) {
+      try { const file = await nativePhoto(); if (file) onFiles([file]); return; }
+      catch { /* the camera failed: the file picker below still works */ }
+    }
+    ref.current?.click();
+  }
   return (
     <>
       <input ref={ref} type="file" accept="image/*" capture="environment" multiple hidden aria-label={label}
         onChange={e => { const files = [...(e.target.files ?? [])]; e.target.value = ''; if (files.length) onFiles(files); }} />
-      <button type="button" disabled={disabled} onClick={() => ref.current?.click()}
+      <button type="button" disabled={disabled} onClick={() => void pick()}
         className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-line bg-paper text-xs font-semibold text-mute transition-colors hover:border-ink hover:text-ink disabled:opacity-40">
         <Camera className="h-6 w-6" />{label}
       </button>

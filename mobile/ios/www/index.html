@@ -1,2 +1,41 @@
-<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MyService</title>
-<p style="font-family:system-ui;padding:24px">Internet aloqasi yo'q. Ulanib, ilovani qayta oching.</p>
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MyService</title>
+<!-- Shown by the app (capacitor.config.json server.errorPath) when myserviceuz.uz cannot be reached. -->
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+    box-sizing: border-box; font: 16px/1.5 -apple-system, system-ui, sans-serif; background: #f6f7f9; color: #111827;
+    -webkit-user-select: none; user-select: none; }
+  main { max-width: 360px; width: 100%; background: #fff; border-radius: 18px; padding: 32px 24px; text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  img { width: 72px; height: 72px; border-radius: 16px; }
+  h1 { font-size: 21px; margin: 14px 0 6px; }
+  p { margin: 0 0 6px; color: #6b7280; font-size: 15px; }
+  button { margin-top: 18px; width: 100%; height: 48px; border: 0; border-radius: 12px; background: #1D4ED8; color: #fff;
+    font: inherit; font-weight: 600; }
+  button:active { opacity: .8; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0b0f17; color: #e5e7eb; } main { background: #151b26; box-shadow: none; } p { color: #9ca3af; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <img src="icon.png" alt="">
+  <h1>Internet aloqasi yo'q</h1>
+  <p>MyService serveriga ulanib bo'lmadi. Internetni tekshirib, qayta urinib ko'ring.</p>
+  <p lang="ru">Нет связи с сервером. Проверьте интернет и попробуйте снова.</p>
+  <button type="button" id="retry">Qayta urinish · Повторить</button>
+</main>
+<script>
+  var APP = 'https://myserviceuz.uz/dashboard';
+  function retry() { location.href = APP; }
+  document.getElementById('retry').addEventListener('click', retry);
+  addEventListener('online', retry);
+</script>
+</body>
+</html>

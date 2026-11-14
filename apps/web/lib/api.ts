@@ -1,3 +1,5 @@
+import { takePushToken } from './push-token';
+
 const rawBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 export const API_BASE = rawBase.endsWith('/api') ? rawBase : rawBase.replace(/\/+$/, '') + '/api';
 
@@ -115,6 +117,9 @@ export async function login(loginId: string, password: string): Promise<void> {
 }
 
 export async function logout(): Promise<void> {
+  // The iPhone app: this phone stops getting this user's order alerts.
+  const push = takePushToken();
+  if (push) await api('/push/devices/' + encodeURIComponent(push), { method: 'DELETE' }).catch(() => undefined);
   try { await api('/auth/logout', { method: 'POST' }); } finally { clearAccess(); }
 }
 

@@ -8,6 +8,7 @@ import { useBranding } from '../../lib/queries';
 import { errorText } from '../../lib/errors';
 import { date, EXPENSE_CATEGORIES, money, normalizePhone } from '../../lib/format';
 import { cn } from '../../lib/utils';
+import { nativeShareText, useIosApp } from '../../lib/native';
 import { AppShell } from '../../components/layout/app-shell';
 import { Button, buttonVariants } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -466,7 +467,9 @@ function OrderAlerts() {
     await run(async () => { const r = await api<{ url: string }>('/bot/alerts/chats', { method: 'POST', body: JSON.stringify({ label: label.trim() }) }); setLink(r.url); setLabel(''); });
   }
   async function shareLink() {
-    if (navigator.share) { await navigator.share({ text: "Servis buyurtma xabarlarini olish uchun bosing: " + link }).catch(() => undefined); return; }
+    const text = "Servis buyurtma xabarlarini olish uchun bosing: " + link;
+    if (await nativeShareText(text)) return;
+    if (navigator.share) { await navigator.share({ text }).catch(() => undefined); return; }
     await navigator.clipboard.writeText(link); setState({ ok: 'Havola nusxalandi' });
   }
   return (
@@ -695,6 +698,7 @@ type OwnBot = { allowed: boolean; connected: boolean; username: string | null; c
 
 /** The service's own Telegram bot: customers write to @its_bot instead of the MyService bot. */
 function OwnBotBlock() {
+  const iosApp = useIosApp();
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ['own-bot'], queryFn: () => api<OwnBot>('/bot/own') });
   const [token, setToken] = useState('');
@@ -709,12 +713,12 @@ function OwnBotBlock() {
   return (
     <Block id="own-bot" title="O'z Telegram botingiz" hint="Mijozlar sizning nomingizdagi botdan xabar oladi (masalan @mobilefix_bot), MyService botidan emas.">
       {!data.allowed && !data.connected ? (
-        <p className="text-sm">Bu imkoniyat Pro tarifida bor. <a href="/account" className="font-semibold underline">Tariflarni ko&apos;rish</a></p>
+        <p className="text-sm">Bu imkoniyat Pro tarifida bor.{!iosApp && <> <a href="/account" className="font-semibold underline">Tariflarni ko&apos;rish</a></>}</p>
       ) : data.connected ? (
         <div className="grid gap-3 text-sm">
           <p className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-st-tayyor" /> Ulangan: <a href={`https://t.me/${data.username}`} target="_blank" rel="noopener noreferrer" className="font-semibold underline">@{data.username}</a> · {data.customers} mijoz</p>
           {data.webhook && !data.webhook.ok && <p className="flex items-start gap-2 text-red-700"><XCircle className="mt-0.5 h-4 w-4 shrink-0" />Telegram botga xabar yetkazmayapti: {data.webhook.error}. Botni qayta ulang yoki yordam bo&apos;limiga yozing.</p>}
-          {!data.allowed && <p className="text-amber-700">Tarifingizda bu imkoniyat yo&apos;q: xabarlar SMS orqali ketadi. <a href="/account" className="underline">Tarifni o&apos;zgartirish</a></p>}
+          {!data.allowed && <p className="text-amber-700">Tarifingizda bu imkoniyat yo&apos;q: xabarlar SMS orqali ketadi.{!iosApp && <> <a href="/account" className="underline">Tarifni o&apos;zgartirish</a></>}</p>}
           <p className="text-mute">Chek va mijoz havolalaridagi Telegram tugmasi endi shu botni ochadi. Xodimlar uchun xabarlar MyService botida qoladi.</p>
           <Button variant="ghost" className="w-fit text-red-600" disabled={busy} onClick={() => { if (window.confirm("Botni uzasizmi? Unga ulangan mijozlar qaytadan ulanishi kerak bo'ladi.")) void run(() => api('/bot/own', { method: 'DELETE' }), 'Bot uzildi'); }}>Botni uzish</Button>
         </div>

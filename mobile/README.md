@@ -60,25 +60,53 @@ Play Console shakllari:
 - **Account deletion**: `https://myserviceuz.uz/delete-account`.
 - **Category**: Business. **Target audience**: 18+.
 
-## 2. App Store (Capacitor, Mac kerak)
+## 2. App Store (Capacitor — GitHub Actions'da, Mac kerak emas)
 
-Kerak: Apple Developer Program ($99/yil), Mac va Xcode.
+Ilova (`mobile/ios`) saytni ochadi va unga iPhone'ning o'z imkoniyatlarini qo'shadi (Apple 4.2 qoidasi —
+"faqat sayt o'rami" rad etilmasligi uchun):
+- **Push-bildirishnomalar**: yangi qabul va tayyor qurilma (Telegram xabarlari bilan bir xil sozlamalar);
+  bosilganda o'sha buyurtma ochiladi. Chiqishda telefon o'chiriladi.
+- **Kamera**: qurilma rasmi iOS'ning kamera/galereya oynasidan.
+- **Chek chop etish**: iOS printer oynasi (AirPrint), chek rasm sifatida.
+- **Ulashish**: chek rasmi, PDF hisobot va mijoz havolasi iOS ulashish oynasidan.
+- Internet yo'qligida o'z sahifasi; ilova ichida narx/tarif/to'lov ko'rinmaydi (3.1.1); faqat iPhone.
 
-```sh
-cd mobile/ios
-npm install
-npx cap add ios
-npx cap sync ios
-npx cap open ios      # Xcode: Signing & Capabilities → Team; App Icon ← store/app-store-1024.png
-```
+Kerak: **Apple Developer Program** — korxona nomidan (D-U-N-S bilan), $99/yil.
+
+1. **App ID va ilova**: App Store Connect → Apps → «+» → New App: platforma iOS, nomi `MyService — ремонт техники`,
+   asosiy til Russian, Bundle ID `uz.myserviceuz.app` (ro'yxatda bo'lmasa: developer.apple.com → Identifiers → «+» →
+   App IDs → `uz.myserviceuz.app`, Capabilities: **Push Notifications**), SKU `myservice-ios`.
+2. **API kalit (imzolash va yuklash uchun)**: App Store Connect → Users and Access → Integrations → App Store Connect API →
+   «+», roli **Admin** → `.p8` faylni yuklab oling (bir marta beriladi). GitHub → Settings → Secrets → Actions ga:
+   `APPLE_TEAM_ID` (developer.apple.com → Membership), `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (fayl matni).
+3. **Push kaliti (server uchun)**: developer.apple.com → Certificates, IDs & Profiles → Keys → «+» →
+   **Apple Push Notifications service (APNs)** → `.p8` ni yuklab oling. Serverdagi `.env` ga:
+   ```
+   APNS_KEY_ID=<kalit ID>
+   APNS_TEAM_ID=<Team ID>
+   APNS_KEY="<.p8 matni, qatorlar orasida \n>"
+   ```
+   keyin `docker compose -f docker-compose.prod.yml up -d api`. Tekshirish: ilovada kirgach iOS ruxsat so'raydi.
+4. **Build**: GitHub → Actions → **«iOS (App Store)»** → Run workflow → «TestFlight» ni belgilang.
+   Har safar avval simulyatorda ochib tekshiriladi, keyin imzolanib App Store Connect'ga yuklanadi (~15 daqiqada TestFlight'da).
+5. **App Store Connect → ilova sahifasi**:
+   - Skrinshotlar: `store/screenshots/ios-6.7` (6.9″ uchun ham qabul qilinadi). iPad kerak emas (faqat iPhone).
+   - Ikonka build ichida. Privacy Policy URL: `https://myserviceuz.uz/privacy`, Support URL: `https://myserviceuz.uz/contact`.
+   - **App Privacy**: Contact Info (Name, Phone Number), User Content (Photos), Identifiers (User ID),
+     Usage Data (Product Interaction), Diagnostics (Crash Data) — barchasi «App Functionality»/«Analytics»,
+     foydalanuvchiga bog'langan, kuzatish (tracking) **yo'q**.
+   - Age rating: 4+ (barcha savollarga «None/No»). Kategoriya: Business.
+   - **App Review Information**: demo login/parol (Google'ga berilgan bilan bir xil) va izoh:
+     > B2B app for phone and electronics repair shops. Log in with the demo account. Native features: push
+     > notifications for new and ready orders, camera for device photos at intake, AirPrint receipt printing,
+     > share sheet for receipts and PDF reports. Subscriptions are sold to businesses outside the app
+     > (3.1.3(c) enterprise services); the app has no purchases or prices. Account deletion: Menu → «Hisobni o'chirish».
+   - Build: TestFlight'dagi buildni tanlab **Submit for Review**.
+
 Muhim:
-- Ilova `MyServiceApp-iOS` belgisi bilan ochiladi: tarif tanlash va to'lov matnlari unda ko'rinmaydi,
-  bosh sahifa (narxlar) o'rniga kirish sahifasi ochiladi
-  (Apple 3.1.1/3.1.3(b): obuna saytda boshqariladi). Ilovada «saytda to'lang» kabi havola **qo'shmang**.
-- Apple 4.2 qoidasi: faqat sayt o'ramini ko'pincha rad etadi. Rad etilsa, native imkoniyat qo'shamiz
-  (push-bildirishnomalar «qurilma tayyor», native kamera) — bu keyingi ish.
-- App Review Information: demo login/parol, izoh: «B2B app for phone repair shops; subscriptions are sold
-  to businesses outside the app (3.1.3(b)); account deletion: menu → Hisobni o'chirish».
+- Ilovada «saytda to'lang» kabi havola yoki narx **qo'shmang** (`apps/web/lib/native.ts` → `useIosApp`).
+- Yangi build faqat native qism, nom yoki ikonka o'zgarganda kerak; sayt o'zgarishlari ilovada darhol ko'rinadi.
+- Ikonka va splash: `store/make-icons.cjs` (bitta skript web, Play va iOS uchun).
 
 ## Do'kon matni (tayyor)
 

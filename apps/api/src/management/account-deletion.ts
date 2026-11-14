@@ -75,6 +75,7 @@ export class AccountDeletionController {
         } }),
         this.db.session.deleteMany({ where: { userId: user.id } }),
         this.db.telegramLink.deleteMany({ where: { targetId: user.id } }),
+        this.db.pushDevice.deleteMany({ where: { userId: user.id } }),
         this.db.auditLog.create({ data: { organizationId: a.organizationId, actorId: user.id, action: 'ACCOUNT_DELETED', entityId: user.id } }),
       ]);
       return { deleted: 'user' };

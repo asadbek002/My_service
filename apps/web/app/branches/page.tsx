@@ -14,12 +14,14 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { FormField } from '../../components/ui/form-field';
 import { ErrorBox, Loading, Notice } from '../../components/ui/feedback';
+import { useIosApp } from '../../lib/native';
 
 /**
  * Filiallar: the owner opens branches within the plan, gives each its address and phone (printed on
  * its receipts), says who works where, and closes a branch once its devices have left.
  */
 export default function BranchesPage() {
+  const iosApp = useIosApp();
   const qc = useQueryClient();
   const current = useCurrentBranch();
   const [adding, setAdding] = useState(false);
@@ -41,7 +43,7 @@ export default function BranchesPage() {
         <section className="rounded-2xl border bg-white p-4 text-sm sm:p-5">
           <p className="font-semibold">{current.limit === null ? `${openCount} ta ochiq filial · tarifingizda cheklov yo'q` : `${openCount} / ${current.limit} filial · tarifingiz bo'yicha`}</p>
           <p className="mt-1 text-mute">Har bir filialning o&apos;z manzili va telefoni uning chekida chiqadi. Xodim faqat o&apos;zi ishlaydigan filialning buyurtmalarini ko&apos;radi; siz (boshliq) hammasini ko&apos;rasiz va tepadagi tanlov orqali filialni almashtirasiz.</p>
-          {full && current.manage && <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-amber-900">Tarifdagi filiallar soni tugadi. Ko&apos;proq filial uchun «Hisobim» bo&apos;limida kattaroq tarifni tanlang.</p>}
+          {full && current.manage && <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-amber-900">Tarifdagi filiallar soni tugadi.{!iosApp && <> Ko&apos;proq filial uchun «Hisobim» bo&apos;limida kattaroq tarifni tanlang.</>}</p>}
         </section>
 
         <ErrorBox>{state.error}</ErrorBox><Notice>{state.ok}</Notice>

@@ -96,10 +96,29 @@ model User {
   compensation TechnicianCompensation[]
   repairActions RepairAction[]
   commissions CommissionEntry[]
+  pushDevices PushDevice[]
 
   @@unique([organizationId, id])
   @@index([organizationId, status])
   @@index([telegramChatId])
+}
+
+/// A phone with the App Store app that gets push notifications (order alerts) for its signed-in user.
+model PushDevice {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  /// APNs device token (hex).
+  token          String   @unique
+  platform       String   @default("ios")
+  /// The sign-in it belongs to (Session.tokenFamilyId): once that is signed out or expired, the phone gets nothing.
+  tokenFamilyId  String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId])
 }
 
 model UserBranch {
