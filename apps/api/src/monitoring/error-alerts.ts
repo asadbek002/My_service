@@ -64,12 +64,17 @@ class ClientErrorDto {
   @IsOptional() @IsString() @MaxLength(500) url?: string;
 }
 
+const STALE_OR_OPAQUE = /ChunkLoadError|Loading (CSS )?chunk [\w-]+ failed|Failed to fetch dynamically imported module|^(Error: )?Script error\.?$/i;
+
 @Controller('public')
 class ClientErrorController {
   constructor(private readonly alerts: ErrorAlerts) {}
   /** The web app reports an error a user hit (window.onerror, a crashed page). No personal data is sent. */
   @Post('client-error') @Public() @HttpCode(204)
   async clientError(@Body() d: ClientErrorDto, @Req() req: Request) {
+    // Not bugs: a page from before a deploy asking for a file of the old build (the new build reloads by
+    // itself; phones still running the old one keep sending it), and the browser's detail-less "Script error.".
+    if (STALE_OR_OPAQUE.test(d.message)) return;
     if (!await this.alerts.allow(req.ip ?? '')) return;
     const path = (() => { try { return new URL(d.url ?? '', 'https://x').pathname.replace(/\/[a-z0-9]{20,}/gi, '/:id'); } catch { return ''; } })();
     const ua = String(req.headers['user-agent'] ?? '').slice(0, 120);

@@ -484,6 +484,10 @@ test('monitoring: a browser error reaches the platform owner once an hour; site 
   assert.equal((await report()).status, 204);
   await new Promise(r => setTimeout(r, 300));
   assert.equal(alerts().length, 1, 'the same error is not sent again within the hour');
+  // Not bugs, not sent: a file of an old build (phones still on it after a deploy) and the browser's "Script error.".
+  const noise = async m => { const from = calls.length; assert.equal((await fetch(base + '/public/client-error', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000', 'User-Agent': 'Mozilla/5.0 test' }, body: JSON.stringify({ message: m, url: 'https://myserviceuz.uz/orders/x' }) })).status, 204); await new Promise(r => setTimeout(r, 200)); return calls.slice(from).filter(c => String(c.body.chat_id) === String(adminChat)).length; };
+  assert.equal(await noise('ChunkLoadError: Loading chunk 9734 failed. ' + id), 0);
+  assert.equal(await noise('Error: Script error.'), 0);
 
   // Visits: public pages only, bots ignored, the platform sees counts and sources.
   const visit = (path, ua = 'Mozilla/5.0 (Linux; Android 14) Chrome/130', ref) => fetch(base + '/public/visit', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000', 'User-Agent': ua }, body: JSON.stringify({ path, ...(ref ? { ref } : {}) }) });
