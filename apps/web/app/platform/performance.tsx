@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { platformApi } from './lib';
 import { card } from './parts';
-import { CountryList } from './country';
+import { CountryList, countryName, flag } from './country';
 
 type Perf = {
   hours: { hour: string; n: number; err: number; avg: number }[];
@@ -10,8 +10,52 @@ type Perf = {
   slowest: { route: string; n: number; avg: number }[];
   busiest: { route: string; n: number; avg: number }[];
   active: { countries?: { key: string; n: number }[]; today?: { users: number; services: number }; week: { users: number; services: number }; month: { users: number; services: number }; perDay: { day: string; users: number; services: number }[] };
+  client?: ClientPerf | null;
   server: { cpus: number; load: number[]; memory: { totalMb: number; freeMb: number; apiMb: number }; uptimeHours: number; databaseMb: number };
 };
+
+type Timing = { pages: { n: number; avgMs: number; ttfbMs: number; under1s: number; under3s: number }; api: { n: number; avgMs: number; under300: number; under1000: number } };
+type ClientPerf = Timing & { days: number; countries: (Timing & { key: string })[] };
+
+const sec = (ms: number) => ms >= 1000 ? (ms / 1000).toFixed(1) + ' s' : ms + ' ms';
+/** Green when it feels quick, amber when noticeable, red when users wait. */
+const tone = (ms: number, ok: number, slow: number) => ms === 0 ? 'text-mute' : ms <= ok ? 'text-emerald-700' : ms <= slow ? 'text-amber-700' : 'text-red-600';
+
+/** What users feel in their browser (network included), next to the server's own times above. */
+function ClientCard({ c, serverMs }: { c: ClientPerf; serverMs: number }) {
+  const network = c.api.n ? Math.max(0, c.api.avgMs - serverMs) : 0;
+  return (
+    <section className={card}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="font-semibold">Foydalanuvchida tezlik</h2>
+        <p className="text-sm text-mute">brauzerda o&apos;lchangan, internet bilan · {c.days} kun</p></div>
+      {!c.pages.n && !c.api.n ? <p className="mt-2 text-sm text-mute">Hali ma&apos;lumot yo&apos;q: foydalanuvchilar sahifani ochganda yig&apos;iladi.</p> : (<>
+        <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+          <div className="rounded-xl bg-paper p-3">
+            <p className="text-xs text-mute">Sahifa ochilishi</p>
+            <p className={`num font-mono text-xl font-semibold ${tone(c.pages.avgMs, 2000, 4000)}`}>{sec(c.pages.avgMs)}</p>
+            <p className="text-xs text-mute">1 s gacha {c.pages.under1s}% · 3 s gacha {c.pages.under3s}% · {c.pages.n} marta</p>
+          </div>
+          <div className="rounded-xl bg-paper p-3">
+            <p className="text-xs text-mute">Har bir amal (so&apos;rov)</p>
+            <p className={`num font-mono text-xl font-semibold ${tone(c.api.avgMs, 300, 800)}`}>{sec(c.api.avgMs)}</p>
+            <p className="text-xs text-mute">serverda {serverMs} ms + yo&apos;lda ~{network} ms · {c.api.n} ta</p>
+          </div>
+        </div>
+        <p className="eyebrow mt-4">Davlatlar bo&apos;yicha</p>
+        <div className="mt-1 divide-y text-sm">
+          {c.countries.map(x => (
+            <div key={x.key} className="grid grid-cols-[1fr_auto_auto] items-center gap-x-3 py-1.5">
+              <span className="min-w-0 truncate">{flag(x.key)} {countryName(x.key)}</span>
+              <span className={`num font-mono text-xs ${tone(x.pages.avgMs, 2000, 4000)}`} title="Sahifa ochilishi">{x.pages.n ? sec(x.pages.avgMs) : '—'}</span>
+              <span className={`num w-16 text-right font-mono text-xs ${tone(x.api.avgMs, 300, 800)}`} title="So'rov">{x.api.n ? sec(x.api.avgMs) : '—'}</span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-mute">Ustunlar: sahifa ochilishi · bitta so&apos;rov. Yashil — tez, sariq — sezilarli, qizil — kutishga to&apos;g&apos;ri keladi.</p>
+      </>)}
+    </section>
+  );
+}
 
 function Bars({ values, title, tone = 'bg-ink/80' }: { values: { label: string; v: number; hint: string }[]; title: string; tone?: string }) {
   const max = Math.max(1, ...values.map(x => x.v));
@@ -63,6 +107,8 @@ export function PerformanceTab({ onError }: { onError: (e: unknown) => void }) {
         </section>
       </div>
 
+      {d.client && <ClientCard c={d.client} serverMs={d.total.avgMs} />}
+
       <section className={card}>
         <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="font-semibold">Ilovadan faol foydalanish</h2>
           <p className="text-sm text-mute">bugun {d.active.today?.users ?? 0} kishi / {d.active.today?.services ?? 0} servis · 7 kun {d.active.week.users} / {d.active.week.services} · 30 kun {d.active.month.users} / {d.active.month.services}</p></div>
@@ -74,9 +120,9 @@ export function PerformanceTab({ onError }: { onError: (e: unknown) => void }) {
       <section className={card}>
         <h2 className="font-semibold">Server</h2>
         <div className="mt-2 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <p><span className="block text-xs text-mute">CPU yuklamasi (1/5/15 daq)</span><span className={`num font-mono ${d.server.load[0]! > d.server.cpus ? 'text-red-600' : ''}`}>{d.server.load.join(' / ')}</span> <span className="text-xs text-mute">· {d.server.cpus} yadro</span></p>
-          <p><span className="block text-xs text-mute">Xotira</span><span className={`num font-mono ${d.server.memory.freeMb < 500 ? 'text-red-600' : ''}`}>{(memUsed / 1024).toFixed(1)} / {(d.server.memory.totalMb / 1024).toFixed(1)} GB</span></p>
-          <p><span className="block text-xs text-mute">API jarayoni</span><span className="num font-mono">{d.server.memory.apiMb} MB · {d.server.uptimeHours} soat</span></p>
+          <p><span className="block text-xs text-mute">CPU yuklamasi · {d.server.cpus} yadro</span><span className={`num font-mono ${d.server.load[0]! > d.server.cpus ? 'text-red-600' : ''}`}>{d.server.load[0]!.toFixed(2)}</span><span className="block text-[11px] text-mute">5 daq {d.server.load[1]!.toFixed(2)} · 15 daq {d.server.load[2]!.toFixed(2)}</span></p>
+          <p><span className="block text-xs text-mute">Xotira</span><span className={`num whitespace-nowrap font-mono ${d.server.memory.freeMb < 500 ? 'text-red-600' : ''}`}>{(memUsed / 1024).toFixed(1)} / {(d.server.memory.totalMb / 1024).toFixed(1)} GB</span></p>
+          <p><span className="block text-xs text-mute">API jarayoni</span><span className="num whitespace-nowrap font-mono">{d.server.memory.apiMb} MB</span><span className="block text-[11px] text-mute">{d.server.uptimeHours < 1 ? 'hozirgina qayta ishga tushgan' : `${d.server.uptimeHours} soatdan beri ishlaydi`}</span></p>
           <p><span className="block text-xs text-mute">Ma&apos;lumotlar bazasi</span><span className="num font-mono">{d.server.databaseMb} MB</span></p>
         </div>
       </section>

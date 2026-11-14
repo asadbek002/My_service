@@ -2,6 +2,7 @@
 import { useEffect } from 'react';
 import { useListenForInstall } from '../lib/install';
 import { reportError } from '../lib/report-error';
+import { reportPageLoad } from '../lib/perf';
 import { API_BASE, ApiError } from '../lib/api';
 import { usePathname } from 'next/navigation';
 import { startTranslating } from '../lib/i18n';
@@ -16,6 +17,8 @@ export function ServiceWorkerRegister() {
     addEventListener('error', onError); addEventListener('unhandledrejection', onRejection);
     return () => { removeEventListener('error', onError); removeEventListener('unhandledrejection', onRejection); };
   }, []);
+  // How fast the page opened for this user (platform statistics).
+  useEffect(() => { reportPageLoad(); }, []);
   useEffect(() => {
     if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') navigator.serviceWorker.register('/sw.js').catch(() => {});
   }, []);

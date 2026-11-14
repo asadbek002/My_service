@@ -1,4 +1,6 @@
 import { takePushToken } from './push-token';
+import { noteApiTime } from './perf';
+import { queryClient } from './query-client';
 
 const rawBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 export const API_BASE = rawBase.endsWith('/api') ? rawBase : rawBase.replace(/\/+$/, '') + '/api';
@@ -68,7 +70,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', Origin: typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000'), ...init?.headers as Record<string, string> };
   if (token) headers['Authorization'] = 'Bearer ' + token;
 
+  const started = typeof performance !== 'undefined' ? performance.now() : 0;
   const res = await fetch(API_BASE + path, { ...init, credentials: 'include', headers });
+  if (res.ok && started) noteApiTime(performance.now() - started);
 
   if (res.status === 401) {
     // Token muddati tugagan — refresh sinab ko'ramiz
@@ -114,13 +118,15 @@ export async function login(loginId: string, password: string): Promise<void> {
   if (!res.ok) { const b = await res.json().catch(() => ({})) as { message?: string }; throw new ApiError(b.message ?? 'LOGIN_FAILED', res.status); }
   const d = await res.json() as { accessToken: string; expiresIn: number };
   setAccessToken(d.accessToken, d.expiresIn);
+  queryClient.clear();
 }
 
 export async function logout(): Promise<void> {
   // The iPhone app: this phone stops getting this user's order alerts.
   const push = takePushToken();
   if (push) await api('/push/devices/' + encodeURIComponent(push), { method: 'DELETE' }).catch(() => undefined);
-  try { await api('/auth/logout', { method: 'POST' }); } finally { clearAccess(); }
+  // Nothing of this user's stays cached for whoever signs in next on this device.
+  try { await api('/auth/logout', { method: 'POST' }); } finally { clearAccess(); queryClient.clear(); }
 }
 
 /**

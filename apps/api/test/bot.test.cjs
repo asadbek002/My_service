@@ -512,6 +512,29 @@ test('monitoring: a browser error reaches the platform owner once an hour; site 
   assert.ok(perf.active.today.users >= 1 && perf.active.today.services >= 1);
   assert.ok(perf.server.cpus > 0 && perf.server.databaseMb > 0);
   assert.equal((await request('/platform/performance', { token: svc.token })).status, 401, 'platform only');
+  assert.ok(!perf.busiest.some(r => r.route.endsWith('/health')), 'health checks are not counted as use');
+  assert.ok(!perf.slowest.some(r => r.route.includes('/telegram/')), 'Telegram webhooks are not "slow requests" of users');
+
+  // What users feel: the browser reports page loads and API round trips; junk and floods are refused.
+  const perfPost = body => fetch(base + '/public/perf', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' }, body: JSON.stringify(body) });
+  { const Redis = require('ioredis'); const r = new Redis(process.env.REDIS_URL); const keys = await r.keys('rum:rl:*'); if (keys.length) await r.del(...keys); await r.quit(); }
+  const client0 = perf.client ?? { pages: { n: 0 }, api: { n: 0 } };
+  assert.equal((await perfPost({ page: { ttfb: 180, load: 900 } })).status, 204);
+  assert.equal((await perfPost({ page: { ttfb: 400, load: 2500 } })).status, 204);
+  assert.equal((await perfPost({ api: { n: 4, ms: 1000, b300: 3, b1000: 4 } })).status, 204);
+  assert.equal((await perfPost({ page: { ttfb: -1, load: 5 } })).status, 400);
+  assert.equal((await perfPost({ api: { n: 100000, ms: 1, b300: 0, b1000: 0 } })).status, 400);
+  const client = (await ok(await request('/platform/performance', { token: platform }))).client;
+  assert.equal(client.days, 7);
+  assert.equal(client.pages.n, client0.pages.n + 2);
+  assert.equal(client.api.n, client0.api.n + 4);
+  if (!client0.pages.n) { assert.equal(client.pages.avgMs, 1700); assert.equal(client.pages.under1s, 50); assert.equal(client.pages.under3s, 100); }
+  if (!client0.api.n) { assert.equal(client.api.avgMs, 250); assert.equal(client.api.under300, 75); }
+  assert.ok(client.countries.some(c => c.key === 'XX'), JSON.stringify(client.countries));
+  // At most 30 reports a minute from one address.
+  for (let i = 0; i < 30; i++) await perfPost({ page: { ttfb: 1, load: 1 } });
+  const flooded = (await ok(await request('/platform/performance', { token: platform }))).client;
+  assert.ok(flooded.pages.n - client.pages.n <= 30 - 3, String(flooded.pages.n - client.pages.n));
 
   // Countries: looked up on this server (DB-IP Lite); local addresses are "XX", never an error.
   const { countryOf } = require('../dist/monitoring/country.js');

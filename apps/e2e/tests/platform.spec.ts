@@ -132,6 +132,8 @@ test('Yuklama page: requests, speed, active users and the server are shown', asy
   await expect(page.getByRole('heading', { name: "Soatlik so'rovlar" })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Ilovadan faol foydalanish' })).toBeVisible();
   await expect(page.getByText('Ma\'lumotlar bazasi')).toBeVisible();
+  // What users feel in their browser (page loads, request round trips), by country.
+  await expect(page.getByRole('heading', { name: 'Foydalanuvchida tezlik' })).toBeVisible();
   await page.getByRole('button', { name: '7 kun' }).click();
   await expect(page.getByRole('button', { name: '7 kun' })).toHaveAttribute('aria-pressed', 'true');
 });

@@ -43,7 +43,9 @@ export const can = (me: Me | undefined, permission: string) => !!me?.permissions
 
 /** Service name and logo for the header (Settings → Logotip). */
 export const useBranding = (enabled = true) => useQuery({ queryKey: ['branding'], queryFn: () => api<{ name: string; logo: string | null }>('/settings/branding'), staleTime: 300_000, enabled });
-export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/auth/me') });
+// Who is signed in changes only by signing in or out (both clear the cache) or a password change
+// (the page reloads), so one fetch a minute is plenty: it used to be asked on every page.
+export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/auth/me'), staleTime: 60_000 });
 export function useOrders(status = '', enabled = true) {
   const { branch } = useCurrentBranch();
   return useQuery({ queryKey: ['orders', 'list', status, branch], queryFn: () => api<Order[]>(withBranch('/orders' + (status ? '?status=' + status : ''), branch)), enabled });
